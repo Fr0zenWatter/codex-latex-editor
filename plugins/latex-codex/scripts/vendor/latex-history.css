@@ -1,0 +1,64 @@
+:root{--revision-color:#b85c1c}
+.toolbar-icon{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.icon-button{display:inline-flex;align-items:center;justify-content:center;gap:7px}
+#settings-menu-button{width:34px;padding:7px}
+.toolbar-menu{position:fixed;inset:auto;margin:0;width:260px;max-width:calc(100vw - 16px);padding:8px;border:1px solid var(--border);border-radius:9px;background:var(--panel);color:var(--text);box-shadow:0 8px 30px #0005}
+#file-menu button,#file-menu a{display:block;width:100%;padding:9px 12px;text-align:left;text-decoration:none;color:var(--text);border:0;border-radius:5px;background:transparent}
+#file-menu button:hover,#file-menu a:hover{background:var(--border)}
+#settings-menu label{display:flex;flex-direction:column;gap:6px;padding:8px;font-size:12px}
+#settings-menu select{width:100%;font-size:13px}
+#history-dialog{color-scheme:light;--bg:#fff;--panel:#fafafa;--border:#dedfe2;--text:#20252b;--muted:#72767c;--command:#526575;--reference:#a34c13;width:min(1440px,97vw);height:94vh;max-width:97vw;max-height:94vh;padding:0;border:1px solid var(--border);border-radius:9px;background:#fff;color:var(--text);box-shadow:0 20px 80px #0006}
+#history-dialog::backdrop{background:#0007}
+#history-dialog[open]{display:flex;flex-direction:column}
+#history-dialog header{padding:12px 16px;gap:10px}
+#history-dialog header strong{flex:1;font-size:16px}
+#history-file{color:var(--muted);font-size:12px;max-width:32%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#history-status{padding:8px 16px;color:var(--muted);font-size:12px;min-height:34px}
+.history-body{display:grid;grid-template-columns:minmax(0,1fr) 230px;flex:1;min-height:0;border-top:1px solid var(--border)}
+.history-content{display:flex;flex-direction:column;min-width:0;min-height:0}
+.history-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px;border-bottom:1px solid var(--border)}
+.history-toolbar label{padding:0}
+.history-toolbar select{max-width:230px}
+.history-toolbar button[aria-pressed=true]{background:#e9ecef;color:#20252b}
+.history-code-shell{position:relative;flex:1;min-height:0;background:#fff}
+#history-code{position:absolute;inset:0;overflow:auto;margin:0;padding:12px 0 70px;font:16px/1.8 Consolas,'Noto Sans Mono',monospace;tab-size:2;background:#fff;color:#16191c;scrollbar-color:#c6c9cd #fff}
+.history-row{display:flex;min-height:1.8em}
+.history-line-number{flex:none;width:52px;padding-right:9px;text-align:right;color:#80848a;background:#fafafa;user-select:none;border-right:2px solid transparent}
+.history-line-text{flex:1;min-width:0;white-space:pre-wrap;overflow-wrap:anywhere;padding:0 10px}
+.history-row.changed{background:#f5f5f5}
+.history-row.changed .history-line-number{border-right-color:var(--revision-color);background:#f0f0f0}
+#history-code ins{color:var(--revision-color);background:color-mix(in srgb,var(--revision-color) 22%,transparent);text-decoration:none}
+#history-code del{color:var(--revision-color);text-decoration:line-through;text-decoration-thickness:1.4px}
+#history-code .history-empty{padding:0 16px;color:var(--muted)}
+#history-next{position:absolute;right:16px;bottom:14px;display:flex;align-items:center;gap:9px;border:0;border-radius:28px;background:#1f252d;color:#fff;box-shadow:0 5px 16px #0003;padding:10px 16px;font-weight:600}
+#history-next:hover{background:#343d48}
+.history-sidebar{display:flex;flex-direction:column;min-height:0;border-left:1px solid var(--border);overflow:auto;padding:10px;background:#fcfcfc}
+.history-user{padding:4px 5px 12px;color:var(--muted);font-size:12px;display:flex;align-items:center;gap:7px}
+.history-user::before{content:'';width:9px;height:9px;border-radius:50%;background:var(--revision-color)}
+#history-list{display:flex;flex-direction:column;gap:6px}
+#history-list button{display:block;width:100%;text-align:left;padding:10px;overflow-wrap:anywhere;background:#fff}
+#history-list button[aria-pressed=true]{border-color:var(--revision-color);background:color-mix(in srgb,var(--revision-color) 7%,#fff)}
+#history-list small{display:block;color:var(--muted);margin-top:4px}
+#history-more{margin-top:8px}
+#history-label-form{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:10px;border-top:1px solid var(--border)}
+#history-label-form label{padding:0}
+#history-label{min-width:100px;flex:1;background:#fff;color:var(--text);border:1px solid var(--border);border-radius:5px;padding:7px;font:inherit}
+#history-restore,#history-confirm{background:#176f49;color:#fff}
+#history-dialog footer{padding:10px 14px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px}
+#history-dialog footer small{color:var(--muted)}
+#history-dialog [hidden]{display:none}
+#history-dialog input:focus-visible,#history-code:focus-visible{outline:2px solid #526575;outline-offset:-2px}
+@media(max-width:640px){.history-body{grid-template-columns:minmax(0,1fr) 155px}.history-sidebar{padding:5px}.history-toolbar{gap:5px;padding:7px}.history-toolbar button,.history-toolbar select{font-size:12px;padding:5px 7px}.history-toolbar select{max-width:160px}#history-file{display:none}#history-dialog footer small{font-size:11px}.history-line-number{width:36px}#history-next{right:8px;padding:8px 11px;font-size:12px}}
+
+#history-pdf-view{position:absolute;inset:0;overflow:auto;padding:16px;background:#f3f4f6;scrollbar-color:#c6c9cd #f3f4f6}
+.history-pdf-note{margin:0 0 14px;color:#72767c;font:12px/1.6 system-ui}
+.history-pdf-change{margin-bottom:20px;border:1px solid #dedfe2;border-radius:8px;overflow:hidden;background:#fff}
+.history-pdf-change h3{margin:0;padding:9px 12px;background:#f8f9fa;border-bottom:1px solid #dedfe2;font:600 13px system-ui}
+.history-pdf-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.history-pdf-pair section{min-width:0;padding:10px}
+.history-pdf-pair section+section{border-left:1px solid #dedfe2}
+.history-pdf-pair h4{margin:0 0 8px;color:#59616a;font:600 12px system-ui}
+.history-pdf-pair p{font:13px/1.6 system-ui;color:#72767c;padding:12px}
+.history-pdf-pair canvas{display:block;width:100%;height:auto;background:#fff;margin-bottom:8px}
+#history-dialog[data-history-view=pdf] #history-next{display:none}
+@media(max-width:640px){.history-pdf-pair{grid-template-columns:1fr}.history-pdf-pair section+section{border-left:0;border-top:1px solid #dedfe2}}

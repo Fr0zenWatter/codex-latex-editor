@@ -1,0 +1,18 @@
+{
+  "name": "latex-codex",
+  "version": "0.1.0+codex.20260930235134",
+  "description": "Local LaTeX editing and live PDF preview in the Codex browser side panel.",
+  "author": {
+    "name": "Local developer"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "LaTeX Codex",
+    "shortDescription": "Edit LaTeX and preview a locally compiled PDF.",
+    "longDescription": "A small local editor with automatic local TeX compilation and a bundled PDF.js viewer in the Codex browser side panel. Supports pdfLaTeX/XeLaTeX directives, BibTeX and SyncTeX. Requires Python 3, an existing TeX installation, and Poppler pdfinfo for page metadata. Pages render on demand in the browser.",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Open my LaTeX file with LaTeX Codex in the side panel."
+  }
+}

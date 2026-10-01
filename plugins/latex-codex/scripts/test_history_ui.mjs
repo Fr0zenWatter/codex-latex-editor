@@ -1,0 +1,90 @@
+// Run: node test_history_ui.mjs. Exercise browsing/restore without a browser or TeX.
+import assert from 'node:assert/strict';
+import {attachHistory, sourceRows} from './vendor/latex-history.mjs';
+
+const numbered = sourceRows([{kind:'equal',text:'first\n'}, {kind:'delete',text:'removed\n'}, {kind:'insert',text:'new\n'}, {kind:'equal',text:'last'}]);
+assert.deepEqual(numbered.map(row=>row.number), [1,null,2,3]);
+assert.deepEqual(numbered.map(row=>row.changed), [false,true,true,false]);
+assert.equal(numbered[1].parts[0].kind, 'delete');
+assert.equal(sourceRows([{kind:'equal',text:'a\r\nb\n'}]).length, 3);
+assert.deepEqual(sourceRows([{kind:'equal',text:'a'}, {kind:'delete',text:'\nb'}, {kind:'equal',text:'c\nlast'}]).map(row=>row.number),[1,'',2]);
+
+class Element {
+  constructor(text = '', value = '') { this.textContent = text; this.value = value; this.children = []; this.dataset = {}; this.attributes = {}; this.events = {}; }
+  append(...children) { for(const child of children.flatMap(child => child.fragment ? child.children : [child])) {child.parent=this;this.children.push(child);} }
+  replaceChildren(...children) { this.children = []; this.append(...children); }
+  setAttribute(name, value) { this.attributes[name] = value; }
+  querySelectorAll(selector) { return selector === '.history-change-start' ? this.children.filter(child=>child.className?.includes('history-change-start')) : this.children; }
+  getBoundingClientRect() { const top = this.parent?.id === 'code' ? this.parent.children.indexOf(this)*20-(this.parent.scrollTop||0) : 0; return {top, bottom:this.id==='code'?100:top+20}; }
+  scrollTo({top}) { this.scrollTop=top; this.events.scroll?.(); }
+  get options() { return this.children; }
+  addEventListener(name, fn) { this.events[name] = fn; }
+  focus() { this.focused = true; }
+  showModal() { this.open = true; }
+  close() { this.open = false; this.events.close?.(); }
+}
+const elements = new Map();
+const $ = id => { if (!elements.has(id)) elements.set(id, Object.assign(new Element(),{id})); return elements.get(id); };
+globalThis.Option = Element;
+globalThis.document = {querySelector:selector => $(selector.slice(9)), createElement:() => new Element(), createDocumentFragment:() => Object.assign(new Element(), {fragment:true})};
+globalThis.ResizeObserver = class {observe(){}};
+globalThis.window = {addEventListener(){}};
+globalThis.matchMedia = ()=>({matches:true});
+const events = {};
+const context = {path:'paper.tex', source:'unsaved draft', version:'current-version'};
+const rows = [{id:2, created:'2026-10-01T00:01:00Z', kind:'save', label:''}, {id:1, created:'2026-10-01T00:00:00Z', kind:'open', label:'初稿'}];
+const calls = [];
+let restorePayload, deferred, pdfError=false;
+const flush = () => new Promise(resolve => setImmediate(resolve));
+async function request(route, options) {
+  const data = options ? JSON.parse(options.body) : null; calls.push({route, data});
+  if (route.startsWith('/history?')) return {revisions:rows.map(row=>({...row})), next:null};
+  if (route === '/history/label') return {ok:true};
+  if (deferred) return new Promise(resolve => { deferred.resolve = resolve; });
+  if (route === '/history/pdf') { if(pdfError)throw new Error('compile failed'); return {changes:[]}; }
+  return {...rows.find(row=>row.id===data.id), source:'old source', changes:[{kind:'equal',text:'same\n'.repeat(10)},{kind:'delete',text:'old'},{kind:'insert',text:'new'},{kind:'equal',text:'\nend'}], same:false};
+}
+attachHistory({on:(name, fn)=>events[name]=fn}, request, ()=>({...context}), async data=>{restorePayload=data;});
+$('open').onclick(); await flush();
+assert($('dialog').open && !$('restore').disabled);
+assert.equal(calls.at(-1).data.compare, 'previous');
+assert(!$('next').hidden); assert.equal($('next-label').textContent,'下方还有 1 处改动');
+$('next').onclick(); assert($('code').scrollTop>0); assert($('next').hidden);
+$('pdf').onclick(); await flush();
+assert.equal(calls.at(-1).route,'/history/pdf');assert.equal(calls.at(-1).data.compare,'previous');
+assert($('code').hidden && !$('pdf-view').hidden && $('next').hidden);
+assert.equal($('pdf').attributes['aria-pressed'],'true');
+assert.match($('pdf-view').textContent,/没有需要预览/);
+$('target').value='current'; $('target').onchange(); await flush();
+assert.equal(calls.at(-1).data.source, 'unsaved draft');
+await $('list').children[1].onclick();
+$('source').onclick();
+assert.equal($('code').children[0].children[1].children[0].textContent, 'old source');
+assert.equal(context.source, 'unsaved draft', 'Browsing must not replace the editor.');
+$('target').value = '2'; $('target').onchange(); await flush();
+assert.equal(calls.at(-1).data.target_id, 2);
+assert(!('source' in calls.at(-1).data));
+$('label').value = '定稿'; await $('label-form').onsubmit({preventDefault(){}});
+assert.equal(calls.at(-1).data.label, '定稿');
+$('restore').onclick();
+assert.equal(restorePayload, undefined, 'First click must only ask for confirmation.');
+assert(!$('confirmation').hidden);
+$('cancel').onclick(); assert($('confirmation').hidden);
+$('restore').onclick(); await $('confirm').onclick();
+assert.deepEqual(restorePayload, {...context, id:1}, 'Restore must carry the captured draft, file and version.');
+
+pdfError=true; $('pdf').onclick(); await flush();
+assert.match($('pdf-view').textContent,/PDF 对比失败：compile failed/);pdfError=false;
+$('source').onclick();
+deferred={}; $('pdf').onclick(); const oldPdf=deferred; deferred=null;
+$('source').onclick(); oldPdf.resolve({changes:[]}); await flush();
+assert(!$('code').hidden && $('pdf-view').hidden,'A late PDF response must not replace the source tab.');
+
+// A late response from a previously closed dialog must not overwrite a fresh selection.
+deferred = {}; const pending = $('list').children[0].onclick();
+$('dialog').close(); const old = deferred; deferred = null;
+$('open').onclick(); await flush();
+old.resolve({...rows[1], source:'STALE', diff:[], same:true}); await pending;
+$('source').onclick(); assert.equal($('code').children[0].children[1].children[0].textContent, 'old source');
+events.swapDoc(); assert(!$('dialog').open);
+console.log('PASS: word markup/line numbers, next-change navigation, previous/current comparison, naming, draft-safe restore, stale responses and file switch');
