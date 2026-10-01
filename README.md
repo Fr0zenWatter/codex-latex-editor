@@ -10,6 +10,6 @@
 
 1. 下载本仓库，用 Codex 打开这个文件夹。
 2. 对 Codex 说：**“请按 AGENTS.md 安装 latex-codex。”**
-3. 安装后新开对话，说：**“用 latex-codex 打开我的 main.tex。”** 并提供文件路径。
+3. 安装后新开对话，说：**“用 latex-codex 打开我的 main.tex。”**。
 
 编辑会直接保存到原始 `.tex` 文件。
