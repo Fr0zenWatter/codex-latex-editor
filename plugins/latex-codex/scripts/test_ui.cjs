@@ -54,7 +54,7 @@ let destroyed=0,downloads=0;
 const windowHandlers={},uiTimers=new Map();let uiTimerId=0;
 const context = vm.createContext({
   t:key=>key, setText:(element,key,values={})=>{element.textContent=key.replace(/\{(\w+)\}/g,(match,name)=>values[name]??match);},initSettings(){},
-  attachMathHover(){},attachSelectionChat(){return {open(){chatOpened.push('full');},openQuick(anchor){chatOpened.push(anchor);},busy:false};},attachHistory(){},katex:{},
+  attachMathHover(){},attachSelectionChat(){return {open(){chatOpened.push('full');},openQuick(anchor){chatOpened.push(anchor);},busy:false};},attachHistory(){},mountHistoryTabs(){},katex:{},
   pdfjsLib:{GlobalWorkerOptions:{},getDocument:()=>({promise:Promise.resolve(pdf),async destroy(){destroyed++;}})},
   EventBus:class{},PDFLinkService:class{setViewer(){} setDocument(){}},PDFViewer:function(){return viewer;},
   ResizeObserver:class{observe(){}},Uint8Array,

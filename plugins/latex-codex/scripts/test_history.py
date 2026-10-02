@@ -5,13 +5,38 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import threading
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import ProxyHandler, Request, build_opener
 
 from editor import make_server, save_source, snapshot
-from history import History, difference, word_changes
+from history import History, difference, word_changes, describe_revision
+
+paper = '\\begin{document}\n\\section{Introduction}\nHello.\n\\section{Method}\n\\subsection{Stability}\n$x^2$ is stable.\n\\end{document}'
+changed = paper.replace('x^2','x^3')
+assert describe_revision(paper,changed)['sections'] == ['2.1 Stability']
+assert describe_revision(paper,paper.replace('Hello.','Hello again.'))['sections'] == ['1 Introduction']
+assert describe_revision(paper,paper+'\n')['description']=='调整空白或换行'
+assert describe_revision(paper,paper)['description']=='内容与上一版相同'
+with tempfile.TemporaryDirectory() as directory:
+    activity = History(Path(directory)/'main.tex')
+    first = activity.record(paper,'open')
+    current = activity.record(changed,'save')
+    row = activity.list()['revisions'][0]
+    assert row['sections'] == ['2.1 Stability'] and row['baseline'] == first and not row['summary']
+    context = activity.summary_context([current])
+    activity.save_summaries(context,[{'id':current,'summary':'将稳定性估计中的平方项改为立方项。'}])
+    assert History(Path(directory)/'main.tex').list()['revisions'][0]['summary'].startswith('将稳定性')
+    assert activity.summary_context([current]) == [], 'Saved summaries must not create another model request.'
+    for invalid in ([],[{'id':current,'summary':'x'}]*2,[{'id':True,'summary':'x'}]):
+        try: activity.save_summaries(context,invalid)
+        except ValueError: pass
+        else: raise AssertionError('Invalid AI summaries accepted')
+    final = activity.record(changed.replace('stable','coercive'),'save')
+    assert activity.list()['revisions'][0]['baseline']==first
+    activity.label(current,'Checkpoint')
+    assert activity.list()['revisions'][0]['baseline']==current, 'Named checkpoints change the activity comparison boundary.'
 
 
 for old, new in [('the smoothing iteration is convergent', 'the smoothing factor decays'),
@@ -90,6 +115,18 @@ with tempfile.TemporaryDirectory() as directory:
         assert code == 200 and not data['ok'], data
         assert path.read_text(encoding='utf-8') == edited
         second = listing()[0]['id']
+        with patch('editor.ChatJob') as constructor:
+            job = Mock(id='summary-job',result={'status':'running'}); job.start.return_value=job
+            constructor.return_value=job
+            code, started = request('/history/summaries',{'path':str(path),'ids':[second]})
+            assert code==200 and started['id']=='summary-job'
+            assert constructor.call_args.args[0]['task']=='history-summary'
+            assert constructor.call_args.args[0]['items'][0]['id']==second
+            assert request('/history/summaries?id=summary-job')[1]['status']=='running'
+            assert request('/history/summaries?id=wrong')[0]==404
+            assert request('/history/summaries/cancel',{'path':str(path),'id':'summary-job'})[0]==200
+            job.cancel.assert_called_once()
+            server.history_summary=None
         assert history.get(second)['source'] == edited
         assert history.previous(first) is None and history.previous(second)['id'] == first
         code, previous = request('/history/diff', {'path':str(path), 'id':second, 'compare':'previous'})

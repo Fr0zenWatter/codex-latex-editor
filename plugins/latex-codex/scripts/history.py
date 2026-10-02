@@ -33,6 +33,7 @@ class History:
                 digest TEXT NOT NULL, source BLOB NOT NULL)''')
             db.execute('CREATE INDEX IF NOT EXISTS file_revisions ON revisions(file, id)')
             db.execute("CREATE TABLE IF NOT EXISTS chat_messages (id INTEGER PRIMARY KEY, role TEXT NOT NULL, content TEXT NOT NULL, file TEXT NOT NULL DEFAULT '', selection TEXT NOT NULL DEFAULT '')")
+            db.execute("CREATE TABLE IF NOT EXISTS revision_activity (revision_id INTEGER NOT NULL, baseline_id INTEGER NOT NULL, sections TEXT NOT NULL, details TEXT NOT NULL, description TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', PRIMARY KEY(revision_id,baseline_id))")
 
     def connect(self):
         db = sqlite3.connect(self.database, timeout=10)
@@ -77,12 +78,54 @@ class History:
     def list(self, before=None):
         if before is not None and (type(before) is not int or before < 1):
             raise ValueError('历史记录游标无效。')
-        with closing(self.connect()) as db:
+        with closing(self.connect()) as db, db:
             rows = db.execute(VISIBLE_REVISIONS + '''SELECT id, created, kind, label FROM visible
                 WHERE position=1 AND (? IS NULL OR id<?) ORDER BY id DESC LIMIT 101''',
                               (self.file, before, before)).fetchall()
-        return {'revisions': [dict(row) for row in rows[:100]],
+            result = []
+            for index, row in enumerate(rows[:100]):
+                baseline = rows[index+1]['id'] if index+1 < len(rows) else 0
+                activity = db.execute('SELECT sections,description,summary,details FROM revision_activity WHERE revision_id=? AND baseline_id=?', (row['id'],baseline)).fetchone()
+                if activity is None or baseline and not activity['details'] and activity['description'] not in ('调整空白或换行','内容与上一版相同'):
+                    source = self.get(row['id'])['source']
+                    data = describe_revision(self.get(baseline)['source'] if baseline else '', source) if baseline else {'sections':['文档初始版本'],'description':'首次保存的版本','details':''}
+                    db.execute('INSERT INTO revision_activity(revision_id,baseline_id,sections,details,description) VALUES (?,?,?,?,?) ON CONFLICT(revision_id,baseline_id) DO UPDATE SET sections=excluded.sections,details=excluded.details,description=excluded.description,summary=\'\'',
+                               (row['id'],baseline,json.dumps(data['sections'],ensure_ascii=False),data['details'],data['description']))
+                    activity = {**data,'summary':''}
+                else:
+                    activity = {**dict(activity),'sections':json.loads(activity['sections'])}
+                result.append({**dict(row), 'baseline':baseline, **{key:activity[key] for key in ('sections','description','summary')}})
+        return {'revisions': result,
                 'next': rows[99]['id'] if len(rows) > 100 else None}
+
+    def summary_context(self, ids):
+        if not isinstance(ids, list) or len(ids)>100 or any(type(value) is not int for value in ids):
+            raise ValueError('历史记录编号无效。')
+        visible = {row['id']:row for row in self.list(max(ids)+1 if ids else None)['revisions']}
+        items = []
+        with closing(self.connect()) as db:
+            for revision in ids:
+                row = visible.get(revision)
+                if not row or not row['baseline'] or row['summary']:
+                    continue
+                data = db.execute('SELECT details FROM revision_activity WHERE revision_id=? AND baseline_id=?', (revision,row['baseline'])).fetchone()
+                if not data['details']: continue
+                items.append({'id':revision,'baseline':row['baseline'],'sections':row['sections'],'diff':data['details']})
+                # ponytail: summarize at most 12 displayed versions per request; later batches reuse this cache.
+                if len(items)>=12:
+                    break
+        return items
+
+    def save_summaries(self, items, summaries):
+        expected = {item['id']:item['baseline'] for item in items}
+        if not isinstance(summaries, list) or any(not isinstance(row,dict) or type(row.get('id')) is not int or row['id'] not in expected or not isinstance(row.get('summary'),str) or not 1<=len(row['summary'].strip())<=160 for row in summaries):
+            raise ValueError('AI 改动摘要格式无效。')
+        if len({row['id'] for row in summaries}) != len(summaries) or {row['id'] for row in summaries} != set(expected):
+            raise ValueError('AI 改动摘要缺少记录或包含重复记录。')
+        with closing(self.connect()) as db, db:
+            for row in summaries:
+                db.execute('UPDATE revision_activity SET summary=? WHERE revision_id=? AND baseline_id=?',
+                           (row['summary'].strip(),row['id'],expected[row['id']]))
 
     def get(self, revision):
         if type(revision) is not int or revision < 1:
@@ -112,6 +155,49 @@ class History:
 def difference(before, after):
     return list(difflib.unified_diff(before.splitlines(keepends=True), after.splitlines(keepends=True),
                                      fromfile='所选版本', tofile='对比版本', n=3))
+
+
+def describe_revision(before, after):
+    def headings(source):
+        # ponytail: literal entry-file headings determine numbering; custom counters/includes need compiled metadata.
+        found, counts = [(0,'导言区')], [0,0,0,0]
+        commands = {'chapter':0,'section':1,'subsection':2,'subsubsection':3}
+        for line, text in enumerate(source.splitlines()):
+            text = re.split(r'(?<!\\)%',text,1)[0]
+            if r'\begin{document}' in text: found.append((line,'正文'))
+            if r'\begin{abstract}' in text: found.append((line,'摘要'))
+            match = re.search(r'\\(chapter|section|subsection|subsubsection)(\*)?(?:\[[^]]*\])?\s*\{',text)
+            if not match: continue
+            level = commands[match[1]]
+            title, depth = '', 1
+            for char in text[match.end():]:
+                if char == '{': depth+=1
+                if char == '}': depth-=1
+                if not depth: break
+                title+=char
+            title = re.sub(r'\\[A-Za-z]+\*?', '', title).replace('{','').replace('}','').strip()
+            if not match[2]:
+                counts[level]+=1; counts[level+1:]=[0]*(3-level)
+            number = '.'.join(str(count) for count in counts[:level+1] if count) if not match[2] else ''
+            found.append((line, (number+' '+title).strip()[:100]))
+        return found
+    old, new = before.splitlines(), after.splitlines()
+    positions = [headings(before),headings(after)]
+    sections, excerpts = [], []
+    matcher = difflib.SequenceMatcher(None,old,new,autojunk=len(old)*len(new)>4_000_000)
+    for kind,a,b,c,d in matcher.get_opcodes():
+        if kind=='equal': continue
+        first,last,index = (a,b,0) if kind=='delete' else (c,d,1)
+        candidates = [title for line,title in positions[index] if first < line < last]
+        candidates.insert(0,next(title for line,title in reversed(positions[index]) if line<=first))
+        for title in candidates:
+            if title not in sections: sections.append(title)
+        excerpts.append('@@ '+candidates[0]+'\n- '+ '\n- '.join(old[a:b])[:700]+'\n+ '+ '\n+ '.join(new[c:d])[:700])
+    details = '\n'.join(excerpts)[:2800]
+    if not details:
+        return {'sections':['检查点' if before==after else '文档格式'],'description':'内容与上一版相同' if before==after else '调整空白或换行','details':''}
+    description = '调整文档设置' if sections==['导言区'] else '调整公式与论述' if re.search(r'\$|\\\[|\\begin\{(?:equation|align)',details) else '更新正文'
+    return {'sections':sections or ['正文'],'description':description,'details':details}
 
 
 def word_changes(before, after):

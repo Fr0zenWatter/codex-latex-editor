@@ -89,6 +89,19 @@ with patch('chat.shutil.which', return_value='codex.exe'), patch('chat.subproces
     assert cancelled.result['status'] == 'cancelled'
 print('PASS: selection validation, ephemeral/read-only invocation, context, output, errors and cancellation')
 
+items = [{'id':7,'baseline':1,'sections':['2.1 Stability'],'diff':'- x^2\n+ x^3'}]
+summaries = [{'id':7,'summary':'将稳定性估计中的平方项改为立方项。'}]
+with patch('chat.codex_executable',return_value='codex.exe'), patch('chat.subprocess.Popen') as spawn:
+    process = Mock(returncode=0)
+    process.communicate.return_value=(json.dumps({'type':'item.completed','item':{'type':'agent_message','text':json.dumps({'summaries':summaries})}}).encode(),b'')
+    spawn.return_value=process
+    memory=Mock()
+    job=ChatJob({'task':'history-summary','items':items,'effort':'low'},memory); job.run()
+    assert job.result=={'status':'done','summaries':summaries}
+    memory.save_summaries.assert_called_once_with(items,summaries)
+    assert 'history activity feed' in process.communicate.call_args.args[0].decode()
+    assert job.context is None
+
 catalog = {'models':[{'slug':'visible','display_name':'Visible','visibility':'list',
                      'default_reasoning_level':'low','supported_reasoning_levels':[{'effort':'low'}]},
                     {'slug':'hidden','visibility':'hide'}]}

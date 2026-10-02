@@ -8,12 +8,15 @@ function el(id) {
     setPointerCapture(id){this.capture=id;},hasPointerCapture(id){return this.capture===id;},releasePointerCapture(){this.capture=null;},matches(){return !!this.open;},
     append(...nodes){this.children.push(...nodes);},replaceChildren(...nodes){this.children=nodes;},
     events:{},offsetWidth:320,offsetHeight:46,getBoundingClientRect(){return {left:950,top:750,bottom:780};},
-    focus(){},showPopover(){this.open=true;},hidePopover(){this.open=false;this.events.beforetoggle?.({newState:'closed'});},addEventListener(name,handler){this.events[name]=handler;}});
+    scrollHeight:68,contains(node){return !!node && node===this;},
+    focus(){this.events.focus?.();},showPopover(){this.open=true;},hidePopover(){this.open=false;this.events.beforetoggle?.({newState:'closed'});},addEventListener(name,handler){this.events[name]=handler;}});
   return elements.get(id);
 }
 globalThis.document = {querySelector:el,createElement:()=>el(Symbol())};
 const windowEvents = {};
 globalThis.window = {innerWidth:1000,innerHeight:800,addEventListener(name,handler){windowEvents[name]=handler;}};
+let quickResize;
+globalThis.ResizeObserver = class {constructor(callback){quickResize=callback;}observe(){}};
 let keyMap='vim',escapes=0,source='before chosen after',selection={from:{line:0,ch:7},to:{line:0,ch:13}},mark,doc={},selected=true;
 globalThis.CodeMirror = {Vim:{handleKey(_,key){assert.equal(key,'<Esc>');escapes++;}}};
 const events={},editor={
@@ -182,6 +185,24 @@ assert.equal(chat.busy,false);
 chat.openQuick({left:110,top:220,selectionTop:180,selectionBottom:250});
 assert.equal(el('#chat-quick').style.top,'262px');
 const handle=el('#chat-quick-handle'), quick=el('#chat-quick');
+// Empty input collapses, typing grows only to 160 px, and drafts/internal controls keep it expanded.
+el('#chat-quick-input').value='';quick.events.focusout({relatedTarget:null});
+assert.equal(quick.dataset.expanded,'false');assert.equal(el('#chat-quick-form').style.height,'48px');
+el('#chat-quick-input').events.focus();assert.equal(quick.dataset.expanded,'true');
+el('#chat-quick-input').scrollHeight=240;el('#chat-quick-input').value='A long\nquestion';el('#chat-quick-input').events.input();
+assert.equal(el('#chat-quick-input').style.height,'160px');assert.equal(el('#chat-quick-form').style.height,'208px');
+quick.events.focusout({relatedTarget:null});assert.equal(quick.dataset.expanded,'true');
+el('#chat-quick-input').value='';el('#chat-quick-input').scrollHeight=68;
+el('#chat-quick-settings').open=true;quick.events.focusout({relatedTarget:null});assert.equal(quick.dataset.expanded,'true');
+el('#chat-quick-settings').hidePopover();
+el('#chat-quick-input').events.keydown({key:'Escape',preventDefault(){},stopPropagation(){}});
+assert.equal(quick.dataset.expanded,'false');assert.equal(quick.open,true);
+el('#chat-quick-input').events.click();assert.equal(quick.dataset.expanded,'true');
+el('#chat-model').value='test-model';el('#chat-model').onchange();
+el('#chat-quick-effort').onclick();assert.equal(el('#chat-effort').value,'low');
+el('#chat-quick-effort').onclick();assert.equal(el('#chat-effort').value,'high');
+el('#chat-quick-effort').onclick();assert.equal(el('#chat-effort').value,'');
+assert.equal(el('#chat-quick-model-name').textContent,'Test Model');
 el('#chat-quick-input').value='Keep this draft';const captured=mark;
 handle.onpointerdown({button:2});assert.equal(quick.dataset.dragging,undefined);
 handle.onpointerdown({button:0,pointerId:1,clientX:140,clientY:267,preventDefault(){}});
@@ -200,7 +221,15 @@ handle.onpointerdown({button:0,pointerId:3,clientX:80,clientY:20,preventDefault(
 handle.onpointercancel({pointerId:3});assert.equal(handle.capture,null);
 handle.onpointerdown({button:0,pointerId:4,clientX:80,clientY:20,preventDefault(){}});
 quick.hidePopover();assert.equal(handle.capture,null);assert.equal(quick.dataset.dragging,undefined);
+// Expansion near the bottom stays above the captured selection; manually moved cards stay put.
+quick.offsetWidth=480;quick.offsetHeight=208;
+chat.openQuick({left:900,top:700,selectionTop:620,selectionBottom:720});quickResize();
+assert.equal(quick.style.left,'512px');assert.equal(quick.style.top,'400px');
+handle.onkeydown({key:'ArrowUp',preventDefault(){}});quick.offsetHeight=116;quickResize();
+assert.equal(quick.style.top,'390px');
+quick.hidePopover();quick.offsetWidth=320;quick.offsetHeight=46;
 console.log('PASS: selection-aware placement, captured pointer drag, bounds, keyboard, resize, cancellation and preserved draft/selection');
+console.log('PASS: adaptive composer height, collapse/draft state, supported effort cycling and expansion around selection');
 console.log('PASS: full chat, automatic quick apply, shared model/effort/color, spinner lifecycle, inline errors, stale-source protection and dismissal cancellation');
 
 // A reloaded editor restores project questions and uses them after changing selections.

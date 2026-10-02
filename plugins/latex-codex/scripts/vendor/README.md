@@ -1,6 +1,14 @@
 CodeMirror 5.65.20 (MIT), obtained from:
 https://registry.npmjs.org/codemirror/-/codemirror-5.65.20.tgz
 
+The history pill tabs are a locally bundled React island built from
+`../../frontend/` with React, Radix Tabs, Framer Motion and Tailwind CSS.
+Exact npm versions and integrity hashes are in the frontend package-lock.json.
+The user-supplied PillMorphTabs design is adapted to the existing three views,
+white history panel, reduced-motion preference and shared source/PDF pane.
+Full third-party notices are in history-tabs.LICENSE.txt; esbuild also emits
+history-tabs.mjs.LEGAL.txt. Rebuild with `npm ci` and `npm run build` in frontend.
+
 Included: lib/codemirror.{js,css}, theme/{cobalt,dracula,monokai,nord}.css,
 mode/stex/stex.js, keymap/vim.js, addon/runmode/runmode.node.js (test-only),
 addon/search/searchcursor.js, addon/edit/matchbrackets.js, addon/comment/comment.js,

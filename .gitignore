@@ -8,6 +8,7 @@ autoDL.txt
 .env.*
 !.env.example
 .latex-codex/
+node_modules/
 
 # Python and TeX build products
 __pycache__/

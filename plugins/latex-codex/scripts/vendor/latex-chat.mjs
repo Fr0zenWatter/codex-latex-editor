@@ -20,15 +20,40 @@ export function attachSelectionChat(editor, request) {
   let models = [], modelsLoaded = false, modelsLoading = false;
   const modelSelect = $('chat-model'), effortSelect = $('chat-effort');
   const quickBrain = $('chat-quick-brain'), quickSettings = $('chat-quick-settings');
+  const quickEffort = $('chat-quick-effort');
   const quickHandle = $('chat-quick-handle');
-  let quickDrag = null;
+  let quickDrag = null, quickAnchor = null, quickMoved = false;
   function positionQuick(left, top) {
     quick.style.left = Math.max(8, Math.min(left, window.innerWidth - quick.offsetWidth - 8)) + 'px';
     quick.style.top = Math.max(8, Math.min(top, window.innerHeight - quick.offsetHeight - 8)) + 'px';
   }
+  function fitQuick() {
+    if (!quick.matches(':popover-open')) return;
+    if (quickMoved || !quickAnchor) return positionQuick(parseFloat(quick.style.left), parseFloat(quick.style.top));
+    const {left, below, selectionTop} = quickAnchor;
+    positionQuick(left, below + quick.offsetHeight + 8 <= window.innerHeight ? below : selectionTop - quick.offsetHeight - 12);
+  }
+  function sizeQuick(expanded = quick.dataset.expanded === 'true') {
+    expanded ||= !!quickInput.value || quickSending || !!$('chat-quick-status').textContent;
+    quick.dataset.expanded = String(expanded);
+    quickInput.style.height = 'auto';
+    const height = expanded ? Math.max(68, Math.min(160, quickInput.scrollHeight)) : 48;
+    quickInput.style.height = height + 'px';
+    $('chat-quick-form').style.height = (height + (expanded ? 48 : 0)) + 'px';
+    fitQuick();
+  }
+  quickInput.addEventListener('focus', () => sizeQuick(true));
+  quickInput.addEventListener('click', () => sizeQuick(true));
+  quickInput.addEventListener('input', () => sizeQuick(true));
+  quick.addEventListener('focusout', event => {
+    if (!quick.contains(event.relatedTarget) && !quickSettings.matches(':popover-open')) sizeQuick(false);
+  });
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => {
+    if (!quickDrag) sizeQuick();
+  }).observe(quick);
   quickHandle.onpointerdown = event => {
     if (event.button !== 0) return;
-    event.preventDefault(); quickSettings.hidePopover();
+    event.preventDefault(); quickSettings.hidePopover(); quickMoved = true;
     quickDrag = {id:event.pointerId, x:event.clientX, y:event.clientY, left:parseFloat(quick.style.left), top:parseFloat(quick.style.top)};
     quickHandle.setPointerCapture(event.pointerId); quick.dataset.dragging = 'true';
   };
@@ -43,12 +68,12 @@ export function attachSelectionChat(editor, request) {
   };
   quickHandle.onkeydown = event => {
     if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)) return;
-    event.preventDefault(); quickSettings.hidePopover();
+    event.preventDefault(); quickSettings.hidePopover(); quickMoved = true;
     positionQuick(parseFloat(quick.style.left) + (event.key === 'ArrowLeft' ? -10 : event.key === 'ArrowRight' ? 10 : 0),
       parseFloat(quick.style.top) + (event.key === 'ArrowUp' ? -10 : event.key === 'ArrowDown' ? 10 : 0));
   };
   window.addEventListener('resize', () => {
-    if (quick.matches(':popover-open')) positionQuick(parseFloat(quick.style.left), parseFloat(quick.style.top));
+    sizeQuick(); fitQuick();
   });
   const effortNames = {none:'无',minimal:'最低',low:'低',medium:'中',high:'高',xhigh:'很高',max:'最高',ultra:'极高'};
   function option(value, label) {
@@ -63,9 +88,22 @@ export function attachSelectionChat(editor, request) {
   }
   modelSelect.onchange = updateEfforts;
   effortSelect.onchange = renderQuickSettings;
+  quickEffort.onclick = () => {
+    const selected = models.find(model => model.id === modelSelect.value);
+    if (!selected || sending) return;
+    const efforts = ['', ...selected.efforts];
+    effortSelect.value = efforts[(efforts.indexOf(effortSelect.value) + 1) % efforts.length];
+    renderQuickSettings();
+  };
   function renderQuickSettings() {
     const selected = models.find(model => model.id === modelSelect.value);
     quickBrain.title = (selected?.name || t('跟随 Codex 默认')) + ' · ' + (effortSelect.value ? t(effortNames[effortSelect.value] || effortSelect.value) : t('默认思考等级'));
+    $('chat-quick-model-name').textContent = selected?.name || t('跟随 Codex 默认');
+    $('chat-quick-effort-name').textContent = effortSelect.value ? t(effortNames[effortSelect.value] || effortSelect.value) : t('跟随默认');
+    quickEffort.disabled = sending || !selected;
+    quickEffort.title = t('思考等级') + ' · ' + (effortSelect.value || selected?.default_effort || t('跟随默认'));
+    quickEffort.setAttribute('aria-label', quickEffort.title);
+    quickEffort.dataset.level = String(selected ? Math.ceil(3 * (selected.efforts.indexOf(effortSelect.value || selected.default_effort) + 1) / selected.efforts.length) : 0);
     const modelList = $('chat-quick-models'), effortList = $('chat-quick-efforts');
     modelList.replaceChildren(); effortList.replaceChildren();
     for (const model of [{id:'', name:t('跟随 Codex 默认')}, ...models]) {
@@ -92,8 +130,8 @@ export function attachSelectionChat(editor, request) {
   quickSettings.addEventListener('beforetoggle', event => {
     quickBrain.setAttribute('aria-expanded', String(event.newState === 'open'));
     if (event.newState !== 'open') return;
-    renderQuickSettings(); loadModels();
-    const box = quickBrain.getBoundingClientRect(), above = box.top > window.innerHeight / 2;
+    sizeQuick(true); renderQuickSettings(); loadModels();
+    const box = quick.getBoundingClientRect(), above = box.top > 100;
     quickSettings.style.left = Math.max(8, Math.min(box.left, window.innerWidth - 360)) + 'px';
     quickSettings.style.top = above ? 'auto' : box.bottom + 6 + 'px';
     quickSettings.style.bottom = above ? window.innerHeight - box.top + 6 + 'px' : 'auto';
@@ -142,6 +180,7 @@ export function attachSelectionChat(editor, request) {
   const notice = text => status.textContent = text;
   function quickNotice(text, error = false) {
     $('chat-quick-status').textContent = text; $('chat-quick-status').dataset.error = String(error);
+    sizeQuick();
   }
   const range = () => marker?.find();
   const selectedText = () => { const pos = range(); return pos ? editor.getRange(pos.from, pos.to) : ''; };
@@ -174,12 +213,14 @@ export function attachSelectionChat(editor, request) {
     $('chat-use-selection').disabled = value;
     modelSelect.disabled = value; effortSelect.disabled = value || !modelSelect.value;
     quickBrain.disabled = value;
+    quickEffort.disabled = value || !modelSelect.value;
     if (value) quickSettings.hidePopover();
     $('chat-quick-send').disabled = value || !quickMarker;
     const quickBusy = value && quickSending;
     $('chat-quick-send').setAttribute('aria-busy', String(quickBusy));
     $('chat-quick-send').setAttribute('aria-label', quickBusy ? t('正在修改选区') : t('发送'));
     quickInput.readOnly = quickBusy;
+    sizeQuick();
   }
   function clearProposal() { proposal = null; $('chat-proposal').hidden = true; }
   function useSelection() {
@@ -222,6 +263,7 @@ export function attachSelectionChat(editor, request) {
     }
   });
   function openQuick(anchor) {
+    quickAnchor = null; quickMoved = false;
     loadMemory().catch(e=>quickNotice(e.message,true));
     quickMarker?.clear(); quickMarker = null;
     quickDoc = editor.getDoc(); quickOriginal = '';
@@ -237,7 +279,8 @@ export function attachSelectionChat(editor, request) {
     const selectionTop = anchor.selectionTop ?? (quickOriginal ? editor.charCoords(editor.getCursor('from'), 'window').top : anchor.top);
     const selectionBottom = anchor.selectionBottom ?? (quickOriginal ? editor.charCoords(editor.getCursor('to'), 'window').bottom : anchor.top);
     const below = Math.max(anchor.top + 18, selectionBottom + 12);
-    positionQuick(anchor.left, below + quick.offsetHeight + 8 <= window.innerHeight ? below : selectionTop - quick.offsetHeight - 12);
+    quickAnchor = {left:anchor.left, below, selectionTop};
+    sizeQuick(true); renderQuickSettings(); loadModels();
     quickInput.focus();
   }
   $('chat-quick-menu').onclick = () => {
@@ -245,6 +288,9 @@ export function attachSelectionChat(editor, request) {
     $('editor-menu').hidePopover(); openQuick(anchor);
   };
   quickInput.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !event.isComposing && !quickInput.value && !$('chat-quick-status').textContent && !quickSending && !quickSettings.matches(':popover-open') && quick.dataset.expanded === 'true') {
+      event.preventDefault(); event.stopPropagation(); sizeQuick(false); quickHandle.focus(); return;
+    }
     if (event.key === 'Enter' && !event.isComposing && (event.ctrlKey || event.metaKey)) {
       event.preventDefault(); $('chat-quick-form').requestSubmit();
     }

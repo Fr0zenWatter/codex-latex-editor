@@ -1,9 +1,9 @@
-import {t, language} from './latex-settings.mjs';
+import {t} from './latex-settings.mjs';
 
 export function pdfChangeCard(index) {
   const block = document.createElement('article'); block.className = 'history-pdf-change';
   const header = document.createElement('div'); header.className = 'history-pdf-heading';
-  const heading = document.createElement('h3'), toggle = document.createElement('button');
+  const heading = document.createElement('h3'), state = document.createElement('span'), toggle = document.createElement('button');
   toggle.type = 'button'; toggle.className = 'history-pdf-toggle';
   toggle.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3H3v18h9"/><path d="M12 3h9v18h-9M12 3v18" stroke-dasharray="3 3"/></svg>';
   const view = document.createElement('div'); view.className = 'history-pdf-image';
@@ -14,7 +14,9 @@ export function pdfChangeCard(index) {
   let side = 'after';
   function update() {
     block.dataset.side = side;
-    heading.textContent = t('改动 {number}', {number:index+1}) + ' · ' + t(side === 'after' ? '修改后' : '修改前');
+    heading.textContent = t('改动 {number}', {number:index+1}) + ' · ';
+    state.textContent = t(side === 'after' ? '修改后' : '修改前'); state.className = side === 'after' ? 'history-after-label' : '';
+    heading.append(state);
     for (const name of ['before','after']) columns[name].hidden = name !== side;
     const label = t(side === 'after' ? '查看修改前' : '查看修改后');
     toggle.title = label; toggle.setAttribute('aria-label', label);
@@ -63,22 +65,29 @@ export function sourceRows(runs) {
   return rows;
 }
 
+export function historyTime(value) {
+  const date = new Date(value), pad = value => String(value).padStart(2,'0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())} ${date.getFullYear()}/${pad(date.getMonth()+1)}/${pad(date.getDate())}`;
+}
+
 export function attachHistory(editor, request, getState, restore) {
   const $ = id => document.querySelector('#history-' + id);
   const dialog = $('dialog'), list = $('list'), code = $('code'), target = $('target'), pdf = $('pdf-view');
-  const kinds = {open:'首次打开', save:'自动保存', external:'外部修改', restore:'恢复版本', 'before-restore':'恢复前的草稿'};
   let context, revisions = [], selected = null, detail = null, next = null, serial = 0, mode = 'diff', working = false;
-  let pdfSerial = 0, pdfTasks = [];
+  let pdfSerial = 0, pdfTasks = [], summaryJob = null, summaryLoading = false, summarySerial = 0;
+  let menuId = null, editingId = null;
   const comparison = () => target.value === 'previous' ? {compare:'previous'} : target.value === 'current' ? {source:context.source} : {target_id:Number(target.value)};
-  const time = value => new Date(value).toLocaleString(language, {hour12:false});
-  const title = row => row.label || t(kinds[row.kind] || '保存版本');
+  const time = historyTime;
+  const title = row => row.label || row.sections?.slice(0,2).map(section=>t(section)).join(' · ') || t('正文');
+  const needsSummary = row => row.baseline && !row.summary && !['调整空白或换行','内容与上一版相同'].includes(row.description);
   const post = (route, data) => request('/history/' + route, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({path:context.path, ...data})});
+  const notice = (text='') => { $('status').textContent = text; $('status').hidden = !text; };
   function controls() {
     $('restore').disabled = working || !detail;
     $('confirm').disabled = working || !detail;
     $('cancel').disabled = working;
-    $('label-save').disabled = working || !detail;
-    $('label').disabled = working || !detail;
+    $('label-save').disabled = working;
+    $('label').disabled = working;
     $('refresh').disabled = working;
     $('more').disabled = working;
     target.disabled = working;
@@ -106,8 +115,6 @@ export function attachHistory(editor, request, getState, restore) {
       if (ticket !== pdfSerial || mode !== 'pdf' || !dialog.open) return;
       pdf.replaceChildren();
       if (!data.changes.length) { pdf.textContent = t('两个版本没有需要预览的改动。'); return; }
-      const note = document.createElement('p'); note.className = 'history-pdf-note';
-      note.textContent = t('只显示改动附近，忽略后续排版移动。历史版本使用当前图片和引用等依赖重新编译。'); pdf.append(note);
       const pdfjs = await import('./pdfjs/build/pdf.mjs');
       if (ticket !== pdfSerial) return;
       const documents = {};
@@ -146,6 +153,7 @@ export function attachHistory(editor, request, getState, restore) {
   function renderCode() {
     clearPdf(); code.replaceChildren(); code.hidden = mode === 'pdf'; pdf.hidden = mode !== 'pdf';
     dialog.dataset.historyView = mode;
+    $('panes').setAttribute('aria-labelledby','history-'+mode);
     $('pdf').setAttribute('aria-pressed', String(mode === 'pdf'));
     $('diff').setAttribute('aria-pressed', String(mode === 'diff'));
     $('source').setAttribute('aria-pressed', String(mode === 'source'));
@@ -172,39 +180,94 @@ export function attachHistory(editor, request, getState, restore) {
     }
     code.append(fragment); updateNext();
   }
-  function description() {
-    if (!detail) return;
-    $('status').textContent = time(detail.created) + ' · ' + title(detail) + ' · ' + (target.value === 'previous' ? t(detail.first ? '这是最早保存的版本。' : detail.same ? '两个版本内容相同。' : '上一版 → 此版本') : t(target.value === 'current' ? '打开／刷新历史时的编辑内容（含未保存修改）' : '所选对比版本'));
-  }
   async function select(id) {
     const ticket = ++serial;
-    $('confirmation').hidden = true; $('restore').hidden = false;
+    if ($('confirmation').open) $('confirmation').close(); notice();
     selected = id; detail = null; clearPdf(); controls(); code.textContent = t('正在读取版本…'); $('next').hidden = true;
     for (const button of list.querySelectorAll('button')) button.setAttribute('aria-pressed', String(Number(button.dataset.id) === id));
     try {
       const data = await post('diff', {id, ...comparison()});
       if (ticket !== serial || !dialog.open) return;
-      detail = data; $('label').value = data.label;
-      description(); code.scrollTop = 0; renderCode(); controls();
-    } catch (error) { if (ticket === serial) { code.textContent = ''; $('status').textContent = t('读取失败：') + error.message; controls(); } }
+      detail = {...revisions.find(row=>row.id===id),...data};
+      code.scrollTop = 0; renderCode(); controls();
+    } catch (error) { if (ticket === serial) { code.textContent = ''; notice(t('读取失败：') + error.message); controls(); } }
   }
   function renderList() {
+    const scroll = list.scrollTop || 0;
     list.replaceChildren();
     const previous = target.value;
     target.replaceChildren(new Option(t('与上一版比较'), 'previous'), new Option(t('当前编辑内容'), 'current'));
     for (const row of revisions) {
       const button = document.createElement('button'); button.type = 'button'; button.dataset.id = row.id;
-      button.textContent = title(row); button.setAttribute('aria-pressed', String(row.id === selected));
-      const stamp = document.createElement('small'); stamp.textContent = time(row.created); button.append(stamp);
+      button.className = 'history-entry'; button.setAttribute('aria-pressed', String(row.id === selected));
+      const icon = document.createElement('span'); icon.className = 'history-entry-icon'; icon.setAttribute('aria-hidden','true');
+      icon.innerHTML = '<svg viewBox="0 0 24 24"><path d="M14 2H5v20h14V7zM14 2v6h5M8 12h8M8 16h6"/></svg>';
+      const text = document.createElement('span'); text.className = 'history-entry-text';
+      const heading = document.createElement('strong'); heading.textContent = title(row); heading.title = (row.sections || []).join(' · ');
+      const summary = document.createElement('span'); summary.className = 'history-entry-summary';
+      summary.textContent = row.summary || t(row.description || '更新正文');
+      if (row.summary) { const badge = document.createElement('small'); badge.className = 'history-ai-badge'; badge.textContent = 'AI'; text.append(badge); }
+      text.append(heading, summary);
+      const stamp = document.createElement('time'); stamp.textContent = time(row.created); stamp.setAttribute('datetime',row.created);
+      button.append(icon,text,stamp);
       button.onclick = () => select(row.id); list.append(button);
+      button.setAttribute('aria-haspopup','menu');
+      button.oncontextmenu = event => { if (!event.shiftKey) showActions(row,event); };
+      button.onkeydown = event => { if (event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey) showActions(row,event); };
       target.append(new Option(time(row.created) + ' · ' + title(row), String(row.id)));
     }
     target.value = [...target.options].some(option => option.value === previous) ? previous : 'previous';
+    list.scrollTop = scroll;
     $('more').hidden = !next; controls();
   }
-  async function refresh(more = false) {
+  function showActions(row,event) {
+    if (working) return;
+    event.preventDefault(); menuId = row.id;
+    const menu = $('actions'), rect = event.currentTarget?.getBoundingClientRect() || {left:0,bottom:0};
+    menu.style.left = Math.max(8,Math.min(event.clientX ?? rect.left,window.innerWidth-190))+'px';
+    menu.style.top = Math.max(8,Math.min(event.clientY ?? rect.bottom,window.innerHeight-100))+'px';
+    menu.showPopover(); $('rename').focus();
+  }
+  async function loadSummaries() {
+    if (summaryLoading || !dialog.open || !revisions.some(needsSummary)) return;
+    const path = context.path, ticket = summarySerial;
+    summaryLoading = true; $('summary-status').textContent = t('AI 正在概括改动…');
+    try {
+      const start = await post('summaries',{ids:revisions.filter(needsSummary).slice(0,100).map(row=>row.id)});
+      if (ticket !== summarySerial || !dialog.open || context.path !== path) {
+        if (start.id) request('/history/summaries/cancel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,id:start.id})}).catch(()=>{});
+        return;
+      }
+      summaryJob = start.id || null;
+      let result = start;
+      while (result.id || result.status === 'running') {
+        await new Promise(resolve=>setTimeout(resolve,1200));
+        if (ticket !== summarySerial || !dialog.open || context.path !== path) return;
+        result = await request('/history/summaries?id='+encodeURIComponent(summaryJob));
+      }
+      if (ticket !== summarySerial || !dialog.open || context.path !== path) return;
+      if (result.status !== 'done') throw new Error(result.error || t('本次回复已停止。'));
+      for (const saved of result.summaries) { const row = revisions.find(row=>row.id===saved.id); if (row) row.summary = saved.summary; }
+      renderList(); $('summary-status').textContent = '';
+    } catch (error) {
+      if (ticket === summarySerial && dialog.open) { $('summary-status').textContent = t('AI 摘要暂不可用，章节位置已保留'); $('summary-status').title = error.message; }
+    } finally { if (ticket === summarySerial) { summaryLoading = false; summaryJob = null; } }
+  }
+  $('sidebar').onpointerenter = () => { $('sidebar-toggle').setAttribute('aria-expanded','true'); loadSummaries(); };
+  $('sidebar').onpointerleave = () => $('sidebar-toggle').setAttribute('aria-expanded',String(dialog.dataset.sidebarOpen==='true'));
+  function pinSidebar(open) {
+    dialog.dataset.sidebarOpen = String(open);
+    $('sidebar-toggle').setAttribute('aria-expanded',String(open));
+    $('sidebar-pin').setAttribute('aria-pressed',String(open));
+    const label = t(open ? '取消固定记录栏' : '固定记录栏');
+    $('sidebar-pin').title = label; $('sidebar-pin').setAttribute('aria-label',label);
+    if (open) loadSummaries();
+  }
+  $('sidebar-toggle').onclick = $('sidebar-pin').onclick = () => pinSidebar(dialog.dataset.sidebarOpen !== 'true');
+  $('sidebar').onfocusin = loadSummaries;
+  async function refresh(more = false, keepSelection = false) {
     const ticket = ++serial;
-    working = true; controls(); $('status').textContent = t('正在读取历史…');
+    working = true; controls(); notice();
     if (!more) { context = getState(); detail = null; revisions = []; next = null; renderCode(); renderList(); }
     $('file').textContent = context.path.split(/[\\/]/).at(-1); $('file').title = context.path;
     try {
@@ -212,44 +275,59 @@ export function attachHistory(editor, request, getState, restore) {
       if (ticket !== serial || !dialog.open) return;
       working = false;
       revisions.push(...data.revisions); next = data.next; renderList();
-      if (!more) selected = revisions[0]?.id ?? null;
+      if (!more && (!keepSelection || !revisions.some(row=>row.id===selected))) selected = revisions[0]?.id ?? null;
       if (selected !== null) await select(selected);
-      else $('status').textContent = t('暂时没有历史记录。');
-    } catch (error) { if (ticket === serial) { working = false; $('status').textContent = t('历史读取失败：') + error.message; controls(); } }
+      else code.textContent = t('暂时没有历史记录。');
+    } catch (error) { if (ticket === serial) { working = false; notice(t('历史读取失败：') + error.message); controls(); } }
   }
   $('open').onclick = () => { dialog.showModal(); refresh(); };
   $('close').onclick = () => dialog.close();
-  dialog.addEventListener('close', () => { serial++; clearPdf(); detail = null; working = false; });
+  dialog.addEventListener('close', () => {
+    serial++; summarySerial++; clearPdf(); detail = null; working = false;
+    if (summaryJob) post('summaries/cancel',{id:summaryJob}).catch(()=>{});
+    summaryJob = null; summaryLoading = false; pinSidebar(false); $('summary-status').textContent = '';
+    $('actions').hidePopover();
+    for (const name of ['name-dialog','confirmation']) if ($(name).open) $(name).close();
+    menuId = editingId = null;
+  });
   $('refresh').onclick = () => refresh();
   $('more').onclick = () => refresh(true);
   target.onchange = () => { if (selected !== null) select(selected); };
-  for (const name of ['diff','pdf','source']) $(name).onclick = () => { mode = name; renderCode(); };
+  for (const name of ['diff','pdf','source']) $(name).onclick = () => { if (mode === name) return; mode = name; renderCode(); };
+  $('rename').onclick = () => {
+    editingId = menuId ?? selected; menuId = null; $('actions').hidePopover();
+    $('label').value = revisions.find(row=>row.id===editingId)?.label || '';
+    $('label-error').textContent = ''; $('name-dialog').showModal(); $('label').focus(); $('label').select();
+  };
+  $('label-cancel').onclick = () => $('name-dialog').close();
   $('label-form').onsubmit = async event => {
-    event.preventDefault(); if (working || !detail) return;
-    const id = selected, label = $('label').value, ticket = ++serial;
+    event.preventDefault(); if (working || editingId === null) return;
+    const id = editingId, label = $('label').value, ticket = serial;
     working = true; controls();
     try {
       await post('label', {id, label});
       if (ticket !== serial || !dialog.open) return;
-      const row = revisions.find(row => row.id === id); row.label = label.trim(); detail.label = row.label;
-      renderList(); $('status').textContent = t(label.trim() ? '版本名称已保存。' : '版本名称已清除。');
-    } catch (error) { if (ticket === serial) $('status').textContent = t('命名失败：') + error.message; }
+      $('name-dialog').close(); editingId = null; await refresh(false,true);
+    } catch (error) { if (ticket === serial) $('label-error').textContent = t('命名失败：') + error.message; }
     finally { if (ticket === serial) { working = false; controls(); } }
   };
-  $('restore').onclick = () => {
+  $('restore').onclick = async () => {
     if (working || !detail) return;
-    $('confirmation').hidden = false; $('restore').hidden = true; $('confirm').focus();
+    const id = menuId ?? selected; menuId = null; $('actions').hidePopover();
+    if (id !== selected) await select(id);
+    if (!detail || working || !dialog.open) return;
+    $('confirmation').showModal(); $('confirm').focus();
   };
-  $('cancel').onclick = () => { $('confirmation').hidden = true; $('restore').hidden = false; $('restore').focus(); };
+  $('cancel').onclick = () => $('confirmation').close();
   $('confirm').onclick = async () => {
     if (working || !detail) return;
-    working = true; controls(); $('status').textContent = t('正在保留当前内容并恢复…');
+    working = true; controls(); notice(t('正在保留当前内容并恢复…'));
     try { await restore({...context, id:selected}); }
-    catch (error) { $('status').textContent = t('恢复失败：') + error.message; }
+    catch (error) { notice(t('恢复失败：') + error.message); }
     finally { working = false; controls(); }
   };
   editor.on('swapDoc', () => { if (dialog.open) dialog.close(); });
   code.addEventListener('scroll', updateNext);
   new ResizeObserver(updateNext).observe(code);
-  window.addEventListener('latex-language-change', () => { if (dialog.open) { renderList(); description(); renderCode(); } });
+  window.addEventListener('latex-language-change', () => { pinSidebar(dialog.dataset.sidebarOpen==='true'); if (dialog.open) { renderList(); renderCode(); } });
 }

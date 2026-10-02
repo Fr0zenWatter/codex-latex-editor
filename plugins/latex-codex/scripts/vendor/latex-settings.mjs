@@ -1,4 +1,9 @@
 const english = {
+  '固定记录栏':'Pin activity sidebar', '取消固定记录栏':'Unpin activity sidebar', '历史记录操作':'History entry actions', '重命名':'Rename', '重命名版本':'Rename version',
+  '历史视图':'History views', '展开改动记录':'Expand change activity', '改动记录':'Change activity', '正文':'Body', '导言区':'Preamble', '摘要':'Abstract',
+  '文档初始版本':'Initial document', '首次保存的版本':'First saved version', '调整文档设置':'Updated document settings', '调整公式与论述':'Updated formulas and discussion', '更新正文':'Updated text',
+  '文档格式':'Document formatting', '检查点':'Checkpoint', '调整空白或换行':'Adjusted whitespace or line endings', '内容与上一版相同':'Same contents as previous version',
+  'AI 正在概括改动…':'AI is summarizing edits…', 'AI 摘要暂不可用，章节位置已保留':'AI summaries are unavailable; section locations are shown.',
   'PDF 改动':'PDF changes', '改动附近的 PDF 对比':'PDF comparison near edits',
   '正在编译历史版本并定位改动…':'Compiling historical versions and locating edits…',
   '两个版本没有需要预览的改动。':'These versions have no changes to preview.',

@@ -1,0 +1,20 @@
+{
+  "private": true,
+  "scripts": {
+    "build": "tsc --noEmit && esbuild main.tsx --bundle --format=esm --target=es2022 --minify --legal-comments=linked --outfile=../scripts/vendor/history-tabs.mjs && tailwindcss -i styles.css -o ../scripts/vendor/history-tabs.css --minify && node licenses.mjs"
+  },
+  "dependencies": {
+    "@radix-ui/react-tabs": "^1.1.13",
+    "framer-motion": "^12.23.24",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.14",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "esbuild": "^0.25.10",
+    "tailwindcss": "^4.1.14",
+    "typescript": "^5.9.3"
+  }
+}
