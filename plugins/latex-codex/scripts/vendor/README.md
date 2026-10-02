@@ -9,12 +9,16 @@ white history panel, reduced-motion preference and shared source/PDF pane.
 Full third-party notices are in history-tabs.LICENSE.txt; esbuild also emits
 history-tabs.mjs.LEGAL.txt. Rebuild with `npm ci` and `npm run build` in frontend.
 
-Included: lib/codemirror.{js,css}, theme/{cobalt,dracula,monokai,nord}.css,
+Included: lib/codemirror.{js,css}, theme/{cobalt,dracula,monokai,nord,eclipse,idea,neo,base16-light,solarized,
+material-darker,material-palenight,ayu-dark,gruvbox-dark}.css,
 mode/stex/stex.js, keymap/vim.js, addon/runmode/runmode.node.js (test-only),
 addon/search/searchcursor.js, addon/edit/matchbrackets.js, addon/comment/comment.js,
 addon/dialog/dialog.{js,css}, addon/hint/show-hint.{js,css}, LICENSE.
 The show-hint files use the same 5.65.20 release from jsDelivr's npm mirror.
-These assets are served locally; no CDN or build step is required.
+The nine additional theme CSS files come from the same 5.65.20 archive,
+verified against the npm registry SHA-512 integrity value. Solarized supplies
+both light and dark variants. Theme author comments and the MIT LICENSE are
+retained. These assets are served locally; no CDN or build step is required.
 
 PDF.js 6.3.289 (Apache-2.0) is bundled under `pdfjs/`, from
 https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-6.3.289.tgz
@@ -42,3 +46,14 @@ Palette references:
 - https://codemirror.net/5/theme/nord.css
 - https://draculatheme.com/contribute
 - https://www.nordtheme.com/docs/colors-and-palettes
+
+Additional palette sources (same CodeMirror 5 release):
+- https://codemirror.net/5/theme/eclipse.css
+- https://codemirror.net/5/theme/idea.css
+- https://codemirror.net/5/theme/neo.css
+- https://codemirror.net/5/theme/base16-light.css
+- https://codemirror.net/5/theme/solarized.css
+- https://codemirror.net/5/theme/material-darker.css
+- https://codemirror.net/5/theme/material-palenight.css
+- https://codemirror.net/5/theme/ayu-dark.css
+- https://codemirror.net/5/theme/gruvbox-dark.css

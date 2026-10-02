@@ -13,8 +13,9 @@ const label=element('static');label.dataset.i18n='历史';
 const source=element('source');source.textContent='历史 is literal source text';
 const status=element('status');setText(status,'已定位到 PDF 第 {page} 页',{page:12});
 const tooltip=element('tooltip');tooltip.attributes['data-i18n-title']='设置';
+const themeGroup=element('theme-group');themeGroup.attributes['data-i18n-label']='浅色';
 globalThis.document={querySelector:selector=>element(selector.slice(1)),documentElement:{style:{setProperty:(key,value)=>properties[key]=value}},
-  querySelectorAll:selector=>selector==='[data-i18n]'?[label]:selector==='[data-i18n-title]'?[tooltip]:[]};
+  querySelectorAll:selector=>selector==='[data-i18n]'?[label]:selector==='[data-i18n-title]'?[tooltip]:selector==='[data-i18n-label]'?[themeGroup]:[]};
 globalThis.window={innerWidth:1000,dispatchEvent:event=>events.push(event.type)};
 Object.defineProperty(globalThis,'navigator',{value:{language:'zh-CN'},configurable:true});
 globalThis.localStorage={getItem:key=>stored.get(key),setItem:(key,value)=>stored.set(key,value)};
@@ -22,6 +23,7 @@ initSettings();
 assert.equal(label.textContent,'历史');assert.equal(properties['--revision-color'],'#b85c1c');
 element('language').value='en';element('language').onchange();
 assert.equal(label.textContent,'History');assert.equal(tooltip.attributes.title,'Settings');
+assert.equal(themeGroup.attributes.label,'Light');assert.equal(t('Neo · 简洁白'),'Neo · Clean white');
 assert.equal(status.textContent,'Located on PDF page 12');
 assert.equal(source.textContent,'历史 is literal source text');
 assert.equal(t('下方还有 {count} 处改动',{count:4}),'4 more updates below');

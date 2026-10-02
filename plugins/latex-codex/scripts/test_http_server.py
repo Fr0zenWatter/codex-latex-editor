@@ -44,6 +44,10 @@ with tempfile.TemporaryDirectory() as directory:
     try:
         assert accepted.wait(2)
         assert request('/')[0] == 200, 'An idle browser preconnect must not block the page.'
+        assert request('/vendor/latex-themes.mjs')[0] == 200
+        for theme in ('eclipse', 'idea', 'neo', 'base16-light', 'solarized', 'material-darker', 'material-palenight', 'ayu-dark', 'gruvbox-dark'):
+            code, css = request('/vendor/' + theme + '.css')
+            assert code == 200 and b'.cm-s-' in css, 'Bundled themes must be available offline.'
         revision = json.loads(request('/state')[1])['version']
         server.pdf, server.pdf_revision, server.sync_version = b'%PDF-preserved', 'preserved', revision
         with patch('editor.compile_tex') as no_compile:

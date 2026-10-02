@@ -1,4 +1,13 @@
 const english = {
+  '色盘':'Color wheel', '中性色':'Neutral colors', '色盘颜色 {color}':'Color wheel swatch {color}', '色相位置 · 中性色按明暗排列':'Hue positions · Neutrals ordered by brightness', '语法配色 · 可逐项微调':'Syntax colors · Adjust individually', '备用色':'Unused swatch', '面板':'Panel', '边框':'Border', '注释':'Comments', '命令':'Commands', '公式':'Math', '运算符':'Operators', '引用':'References', '环境':'Environments', '数字':'Numbers', '环境命令':'Environment commands',
+  '识别出的配色':'Extracted palette', '识别出的配色 · 点击色块设为背景':'Extracted palette · Click a swatch to set the background', '将 {color} 设为背景':'Use {color} as background', '识别到 {count} 种配色，面积最大颜色已设为背景。':'Extracted {count} colors; the largest area color is the background.',
+  '请输入主题名称。':'Enter a theme name.', '截图生成主题':'Theme from screenshot', '关闭':'Close', '自定义':'Custom', '上传截图':'Upload screenshot', '生成配色':'Generate theme', '主题名称':'Theme name', '例如：Modern Minimal':'e.g. Modern Minimal', '配色预览':'Theme preview', '保存并使用':'Save and use', '更新并使用':'Update and use', '背景':'Background', '主色':'Primary', '撞色':'Accent', '主题截图':'Theme screenshot',
+  '截取带色块的主题卡片，上传或在此粘贴截图。':'Capture a theme card with color swatches, upload it or paste it here.',
+  '未识别到配色，请截取带色块的主题卡片。':'No palette found. Capture a theme card with color swatches.',
+  '请选择 PNG、JPG 或 WebP 图片（不超过 10 MB）。':'Choose a PNG, JPG or WebP image (up to 10 MB).',
+  '截图已就绪，点击生成配色。':'Screenshot ready. Click Generate theme.', '图片读取失败，请换一张截图。':'Unable to read this image. Try another screenshot.',
+  '配色已生成，可微调颜色后保存。':'Theme generated. Adjust colors if needed, then save.', '无法保存主题，请检查浏览器存储空间。':'Unable to save the theme. Check browser storage.',
+
   '固定记录栏':'Pin activity sidebar', '取消固定记录栏':'Unpin activity sidebar', '历史记录操作':'History entry actions', '重命名':'Rename', '重命名版本':'Rename version',
   '历史视图':'History views', '展开改动记录':'Expand change activity', '改动记录':'Change activity', '正文':'Body', '导言区':'Preamble', '摘要':'Abstract',
   '文档初始版本':'Initial document', '首次保存的版本':'First saved version', '调整文档设置':'Updated document settings', '调整公式与论述':'Updated formulas and discussion', '更新正文':'Updated text',
@@ -26,6 +35,7 @@ const english = {
   '语言':'Language', '跟随系统':'System default', '配色':'Color theme', '当前用户修订色':'Your revision color', '当前用户':'You',
   '橙色':'Orange', '蓝色':'Blue', '紫色':'Purple', '绿色':'Green', '红色':'Red', '青色':'Teal', '洋红':'Magenta', '无':'None',
   'Cobalt · 深蓝':'Cobalt · Deep blue', 'Dracula · 紫灰':'Dracula · Purple', 'Monokai · 炭黑':'Monokai · Charcoal', 'Nord · 冷灰':'Nord · Cool gray',
+  '浅色':'Light', '深色':'Dark', 'Eclipse · 白底':'Eclipse · White', 'IDEA · 白底':'IDEA · White', 'Neo · 简洁白':'Neo · Clean white', 'Base16 · 浅灰':'Base16 · Light gray', 'Solarized · 暖白':'Solarized · Warm light', 'Material · 深灰':'Material · Dark gray', 'Palenight · 蓝紫':'Palenight · Blue violet', 'Ayu · 深夜':'Ayu · Night', 'Gruvbox · 暖黑':'Gruvbox · Warm dark', 'Solarized · 深青':'Solarized · Dark cyan',
   '版本历史':'Version history', '刷新':'Refresh', '关闭历史':'Close history', '改动对比':'Changes', '此版本源码':'Source', '对比':'Compare',
   '与上一版比较':'Previous snapshot', '当前编辑内容':'Current editor contents', '历史源码与差异':'Historical source and changes',
   '版本名称':'Version name', '例如：投稿前定稿':'e.g. Before submission', '保存名称':'Save name', '加载更早版本':'Load earlier versions',
@@ -111,7 +121,7 @@ export function initSettings() {
     language = languageSelect.value === 'system' ? (navigator.language.startsWith('zh') ? 'zh-CN' : 'en') : languageSelect.value;
     document.documentElement.lang = language;
     for (const element of document.querySelectorAll('[data-i18n]')) element.textContent = t(element.dataset.i18n);
-    for (const attribute of ['title', 'aria-label', 'placeholder']) for (const element of document.querySelectorAll('[data-i18n-' + attribute + ']')) element.setAttribute(attribute, t(element.getAttribute('data-i18n-' + attribute)));
+    for (const attribute of ['title', 'aria-label', 'placeholder', 'label', 'alt']) for (const element of document.querySelectorAll('[data-i18n-' + attribute + ']')) element.setAttribute(attribute, t(element.getAttribute('data-i18n-' + attribute)));
     for (const [element, [key, values]] of bindings) element.textContent = t(key, values);
     try { localStorage.setItem('latex-codex-language', languageSelect.value); } catch {}
     window.dispatchEvent(new Event('latex-language-change'));

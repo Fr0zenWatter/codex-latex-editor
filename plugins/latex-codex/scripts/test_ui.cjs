@@ -53,7 +53,7 @@ const pdf = {numPages:2,getPage:async()=>({})};
 let destroyed=0,downloads=0;
 const windowHandlers={},uiTimers=new Map();let uiTimerId=0;
 const context = vm.createContext({
-  t:key=>key, setText:(element,key,values={})=>{element.textContent=key.replace(/\{(\w+)\}/g,(match,name)=>values[name]??match);},initSettings(){},
+  t:key=>key, setText:(element,key,values={})=>{element.textContent=key.replace(/\{(\w+)\}/g,(match,name)=>values[name]??match);},initSettings(){}, initScreenshotThemes(){}, applyCustomTheme(){return false;},
   attachMathHover(){},attachSelectionChat(){return {open(){chatOpened.push('full');},openQuick(anchor){chatOpened.push(anchor);},busy:false};},attachHistory(){},mountHistoryTabs(){},katex:{},
   pdfjsLib:{GlobalWorkerOptions:{},getDocument:()=>({promise:Promise.resolve(pdf),async destroy(){destroyed++;}})},
   EventBus:class{},PDFLinkService:class{setViewer(){} setDocument(){}},PDFViewer:function(){return viewer;},
@@ -69,6 +69,12 @@ const context = vm.createContext({
   fetch: () => new Promise(() => {}),
 });
 vm.runInContext(script, context);
+const themeSelect=element('#theme');
+for(const [value,cmTheme] of [['neo','neo'],['solarized-light','solarized light'],['solarized-dark','solarized dark'],['material-palenight','material-palenight'],['cobalt','cobalt']]){
+  themeSelect.value=value;themeSelect.onchange();
+  assert.equal(options.theme,cmTheme);assert.equal(context.document.documentElement.dataset.theme,value);
+  assert.equal(stored.get('latex-codex-theme'),value);
+}
 assert.equal(options.keyMap,'default','Load the remembered non-Vim mode.');
 element('#log').hidden=true;const logPosition=element('#preview').scrollTop;
 element('#log-toggle').onclick();assert(!element('#log').hidden);assert(element('#preview').inert);
