@@ -12,6 +12,7 @@ export function colorReplacement(text, color, segments) {
 export function attachSelectionChat(editor, request) {
   const $ = id => document.querySelector('#' + id);
   const panel = $('chat-panel'), input = $('chat-input'), messages = $('chat-messages'), status = $('chat-status');
+  let memoryRevision=null,memoryLoading=null,memoryEpoch=0;
   let history = [], marker = null, job = null, generation = 0, sending = false, proposal = null;
   const quick = $('chat-quick'), quickInput = $('chat-quick-input');
   let quickMarker = null, quickDoc = null, quickOriginal = '', quickSending = false;
@@ -150,6 +151,24 @@ export function attachSelectionChat(editor, request) {
     const body = document.createElement('div'); body.textContent = text;
     item.append(label, body); messages.append(item); messages.scrollTop = messages.scrollHeight;
   }
+  async function loadMemory() {
+    if(memoryRevision!==null)return;
+    if(memoryLoading)return memoryLoading;
+    const doc=editor.getDoc(),epoch=memoryEpoch;
+    const task=(async()=>{
+      const data=await request('/chat/history');
+      if(doc!==editor.getDoc()||epoch!==memoryEpoch)return;
+      if(!Array.isArray(data.messages)||!Number.isInteger(data.revision))throw new Error(t('项目记忆读取失败，请重新打开对话。'));
+      history=data.messages;memoryRevision=data.revision;messages.replaceChildren();
+      for(const item of history){
+        let text=item.content;
+        if(item.role==='assistant'){try{text=JSON.parse(text).reply||text;}catch{}}
+        message(item.role==='user'?t('你'):'Codex',text);
+      }
+    })();
+    memoryLoading=task;
+    try{await task;}finally{if(memoryLoading===task)memoryLoading=null;}
+  }
   function setSending(value) {
     sending = value; $('chat-send').disabled = value; $('chat-stop').hidden = !value;
     $('chat-use-selection').disabled = value;
@@ -173,6 +192,7 @@ export function attachSelectionChat(editor, request) {
   function showPanel() {
     panel.hidden = false;
     refreshContext();
+    loadMemory().catch(e=>notice(e.message));
     loadModels();
     input.focus();
   }
@@ -190,10 +210,9 @@ export function attachSelectionChat(editor, request) {
   function reset() {
     stop();
     quick.hidePopover(); quickInput.value = '';
-    history = []; marker?.clear(); marker = null; clearProposal();
+    memoryEpoch++;memoryRevision=null;memoryLoading=null;history = []; marker?.clear(); marker = null; clearProposal();
     messages.replaceChildren(); input.value = ''; $('chat-selection').textContent = ''; panel.hidden = true; notice('');
   }
-  $('chat-open').onclick = open;
   $('chat-menu').onclick = () => { $('editor-menu').hidePopover(); open(); };
   quick.addEventListener('beforetoggle', event => {
     if (event.newState === 'closed') {
@@ -203,6 +222,7 @@ export function attachSelectionChat(editor, request) {
     }
   });
   function openQuick(anchor) {
+    loadMemory().catch(e=>quickNotice(e.message,true));
     quickMarker?.clear(); quickMarker = null;
     quickDoc = editor.getDoc(); quickOriginal = '';
     if (editor.somethingSelected() && editor.listSelections().length === 1) {
@@ -242,7 +262,11 @@ export function attachSelectionChat(editor, request) {
     return send(quickInput.value, quickInput, true);
   };
   $('chat-close').onclick = () => { palette.hidePopover(); panel.hidden = true; editor.focus(); };
-  $('chat-end').onclick = reset;
+  $('chat-end').onclick = async()=>{
+    await stop();
+    try{await request('/chat/new',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:$('filename').title})});reset();}
+    catch(e){notice(e.message);}
+  };
   $('chat-use-selection').onclick = () => { useSelection(); input.focus(); };
   $('chat-stop').onclick = () => { stop(); notice(t('已停止，可继续提问。')); };
   panel.addEventListener('keydown', event => {
@@ -260,14 +284,17 @@ export function attachSelectionChat(editor, request) {
     const selection = selectedText(), question = text.trim();
     if (!selection) { notice(t('选区已失效，请重新选择文本。')); return; }
     const token = ++generation, doc = editor.getDoc();
-    const conversation = [...history, {role:'user', content:question}];
+    let conversation;
     quickSending = autoApply;
     if (autoApply) quickNotice('');
     clearProposal(); setSending(true); notice(t('Codex 正在思考…'));
-    message(t('你'), question); if (!autoApply) draftInput.value = '';
     try {
+      if(memoryRevision===null)await loadMemory();
+      if(token!==generation||doc!==editor.getDoc())return;
+      conversation=[...history.slice(-38),{role:'user',content:question}];
+      message(t('你'),question);if(!autoApply)draftInput.value='';
       const started = await request('/chat', {method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({source:editor.getValue(),selection,messages:conversation,model:modelSelect.value,effort:effortSelect.value})});
+        body:JSON.stringify({source:editor.getValue(),selection,messages:conversation,remember:true,memory_revision:memoryRevision,model:modelSelect.value,effort:effortSelect.value})});
       if (token !== generation) {
         await request('/chat/cancel', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:started.id})}); return;
       }
@@ -277,6 +304,7 @@ export function attachSelectionChat(editor, request) {
         if (token !== generation) return;
         if (result.status === 'running') { await new Promise(resolve => setTimeout(resolve, 700)); continue; }
         if (result.status !== 'done') throw new Error(result.error || t('本次回复已停止。'));
+        memoryRevision=result.memory_revision??memoryRevision;
         history = [...conversation, {role:'assistant',content:JSON.stringify({reply:result.reply,replacement:result.replacement})}];
         message('Codex', result.reply);
         if (result.replacement !== null) {
@@ -295,7 +323,7 @@ export function attachSelectionChat(editor, request) {
         return;
       }
     } catch(e) {
-      if (token === generation) { notice(e.message); if (autoApply) quickNotice(e.message, true); draftInput.value = question; }
+      if (token === generation) { if(e.conflict)memoryRevision=null;notice(e.message); if (autoApply) quickNotice(e.message, true); draftInput.value = question; }
     } finally { if (token === generation) { quickSending = false; job = null; setSending(false); } }
   }
   function applyProposal() {
@@ -304,14 +332,15 @@ export function attachSelectionChat(editor, request) {
       notice(t('选区内容已变化，未覆盖修改。请使用当前选区重新提问。')); return false;
     }
     const replacement = colorReplacement(proposal.replacement, color, proposal.segments), start = editor.indexFromPos(pos.from);
-    CodeMirror.Vim.handleKey(editor, '<Esc>');
+    const vim = editor.getOption('keyMap').startsWith('vim');
+    if (vim) CodeMirror.Vim.handleKey(editor, '<Esc>');
     marker.clear(); marker = null;
     editor.replaceRange(replacement, pos.from, pos.to, 'codex-chat');
     const end = editor.posFromIndex(start + replacement.length);
     marker = editor.markText(pos.from, end, {className:'chat-selection',clearWhenEmpty:false});
     $('chat-selection').textContent = replacement;
     history.push({role:'user',content:'已将上一条修改应用到选区' + (color ? '，并只用 {\\color{' + color + '}...} 标记实际变化的内容' : '') + '。后续请以当前文档为准。'});
-    clearProposal(); message(t('编辑器'), t('已应用到选区，将自动保存并编译。')); notice(t('已应用。回到源码按 u 可撤销。'));
+    clearProposal(); message(t('编辑器'), t('已应用到选区，将自动保存。')); notice(t(vim ? '已应用。回到源码按 u 可撤销。' : '已应用。回到源码按 Ctrl+Z / Cmd+Z 可撤销。'));
     editor.setCursor(end);
     return true;
   }

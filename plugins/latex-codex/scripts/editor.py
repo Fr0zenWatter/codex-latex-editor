@@ -13,6 +13,8 @@ import sqlite3
 import subprocess
 import tempfile
 import threading
+import unicodedata
+import xml.etree.ElementTree as ET
 import tkinter as tk
 from tkinter import filedialog
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -47,15 +49,20 @@ PAGE = r'''<!doctype html>
 *{box-sizing:border-box}body{margin:0;height:100vh;display:flex;flex-direction:column;background:var(--panel);color:var(--text);font:14px system-ui,sans-serif}
 header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 strong{font-size:17px}button,a,select{font:inherit}button,select{border:1px solid var(--border);border-radius:6px;padding:6px 12px;background:var(--bg);color:var(--text);cursor:pointer}button:hover,select:hover{border-color:var(--command)}button:disabled{opacity:.55;cursor:default}
-button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(--command)}a{color:var(--reference)}#status{flex:1;color:var(--muted)}
+button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(--command)}a{color:var(--reference)}#status{flex:1;color:var(--muted)}#app-toolbar{padding:4px 12px;gap:8px;min-height:36px}#app-toolbar button{padding:4px 9px}#app-toolbar #settings-menu-button{width:28px;padding:4px}
 main{position:relative;display:grid;grid-template-columns:minmax(0,var(--source-share,1fr)) 6px minmax(0,var(--pdf-share,1fr));flex:1;min-height:0;background:var(--border)}
 .sync-rail{position:relative;background:var(--panel)}#splitter{position:absolute;inset:0;cursor:col-resize;touch-action:none;z-index:2}#splitter::before{content:'';position:absolute;inset:0 -3px}#splitter:hover,#splitter:focus-visible,main.resizing #splitter{background:var(--command)}main.resizing,main.resizing *{cursor:col-resize!important;user-select:none!important}#splitter:focus-visible{outline:2px solid var(--command)}#forward{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:3;padding:3px 0;width:22px;font-size:18px}
 main>section{min-width:0;min-height:0;display:flex;flex-direction:column;background:var(--bg)}label,.caption{padding:9px 14px;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.source-caption{display:flex;align-items:center}.source-caption label{flex:1;min-width:0}#vim-mode{margin-right:14px;white-space:nowrap;font:12px Consolas,monospace;color:var(--command)}
-.pdf-toolbar{display:flex;align-items:center;gap:5px;padding:6px 8px;overflow-x:auto;flex-shrink:0}.pdf-toolbar .caption{flex:1;min-width:0;padding:0 5px}.pdf-toolbar button{padding:3px 8px;white-space:nowrap}
-#compile{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-width:130px;padding:6px 10px;background:#15803d;border-color:#22c55e;color:#fff;font-weight:600}#compile:hover:not(:disabled){background:#166534}#compile[aria-busy=true]{opacity:1;cursor:wait}
+.source-caption{display:flex;align-items:center}.source-caption label{flex:1;min-width:0}
+.pdf-toolbar{display:flex;align-items:center;gap:5px;padding:3px 8px;overflow-x:auto;flex-shrink:0}.pdf-toolbar button{padding:3px 8px;white-space:nowrap}
+#pan-mode{display:inline-flex;align-items:center;gap:5px}#pan-mode[aria-pressed=true] .pan-select-icon,#pan-mode[aria-pressed=false] .pan-hand-icon{display:none}
+#pan-hint{font-size:12px;color:var(--muted);white-space:nowrap;animation:pan-hint-fade 2.5s ease forwards}
+@keyframes pan-hint-fade{0%,75%{opacity:1}100%{opacity:0}}
+.compile-group{display:inline-flex;flex-shrink:0}.compile-group #compile{border-radius:999px 0 0 999px;border-right:0}.compile-group #compile-menu-button{display:grid;place-items:center;width:22px;padding:3px 3px;border-radius:0 999px 999px 0;background:#15803d;border-color:#22c55e;border-left-color:#166534;color:#fff}.compile-group #compile-menu-button:hover{background:#166534}.compile-group #compile-menu-button .toolbar-icon{width:14px;height:14px}#compile-menu{width:200px}#compile-menu label{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:6px;color:var(--text);font-size:13px}#auto-compile{accent-color:#15803d;cursor:pointer}
+#compile{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-width:110px;padding:3px 10px;font-size:13px;background:#15803d;border-color:#22c55e;color:#fff;font-weight:600}#compile:hover:not(:disabled){background:#166534}#compile[aria-busy=true]{opacity:1;cursor:wait}
 #compile::before{content:'';display:none;width:14px;height:14px;border:2px solid #ffffff55;border-top-color:#fff;border-radius:50%;animation:compile-spin .8s linear infinite}#compile[aria-busy=true]::before{display:block}.compile-busy,#compile[aria-busy=true] .compile-idle{display:none}#compile[aria-busy=true] .compile-busy{display:inline}
 @keyframes compile-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){#compile::before{animation:none}}
+#log-toggle{margin-right:auto;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:4px}#log-toggle[aria-pressed=true]{background:var(--border);color:var(--command)}.pdf-toolbar[data-log-view=true] :is(#pan-mode,#pan-hint,#zoom-out,#zoom-fit,#zoom-in){display:none}
 .preview-shell{position:relative;flex:1;min-height:0}#preview{position:absolute;inset:0;overflow:auto;background:var(--panel)}
 #preview.hand-tool{cursor:grab;user-select:none}#preview.hand-tool .textLayer{pointer-events:none}#preview.dragging{cursor:grabbing}
 .CodeMirror{flex:1;min-height:0;height:100%;border-top:1px solid var(--border);font:14px/1.65 Consolas,monospace}.CodeMirror-lines{padding:12px 0}.CodeMirror-focused{outline:2px solid var(--border);outline-offset:-2px}
@@ -64,11 +71,10 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 #math-hover{position:fixed;z-index:1000;max-width:calc(100vw - 24px);max-height:min(60vh,360px);overflow:auto;padding:12px 16px;border:1px solid #ccd4de;border-radius:8px;background:#fff;color:#17202b;color-scheme:light;box-shadow:0 6px 24px #0004;font-size:17px}#math-hover .katex-display{margin:.35em 0}#math-hover .katex-display>.katex:has(>.tag){padding-right:3.5em}#math-hover .math-hover-error{font:13px system-ui,sans-serif}
 :is(#editor-menu,#pdf-menu){position:fixed;inset:auto;margin:0;padding:4px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);box-shadow:0 6px 20px #0005}:is(#editor-menu,#pdf-menu) button{display:flex;align-items:center;gap:24px;border:0;width:100%;text-align:left}:is(#editor-menu,#pdf-menu) button:hover{background:var(--border)}#editor-menu kbd{font:12px system-ui,sans-serif;color:var(--muted)}
 .CodeMirror span.cm-math{color:var(--math)}.CodeMirror span.cm-operator{color:var(--operator)}.CodeMirror span.cm-reference{color:var(--reference)}.CodeMirror span.cm-tag{color:var(--command)}.CodeMirror span.cm-atom{color:var(--environment)}.CodeMirror span.cm-environment{color:#fff44f}.CodeMirror span.cm-number{color:var(--number)}.CodeMirror span.cm-comment,.CodeMirror .CodeMirror-linenumber{color:var(--muted)}
-#preview .page{box-sizing:content-box}.sync-highlight{position:absolute;z-index:5;pointer-events:none;background:rgba(255,244,168,.75);mix-blend-mode:multiply;border-radius:2px}details{padding:10px 16px;background:var(--panel)}#log{white-space:pre-wrap;max-height:30vh;overflow:auto;font-size:12px}
+#preview .page{box-sizing:content-box}.sync-highlight{position:absolute;z-index:5;pointer-events:none;background:rgba(255,244,168,.75);mix-blend-mode:multiply;border-radius:2px}details{padding:10px 16px;background:var(--panel)}#log{position:absolute;inset:0;margin:0;padding:16px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--panel);color:var(--text);font:13px/1.6 Consolas,monospace}
 @media(max-width:640px){main{grid-template-columns:1fr;overflow:auto}main>section{min-height:50vh}.sync-rail{min-height:24px}#splitter{display:none}#status{min-width:45%}}
 </style>
 <style>
-#chat-open{font-size:12px;padding:3px 8px;margin-right:10px;white-space:nowrap}
 #chat-panel{position:absolute;right:0;top:0;bottom:0;z-index:20;width:min(460px,48%);display:flex;flex-direction:column;background:var(--panel);border-left:1px solid var(--border);box-shadow:-8px 0 24px #0004}
 #chat-panel[hidden],#chat-panel [hidden]{display:none}#chat-panel .chat-bar{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border)}#chat-panel .chat-bar strong{flex:1;font-size:14px}#chat-panel button{font-size:12px;padding:5px 9px}
 #chat-panel #chat-color{width:25px;height:25px;padding:0;flex:none;border-radius:50%;border:2px solid var(--text);background:transparent}#chat-color[data-color=""]::after{content:'∅';font-size:18px}#chat-colors{position:fixed;inset:auto;margin:0;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);z-index:30}#chat-colors button{margin:3px;padding:5px 9px}#chat-colors button[aria-pressed=true]{outline:2px solid var(--command)}#chat-context{display:block;margin-top:6px;color:var(--muted)}
@@ -82,29 +88,28 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 #chat-quick-settings{position:fixed;inset:auto;margin:0;width:min(352px,calc(100vw - 16px));padding:6px;overflow:auto;border:1px solid #e0e3e8;border-radius:12px;background:#fff;color:#20242a;color-scheme:light;box-shadow:0 8px 28px #0003;font:12px/1.5 system-ui}#chat-quick-settings .quick-settings-columns{display:flex;gap:6px}#chat-quick-models{flex:3;min-width:0}#chat-quick-efforts{flex:2;min-width:0;padding-left:6px;border-left:1px solid #edf0f3}#chat-quick-settings button{display:block;width:100%;padding:6px 8px;border:0;border-radius:6px;background:transparent;color:#46515c;text-align:left;white-space:nowrap}#chat-quick-settings button:hover,#chat-quick-settings button[aria-pressed=true]{background:#eaf6fc;color:#2186b3}#chat-quick-model-status{font-size:11px;color:#77818c}#chat-quick-model-status:empty{display:none}
 @media(max-width:640px){#chat-panel{width:92%}}
 </style>
-<header id="app-toolbar"><button id="file-menu-button" class="icon-button" popovertarget="file-menu" aria-expanded="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H5v20h14V7zM14 2v6h5"/></svg><span data-i18n="文件">文件</span></button><strong>LaTeX Codex</strong><span id="status" role="status" aria-live="polite">正在打开…</span>
+<header id="app-toolbar"><button id="file-menu-button" class="icon-button" aria-label="文件" data-i18n-aria-label="文件" title="文件" data-i18n-title="文件" popovertarget="file-menu" aria-expanded="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H5v20h14V7zM14 2v6h5"/></svg></button><span id="status" role="status" aria-live="polite">正在打开…</span>
 <button id="history-open" class="icon-button" disabled><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2.6 7M3 4v7h7M12 7v5l3 2"/></svg><span data-i18n="历史">历史</span></button><button id="settings-menu-button" class="icon-button" popovertarget="settings-menu" aria-label="设置" data-i18n-aria-label="设置" title="设置" data-i18n-title="设置" aria-expanded="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3 1-2h4l1 2 2 1 2-.2 2 3-1 2v3l1 2-2 3-2-.2-2 1-1 3h-4l-1-3-2-1-2 .2-2-3 1-2V9L3 7l2-3 2 .2z" transform="translate(0 1) scale(1 .95)"/><circle cx="12" cy="11" r="3"/></svg></button></header>
 <div id="file-menu" class="toolbar-menu" popover="auto" aria-label="文件" data-i18n-aria-label="文件"><button id="open" data-i18n="打开文件">打开文件</button><button id="reload" data-i18n="重新读取文件">重新读取文件</button><a href="/pdf" download="document.pdf" data-i18n="下载 PDF">下载 PDF</a></div>
-<div id="settings-menu" class="toolbar-menu" popover="auto" aria-label="设置" data-i18n-aria-label="设置"><label for="language"><span data-i18n="语言">语言</span><select id="language" aria-label="语言" data-i18n-aria-label="语言"><option value="system" data-i18n="跟随系统">跟随系统</option><option value="zh-CN" data-i18n="简体中文">简体中文</option><option value="en">English</option></select></label><label for="theme"><span data-i18n="配色">配色</span><select id="theme" aria-label="配色" data-i18n-aria-label="配色"><option value="cobalt" data-i18n="Cobalt · 深蓝">Cobalt · 深蓝</option><option value="dracula" data-i18n="Dracula · 紫灰">Dracula · 紫灰</option><option value="monokai" data-i18n="Monokai · 炭黑">Monokai · 炭黑</option><option value="nord" data-i18n="Nord · 冷灰">Nord · 冷灰</option></select></label><label for="revision-color"><span data-i18n="当前用户修订色">当前用户修订色</span><select id="revision-color" aria-label="当前用户修订色" data-i18n-aria-label="当前用户修订色"><option value="orange" data-i18n="橙色">橙色</option><option value="blue" data-i18n="蓝色">蓝色</option><option value="purple" data-i18n="紫色">紫色</option><option value="green" data-i18n="绿色">绿色</option><option value="red" data-i18n="红色">红色</option></select></label></div>
-<main><section><div class="source-caption"><label id="filename" for="source" data-i18n="LaTeX 源码">LaTeX 源码</label><button id="chat-open" title="选中文本后与 Codex 对话" data-i18n-title="选中文本后与 Codex 对话" data-i18n="问 Codex">问 Codex</button><span id="vim-mode" role="status" title="i 插入 · Esc 普通模式 · / 搜索 · :w 保存并编译" data-i18n-title="i 插入 · Esc 普通模式 · / 搜索 · :w 保存并编译">VIM · NORMAL</span></div><textarea id="source" spellcheck="false" disabled aria-label="LaTeX 源码" data-i18n-aria-label="LaTeX 源码"></textarea></section>
+<div id="settings-menu" class="toolbar-menu" popover="auto" aria-label="设置" data-i18n-aria-label="设置"><label for="language"><span data-i18n="语言">语言</span><select id="language" aria-label="语言" data-i18n-aria-label="语言"><option value="system" data-i18n="跟随系统">跟随系统</option><option value="zh-CN" data-i18n="简体中文">简体中文</option><option value="en">English</option></select></label><label for="editor-mode"><span data-i18n="编辑模式">编辑模式</span><select id="editor-mode" aria-label="编辑模式" data-i18n-aria-label="编辑模式"><option value="vim">Vim</option><option value="default" data-i18n="普通编辑">普通编辑</option></select></label><label for="theme"><span data-i18n="配色">配色</span><select id="theme" aria-label="配色" data-i18n-aria-label="配色"><option value="cobalt" data-i18n="Cobalt · 深蓝">Cobalt · 深蓝</option><option value="dracula" data-i18n="Dracula · 紫灰">Dracula · 紫灰</option><option value="monokai" data-i18n="Monokai · 炭黑">Monokai · 炭黑</option><option value="nord" data-i18n="Nord · 冷灰">Nord · 冷灰</option></select></label><label for="revision-color"><span data-i18n="当前用户修订色">当前用户修订色</span><select id="revision-color" aria-label="当前用户修订色" data-i18n-aria-label="当前用户修订色"><option value="orange" data-i18n="橙色">橙色</option><option value="blue" data-i18n="蓝色">蓝色</option><option value="purple" data-i18n="紫色">紫色</option><option value="green" data-i18n="绿色">绿色</option><option value="red" data-i18n="红色">红色</option></select></label></div>
+<main><section><div class="source-caption"><label id="filename" for="source" data-i18n="LaTeX 源码">LaTeX 源码</label></div><textarea id="source" spellcheck="false" disabled aria-label="LaTeX 源码" data-i18n-aria-label="LaTeX 源码"></textarea></section>
 <div class="sync-rail"><div id="splitter" role="separator" tabindex="0" aria-label="调整 LaTeX 和 PDF 宽度" data-i18n-aria-label="调整 LaTeX 和 PDF 宽度" aria-orientation="vertical" aria-valuemin="15" aria-valuemax="85" aria-valuenow="50" title="拖动调整宽度 · 双击恢复各半" data-i18n-title="拖动调整宽度 · 双击恢复各半"></div><button id="forward" disabled aria-label="定位光标到 PDF" data-i18n-aria-label="定位光标到 PDF" title="跳到光标对应的 PDF 位置" data-i18n-title="跳到光标对应的 PDF 位置">→</button></div>
-<section><div class="pdf-toolbar"><button id="compile" aria-busy="false" disabled><span class="compile-idle" data-i18n="保存并编译">保存并编译</span><span class="compile-busy" data-i18n="正在编译…">正在编译…</span></button><div class="caption" id="engine" data-i18n="本机编译 · PDF 预览">本机编译 · PDF 预览</div><button id="pan-mode" aria-pressed="true" title="切换拖动页面与选择文字" data-i18n-title="切换拖动页面与选择文字" data-i18n="拖动">拖动</button><button id="zoom-out" aria-label="缩小 PDF" data-i18n-aria-label="缩小 PDF" title="缩小 PDF" data-i18n-title="缩小 PDF">−</button><button id="zoom-fit" aria-label="适合宽度" data-i18n-aria-label="适合宽度" title="恢复适合宽度" data-i18n-title="恢复适合宽度">100%</button><button id="zoom-in" aria-label="放大 PDF" data-i18n-aria-label="放大 PDF" title="放大 PDF" data-i18n-title="放大 PDF">+</button></div><div class="preview-shell"><div id="preview" class="hand-tool" role="region" aria-label="编译后的 PDF" data-i18n-aria-label="编译后的 PDF" tabindex="0"><div id="pdf-viewer" class="pdfViewer"></div></div></div></section></main>
-<aside id="chat-panel" role="dialog" aria-label="临时 Codex 对话" data-i18n-aria-label="临时 Codex 对话" hidden>
-<div class="chat-bar"><strong data-i18n="Codex · 临时对话">Codex · 临时对话</strong><button id="chat-color" data-color="" aria-label="修改标记颜色：无" data-i18n-aria-label="修改标记颜色：无" title="修改标记颜色：无" data-i18n-title="修改标记颜色：无" popovertarget="chat-colors"></button><button id="chat-end" data-i18n="结束并清空">结束并清空</button><button id="chat-close" aria-label="收起临时对话" data-i18n-aria-label="收起临时对话">×</button></div>
+<section><div class="pdf-toolbar"><div class="compile-group"><button id="compile" aria-busy="false" disabled><span class="compile-idle" data-i18n="保存并编译">保存并编译</span><span class="compile-busy" data-i18n="正在编译…">正在编译…</span></button><button id="compile-menu-button" popovertarget="compile-menu" aria-label="编译选项" data-i18n-aria-label="编译选项" title="编译选项" data-i18n-title="编译选项" aria-expanded="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></button></div><div id="compile-menu" class="toolbar-menu" popover="auto" aria-label="编译选项" data-i18n-aria-label="编译选项"><label for="auto-compile"><span data-i18n="自动编译">自动编译</span><input id="auto-compile" type="checkbox" checked aria-label="自动编译" data-i18n-aria-label="自动编译"></label></div><button id="log-toggle" aria-label="编译日志" data-i18n-aria-label="编译日志" title="编译日志" data-i18n-title="编译日志" aria-pressed="false" aria-controls="log"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 2H5v20h14V7zM14 2v6h5M8 12h8M8 16h8"/></svg></button><span id="pan-hint" role="status" hidden data-i18n="按住空格拖动 PDF">按住空格拖动 PDF</span><button id="pan-mode" aria-pressed="true" title="切换拖动页面与选择文字" data-i18n-title="切换拖动页面与选择文字" ><svg class="toolbar-icon pan-hand-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 11V7a2 2 0 0 0-4 0v3M14 10V5a2 2 0 0 0-4 0v6M10 10.5V7a2 2 0 0 0-4 0v5l-1-1a2 2 0 0 0-3 2l4 6a6 6 0 0 0 5 3h3a6 6 0 0 0 6-6v-3a2 2 0 0 0-4 0v1"/></svg><svg class="toolbar-icon pan-select-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m4 3 15 10-7 1-4 7Z"/></svg><span id="pan-label" data-i18n="拖动">拖动</span></button><button id="zoom-out" aria-label="缩小 PDF" data-i18n-aria-label="缩小 PDF" title="缩小 PDF" data-i18n-title="缩小 PDF">−</button><button id="zoom-fit" aria-label="适合宽度" data-i18n-aria-label="适合宽度" title="恢复适合宽度" data-i18n-title="恢复适合宽度">100%</button><button id="zoom-in" aria-label="放大 PDF" data-i18n-aria-label="放大 PDF" title="放大 PDF" data-i18n-title="放大 PDF">+</button></div><div class="preview-shell"><div id="preview" class="hand-tool" role="region" aria-label="编译后的 PDF" data-i18n-aria-label="编译后的 PDF" tabindex="0"><div id="pdf-viewer" class="pdfViewer"></div></div><pre id="log" hidden tabindex="0" role="region" aria-label="编译日志" data-i18n-aria-label="编译日志"></pre></div></section></main>
+<aside id="chat-panel" role="dialog" aria-label="项目侧边聊天" data-i18n-aria-label="项目侧边聊天" hidden>
+<div class="chat-bar"><strong data-i18n="Codex · 项目对话">Codex · 项目对话</strong><button id="chat-color" data-color="" aria-label="修改标记颜色：无" data-i18n-aria-label="修改标记颜色：无" title="修改标记颜色：无" data-i18n-title="修改标记颜色：无" popovertarget="chat-colors"></button><button id="chat-end" data-i18n="新对话">新对话</button><button id="chat-close" aria-label="收起项目对话" data-i18n-aria-label="收起项目对话">×</button></div>
 <details><summary data-i18n="当前选区与上下文">当前选区与上下文</summary><pre id="chat-selection"></pre><button id="chat-use-selection" data-i18n="使用当前选区">使用当前选区</button><small id="chat-context" data-i18n="携带论文全文；正在读取主对话…">携带论文全文；正在读取主对话…</small></details>
 <div id="chat-messages" role="log" aria-label="对话记录" data-i18n-aria-label="对话记录" aria-live="polite"></div>
 <div id="chat-proposal" hidden><strong data-i18n="选区修改建议">选区修改建议</strong><pre id="chat-replacement"></pre><button id="chat-apply" data-i18n="应用到选区">应用到选区</button></div>
 <div id="chat-status" role="status"></div>
-<form id="chat-form"><div id="chat-settings"><label for="chat-model"><span data-i18n="模型">模型</span><select id="chat-model"><option value="" data-i18n="跟随 Codex 默认">跟随 Codex 默认</option></select></label><label for="chat-effort"><span data-i18n="思考等级">思考等级</span><select id="chat-effort" disabled><option value="" data-i18n="跟随默认">跟随默认</option></select></label></div><small id="chat-model-status" role="status"></small><label for="chat-input" data-i18n="修改要求或问题">修改要求或问题</label><textarea id="chat-input" placeholder="例如：润色这段文字，保留公式和引用" data-i18n-placeholder="例如：润色这段文字，保留公式和引用"></textarea><div class="chat-actions"><small data-i18n="记住本次对话 · Ctrl+Enter 发送">记住本次对话 · Ctrl+Enter 发送</small><button id="chat-stop" type="button" hidden data-i18n="停止">停止</button><button id="chat-send" type="submit" data-i18n="发送">发送</button></div></form>
+<form id="chat-form"><div id="chat-settings"><label for="chat-model"><span data-i18n="模型">模型</span><select id="chat-model"><option value="" data-i18n="跟随 Codex 默认">跟随 Codex 默认</option></select></label><label for="chat-effort"><span data-i18n="思考等级">思考等级</span><select id="chat-effort" disabled><option value="" data-i18n="跟随默认">跟随默认</option></select></label></div><small id="chat-model-status" role="status"></small><label for="chat-input" data-i18n="修改要求或问题">修改要求或问题</label><textarea id="chat-input" placeholder="例如：润色这段文字，保留公式和引用" data-i18n-placeholder="例如：润色这段文字，保留公式和引用"></textarea><div class="chat-actions"><small data-i18n="项目记忆自动保存 · Ctrl+Enter 发送">项目记忆自动保存 · Ctrl+Enter 发送</small><button id="chat-stop" type="button" hidden data-i18n="停止">停止</button><button id="chat-send" type="submit" data-i18n="发送">发送</button></div></form>
 </aside>
 <div id="chat-colors" popover="auto" aria-label="修改标记颜色" data-i18n-aria-label="修改标记颜色"></div>
 <div id="chat-quick" popover="auto" role="dialog" aria-label="Codex 悬浮对话" data-i18n-aria-label="Codex 悬浮对话"><button id="chat-quick-handle" type="button" aria-label="拖动悬浮对话框" data-i18n-aria-label="拖动悬浮对话框" aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown"></button><form id="chat-quick-form"><textarea id="chat-quick-input" aria-label="悬浮对话输入" data-i18n-aria-label="悬浮对话输入" placeholder="询问 Codex…" data-i18n-placeholder="询问 Codex…" rows="1" wrap="off"></textarea><div id="chat-quick-status" role="status"></div><button id="chat-quick-brain" type="button" popovertarget="chat-quick-settings" aria-label="选择模型和思考等级" data-i18n-aria-label="选择模型和思考等级" aria-expanded="false" title="选择模型和思考等级" data-i18n-title="选择模型和思考等级"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 18V5a3 3 0 0 0-5.8-1A4 4 0 0 0 3 10a4 4 0 0 0 .5 7A4 4 0 0 0 12 18Zm0 0V5a3 3 0 0 1 5.8-1A4 4 0 0 1 21 10a4 4 0 0 1-.5 7A4 4 0 0 1 12 18M8 8c-2 0-3-1-3-2m3 8c-2 0-3 1-3 3m11-9c2 0 3-1 3-2m-3 8c2 0 3 1 3 3"/></svg></button><button id="chat-quick-send" type="submit" aria-label="发送" data-i18n-aria-label="发送" title="发送 · Ctrl+Enter" data-i18n-title="发送 · Ctrl+Enter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 18V6M6.5 11.5 12 6l5.5 5.5"/></svg></button></form><div id="chat-quick-settings" popover="auto" role="group" aria-label="模型和思考等级" data-i18n-aria-label="模型和思考等级"><div class="quick-settings-columns"><div id="chat-quick-models" role="group" aria-label="模型" data-i18n-aria-label="模型"></div><div id="chat-quick-efforts" role="group" aria-label="思考等级" data-i18n-aria-label="思考等级" hidden></div></div><div id="chat-quick-model-status" role="status"></div></div></div>
-<details id="details"><summary data-i18n="编译日志">编译日志</summary><pre id="log"></pre></details>
-<div id="editor-menu" popover="auto" role="menu" aria-label="源码操作" data-i18n-aria-label="源码操作"><button id="toggle-comment" role="menuitem" aria-keyshortcuts="Alt+/ Control+/ Meta+/"><span data-i18n="注释 / 取消注释">注释 / 取消注释</span><kbd>Alt+/</kbd></button><button id="chat-menu" role="menuitem" data-i18n="询问 Codex / 修改选区">询问 Codex / 修改选区</button><button id="chat-quick-menu" role="menuitem" data-i18n="Codex 悬浮对话">Codex 悬浮对话</button></div>
-<div id="pdf-menu" popover="auto" role="menu" aria-label="PDF 选区操作" data-i18n-aria-label="PDF 选区操作"><button id="pdf-chat-menu" role="menuitem" data-i18n="询问 Codex / 修改选区">询问 Codex / 修改选区</button><button id="pdf-chat-quick-menu" role="menuitem" data-i18n="Codex 悬浮对话">Codex 悬浮对话</button></div>
+<div id="editor-menu" popover="auto" role="menu" aria-label="源码操作" data-i18n-aria-label="源码操作"><button id="toggle-comment" role="menuitem" aria-keyshortcuts="Alt+/ Control+/ Meta+/"><span data-i18n="注释 / 取消注释">注释 / 取消注释</span><kbd>Alt+/</kbd></button><button id="chat-menu" role="menuitem" data-i18n="在侧边聊天中提问">在侧边聊天中提问</button><button id="chat-quick-menu" role="menuitem" data-i18n="Codex 悬浮对话">Codex 悬浮对话</button></div>
+<div id="pdf-menu" popover="auto" role="menu" aria-label="PDF 选区操作" data-i18n-aria-label="PDF 选区操作"><button id="pdf-chat-menu" role="menuitem" data-i18n="在侧边聊天中提问">在侧边聊天中提问</button><button id="pdf-chat-quick-menu" role="menuitem" data-i18n="Codex 悬浮对话">Codex 悬浮对话</button></div>
 <dialog id="history-dialog" aria-labelledby="history-title"><header><strong id="history-title" data-i18n="版本历史">版本历史</strong><span id="history-file"></span><button id="history-refresh" data-i18n="刷新">刷新</button><button id="history-close" aria-label="关闭历史" data-i18n-aria-label="关闭历史">×</button></header><div id="history-status" role="status" aria-live="polite"></div>
 <div class="history-body"><section class="history-content"><div class="history-toolbar"><button id="history-diff" aria-pressed="true" data-i18n="改动对比">改动对比</button><button id="history-pdf" aria-pressed="false" data-i18n="PDF 改动">PDF 改动</button><button id="history-source" aria-pressed="false" data-i18n="此版本源码">此版本源码</button><label for="history-target" data-i18n="对比">对比</label><select id="history-target"><option value="previous" data-i18n="与上一版比较">与上一版比较</option><option value="current" data-i18n="当前编辑内容">当前编辑内容</option></select></div><div class="history-code-shell"><div id="history-code" tabindex="0" aria-label="历史源码与差异" data-i18n-aria-label="历史源码与差异"></div><div id="history-pdf-view" hidden tabindex="0" aria-label="改动附近的 PDF 对比" data-i18n-aria-label="改动附近的 PDF 对比"></div><button id="history-next" hidden><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16m-6-6 6 6 6-6"/></svg><span id="history-next-label"></span></button></div><form id="history-label-form"><label for="history-label" data-i18n="版本名称">版本名称</label><input id="history-label" maxlength="120" placeholder="例如：投稿前定稿" data-i18n-placeholder="例如：投稿前定稿"><button id="history-label-save" type="submit" data-i18n="保存名称">保存名称</button></form></section><aside class="history-sidebar" aria-label="按时间排列的版本" data-i18n-aria-label="按时间排列的版本"><div class="history-user"><span data-i18n="当前用户">当前用户</span></div><div id="history-list"></div><button id="history-more" hidden data-i18n="加载更早版本">加载更早版本</button></aside></div>
-<footer><small><span data-i18n="新增高亮 · 删除线表示删去">新增高亮 · 删除线表示删去</span><br><span data-i18n="本地保存；恢复前会保留当前内容和未保存草稿。">本地保存；恢复前会保留当前内容和未保存草稿。</span></small><button id="history-restore" disabled data-i18n="恢复此版本">恢复此版本</button><span id="history-confirmation" hidden><span data-i18n="确定恢复？">确定恢复？</span> <button id="history-cancel" data-i18n="取消">取消</button> <button id="history-confirm" data-i18n="确认恢复">确认恢复</button></span></footer></dialog>
+<footer><small><span data-i18n="自动记录按 5 分钟合并显示；命名版本单独保留。">自动记录按 5 分钟合并显示；命名版本单独保留。</span><br><span data-i18n="本地保存；恢复前会保留当前内容和未保存草稿。">本地保存；恢复前会保留当前内容和未保存草稿。</span></small><button id="history-restore" disabled data-i18n="恢复此版本">恢复此版本</button><span id="history-confirmation" hidden><span data-i18n="确定恢复？">确定恢复？</span> <button id="history-cancel" data-i18n="取消">取消</button> <button id="history-confirm" data-i18n="确认恢复">确认恢复</button></span></footer></dialog>
 <script src="/vendor/codemirror.js"></script><script src="/vendor/stex.js"></script><script src="/vendor/dialog.js"></script><script src="/vendor/searchcursor.js"></script><script src="/vendor/matchbrackets.js"></script><script src="/vendor/vim.js"></script>
 <script src="/vendor/show-hint.js"></script><script src="/vendor/latex-hint.js"></script>
 <script src="/vendor/comment.js"></script>
@@ -120,17 +125,27 @@ initSettings();
 const source=document.querySelector('#source'),status=document.querySelector('#status'),log=document.querySelector('#log');
 setText(status,'正在打开…');
 const openButton=document.querySelector('#open'),compileButton=document.querySelector('#compile'),forwardButton=document.querySelector('#forward'),preview=document.querySelector('#preview');
+function showCompileLog(show){
+  log.hidden=!show;preview.style.visibility=show?'hidden':'';preview.inert=show;
+  preview.setAttribute('aria-hidden',String(show));
+  document.querySelector('#log-toggle').setAttribute('aria-pressed',String(show));
+  document.querySelector('.pdf-toolbar').dataset.logView=String(show);
+}
+document.querySelector('#log-toggle').onclick=()=>showCompileLog(log.hidden);
+
 pdfjsLib.GlobalWorkerOptions.workerSrc='/vendor/pdfjs/build/pdf.worker.mjs';
 const pdfEvents=new EventBus(),pdfLinks=new PDFLinkService({eventBus:pdfEvents,externalLinkTarget:2});
 const pdfViewer=new PDFViewer({container:preview,viewer:document.querySelector('#pdf-viewer'),eventBus:pdfEvents,linkService:pdfLinks,annotationEditorMode:-1,removePageBorders:true,imageResourcesPath:'/vendor/pdfjs/web/images/'});
 pdfLinks.setViewer(pdfViewer);
-let pdfTask=null,pdfBuild='',panMode=true;
+let pdfTask=null,pdfBuild='',panMode=true,panHintTimer;
 document.querySelector('#pan-mode').onclick=()=>{
   endSpacePan();panMode=!panMode;preview.classList.toggle('hand-tool',panMode);
-  const button=document.querySelector('#pan-mode');setText(button,panMode?'拖动':'选字');button.setAttribute('aria-pressed',String(panMode));
+  const button=document.querySelector('#pan-mode');setText(document.querySelector('#pan-label'),panMode?'拖动':'选字');button.setAttribute('aria-pressed',String(panMode));
+  const hint=document.querySelector('#pan-hint');clearTimeout(panHintTimer);hint.hidden=panMode;
+  if(!panMode)panHintTimer=setTimeout(()=>{hint.hidden=true;},2500);
 };
 const editor=CodeMirror.fromTextArea(source,{mode:'text/x-stex',theme:'cobalt',keyMap:'vim',lineNumbers:true,lineWrapping:true,tabSize:2,indentUnit:2,readOnly:'nocursor',screenReaderLabel:t('LaTeX 源码'),extraKeys:{'Ctrl-S':compile,'Cmd-S':compile,'Ctrl-Space':completeLatex,'Alt-/':toggleSourceComment,'Ctrl-/':toggleSourceComment,'Cmd-/':toggleSourceComment}});
-window.addEventListener('latex-language-change',()=>{editor.setOption('screenReaderLabel',t('LaTeX 源码'));setText(document.querySelector('#pan-mode'),panMode?'拖动':'选字');});
+window.addEventListener('latex-language-change',()=>{editor.setOption('screenReaderLabel',t('LaTeX 源码'));setText(document.querySelector('#pan-label'),panMode?'拖动':'选字');});
 attachMathHover(editor,katex);
 document.querySelector('main').append(document.querySelector('#chat-panel'));
 const selectionChat=attachSelectionChat(editor,request);
@@ -185,9 +200,9 @@ editor.on('contextmenu',(cm,event)=>{
 commentAction.onclick=()=>{commentMenu.hidePopover();toggleSourceComment(editor);editor.focus();};
 editor.on('scroll',()=>commentMenu.hidePopover());
 function completeLatex(cm){
-  if(cm.getOption('readOnly')||cm.getOption('keyMap')!=='vim-insert'||!CodeMirror.hint.latex(cm))return;
+  if(cm.getOption('readOnly')||!['default','vim-insert'].includes(cm.getOption('keyMap'))||!CodeMirror.hint.latex(cm))return;
   cm.showHint({hint:CodeMirror.hint.latex,completeSingle:false,closeCharacters:/[\s()\[\]};:>,]/,
-    extraKeys:{'Ctrl-N':'Down','Ctrl-P':'Up',Esc:(cm,menu)=>{menu.close();CodeMirror.Vim.handleKey(cm,'<Esc>');}}});
+    extraKeys:{'Ctrl-N':'Down','Ctrl-P':'Up',Esc:(cm,menu)=>{menu.close();if(cm.getOption('keyMap')==='vim-insert')CodeMirror.Vim.handleKey(cm,'<Esc>');}}});
 }
 editor.on('inputRead',(cm,change)=>{if(change.origin==='+input'&&!cm.state.completionActive)completeLatex(cm);});
 CodeMirror.Vim.defineAction('centerAndSync',cm=>{
@@ -231,8 +246,30 @@ if(!theme.value)theme.value='cobalt';
 function setTheme(){document.documentElement.dataset.theme=theme.value;editor.setOption('theme',theme.value);try{localStorage.setItem('latex-codex-theme',theme.value);}catch(e){}}
 theme.onchange=setTheme;setTheme();
 CodeMirror.commands.save=compile;
-editor.on('vim-mode-change',mode=>{document.querySelector('#vim-mode').textContent='VIM · '+mode.mode.toUpperCase();if(mode.mode!=='insert')editor.closeHint();});
+editor.on('vim-mode-change',mode=>{if(mode.mode!=='insert')editor.closeHint();});
+const editorMode=document.querySelector('#editor-mode');
+try{editorMode.value=localStorage.getItem('latex-codex-editor-mode')||'vim';}catch(e){}
+if(!['vim','default'].includes(editorMode.value))editorMode.value='vim';
+function setEditorMode(){
+  editor.closeHint();editor.setOption('keyMap',editorMode.value);
+  editor.setOption('showCursorWhenSelecting',editorMode.value==='default');
+  try{localStorage.setItem('latex-codex-editor-mode',editorMode.value);}catch(e){}
+}
+editorMode.onchange=setEditorMode;setEditorMode();
 let version='',saved='',busy=false,timer,conflict=false,pdfVersion='',syncBusy=false,pendingForward=false,compiledLabels={};
+const autoCompile=document.querySelector('#auto-compile');
+autoCompile.checked=true;
+try{autoCompile.checked=localStorage.getItem('latex-codex-auto-compile')!=='off';}catch(e){}
+function updateCompileCaption(){
+  const label=document.querySelector('#filename');
+  if(label.dataset.name)setText(label,autoCompile.checked?'{name} · 停止输入 0.8 秒后自动保存并编译':'{name} · 自动保存，手动编译',{name:label.dataset.name});
+}
+function scheduleSave(){clearTimeout(timer);timer=setTimeout(()=>compile(autoCompile.checked),800);}
+autoCompile.onchange=()=>{
+  try{localStorage.setItem('latex-codex-auto-compile',autoCompile.checked?'on':'off');}catch(e){}
+  clearTimeout(timer);updateCompileCaption();
+  if(!conflict&&(editor.getValue()!==saved||(autoCompile.checked&&pdfVersion!==version)))scheduleSave();
+};
 let errorLine=null;
 function showCompileError(error){
   if(errorLine){editor.removeLineClass(errorLine,'background','compile-error-line');editor.removeLineClass(errorLine,'gutter','compile-error-gutter');errorLine=null;}
@@ -246,10 +283,10 @@ function showCompileError(error){
 function updateSyncControls(){forwardButton.disabled=busy||syncBusy||editor.getOption('readOnly');compileButton.disabled=forwardButton.disabled;openButton.disabled=busy||syncBusy;document.querySelector('#history-open').disabled=!!forwardButton.disabled;}
 async function request(url,options){const r=await fetch(url,options);const data=await r.json();if(!r.ok){const e=new Error(data.error||t('请求失败'));e.conflict=r.status===409;throw e;}return data;}
 function display(data){
-  showCompileError(null);
-  editor.setOption('keyMap','default');editor.swapDoc(new CodeMirror.Doc(data.source,editor.getOption('mode')));editor.setOption('keyMap','vim');
+  showCompileError(null);showCompileLog(false);
+  editor.setOption('keyMap','default');editor.swapDoc(new CodeMirror.Doc(data.source,editor.getOption('mode')));editor.setOption('keyMap',editorMode.value);
   saved=data.source;version=data.version;pdfVersion='';compiledLabels={};editor.setOption('readOnly',false);conflict=false;updateSyncControls();
-  const label=document.querySelector('#filename');setText(label,'{name} · 停止输入 0.8 秒后自动保存并编译',{name:data.name});label.title=data.path;
+  const label=document.querySelector('#filename');label.dataset.name=data.name;label.title=data.path;updateCompileCaption();
   document.querySelector('a[download]').download=data.name.replace(/\.tex$/i,'.pdf');
 }
 async function openFile(){
@@ -264,24 +301,29 @@ async function openFile(){
   }catch(e){setText(status,'打开失败：{message}',{message:e.message});}
   finally{busy=false;editor.setOption('readOnly',false);updateSyncControls();}
   if(opened)await compile();
-  else if(editor.getValue()!==saved&&!conflict)timer=setTimeout(compile,800);
+  else if(editor.getValue()!==saved&&!conflict)scheduleSave();
 }
-async function compile(){
+async function compile(compilePdf=true){
+  compilePdf=compilePdf!==false;
   clearTimeout(timer);if(busy||conflict||editor.getOption('readOnly'))return;
-  busy=true;compileButton.setAttribute('aria-busy','true');updateSyncControls();const text=editor.getValue(),changed=text!==saved;setText(status,'正在保存并编译…');
+  busy=true;compileButton.setAttribute('aria-busy',String(compilePdf));updateSyncControls();const text=editor.getValue(),changed=text!==saved;setText(status,compilePdf?'正在保存并编译…':'正在保存…');
   try{
-    const data=await request('/compile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:text,version})});
-    version=data.version;saved=text;pdfVersion='';log.textContent=data.log;
-    setText(document.querySelector('#engine'),'{engine} · PDF.js',{engine:data.engine});
-    document.querySelector('#details').open=!data.ok;
+    const data=await request(compilePdf?'/compile':'/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:text,version})});
+    version=data.version;saved=text;
+    if(!compilePdf){
+      if(pdfVersion!==version){pdfVersion='';compiledLabels={};}
+      setText(status,'已保存 · 自动编译已关闭');return;
+    }
+    pdfVersion='';log.textContent=data.log;
+    if(!data.ok)showCompileLog(true);
     setText(status,data.ok?'已保存 · 编译成功':'已保存 · 编译失败，请查看日志');
     showCompileError(!data.ok&&editor.getValue()===text?data.diagnostic:null);
     if(data.ok){
       try{await refreshPreview(data);pdfVersion=data.sync?data.version:'';compiledLabels=data.labels||{};}
-      catch(e){setText(status,'已保存 · 编译成功，PDF 预览加载失败');log.textContent+='\n'+e.message;document.querySelector('#details').open=true;}
+      catch(e){setText(status,'已保存 · 编译成功，PDF 预览加载失败');log.textContent+='\n'+e.message;showCompileLog(true);}
     }
-  }catch(e){conflict=true;setText(status,e.conflict?'文件已被外部修改，请先重新读取':'保存状态待确认，请重新读取');log.textContent=e.message;document.querySelector('#details').open=true;}
-  finally{busy=false;compileButton.setAttribute('aria-busy','false');updateSyncControls();if(!conflict&&editor.getValue()!==text)timer=setTimeout(compile,800);else if(!conflict&&pdfVersion&&(pendingForward||changed)){const quiet=!pendingForward;pendingForward=false;synchronize('forward',undefined,quiet);}}
+  }catch(e){conflict=true;setText(status,e.conflict?'文件已被外部修改，请先重新读取':'保存状态待确认，请重新读取');log.textContent=e.message;showCompileLog(true);}
+  finally{busy=false;compileButton.setAttribute('aria-busy','false');updateSyncControls();if(!conflict&&(editor.getValue()!==text||(!compilePdf&&autoCompile.checked&&pdfVersion!==version)))scheduleSave();else if(!conflict&&pendingForward&&!compilePdf){pendingForward=false;synchronize('forward');}else if(!conflict&&pdfVersion&&(pendingForward||(compilePdf&&changed))){const quiet=!pendingForward;pendingForward=false;synchronize('forward',undefined,quiet);}}
 }
 async function restoreHistory(data){
   if(busy||syncBusy||editor.getValue()!==data.source||version!==data.version)throw new Error(t('编辑内容已变化，请刷新历史后重试。'));
@@ -328,8 +370,8 @@ async function load(force=false){
     if(busy||syncBusy||historyDialog.open)return;
     if(!force&&version&&data.version===version)return;
     if(!force&&version&&editor.getValue()!==saved){conflict=true;setText(status,'文件已被外部修改；保留了编辑框内容，请先处理冲突');return;}
-    display(data);
-    await compile();
+    const firstLoad=!version;display(data);
+    await compile(firstLoad||force||autoCompile.checked);
   }catch(e){setText(status,'读取失败：{message}',{message:e.message});}
 }
 async function synchronize(direction,position,quiet=false){
@@ -341,6 +383,7 @@ async function synchronize(direction,position,quiet=false){
     if(direction==='forward'&&(editor.getValue()!==saved||!pdfVersion))await compile();
     if(!pdfVersion||pdfVersion!==version||editor.getValue()!==saved)throw new Error(t('请先成功编译当前修改，再定位。'));
     if(direction==='selection'&&(position.version!==version||position.pdf_revision!==pdfBuild||position.source!==saved))throw new Error(t('PDF 或源码已变化，请重新选择 PDF 文字。'));
+    if(direction==='forward'&&!quiet)showCompileLog(false);
     const revision=version,build=pdfBuild;
     if(direction==='forward'){const cursor=editor.getCursor();position={line:cursor.line+1,column:cursor.ch+1};}
     const locate=point=>request('/synctex',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({direction:direction==='selection'?'backward':direction,version:revision,pdf_revision:build,...point})});
@@ -349,7 +392,7 @@ async function synchronize(direction,position,quiet=false){
     if(direction==='selection'){
       if(selectionChat.busy)throw new Error(t('Codex 正在回复，请稍后发送。'));
       const range=sourcePdfTextRange(saved,data.map(point=>point.line),position.text,compiledLabels);
-      CodeMirror.Vim.handleKey(editor,'<Esc>');
+      if(editor.getOption('keyMap').startsWith('vim'))CodeMirror.Vim.handleKey(editor,'<Esc>');
       editor.setSelection(range.from,range.to);editor.scrollIntoView(range,40);
       setText(status,range.approximate?'已匹配相似 LaTeX 选区 · 第 {from}–{to} 行':'已精确选中对应 LaTeX 文字 · 第 {from}–{to} 行',{from:range.from.line+1,to:range.to.line+1});
       return true;
@@ -370,7 +413,7 @@ async function synchronize(direction,position,quiet=false){
       setTimeout(()=>mark.remove(),2000);
       setText(status,'已定位到 PDF 第 {page} 页',data);
     }else{
-      CodeMirror.Vim.handleKey(editor,'<Esc>');
+      if(editor.getOption('keyMap').startsWith('vim'))CodeMirror.Vim.handleKey(editor,'<Esc>');
       const cursor={line:Math.min(data.line-1,editor.lastLine()),ch:data.column-1};
       editor.setCursor(cursor);editor.focus();editor.scrollIntoView(cursor,editor.getScrollInfo().clientHeight/2);
       setText(status,'已定位到源码第 {line} 行',data);
@@ -615,7 +658,7 @@ preview.ondblclick=e=>{
   if(spacePan)spaceLocked=true;
   synchronize('backward',pdfPoint(element,e.clientX,e.clientY));
 };
-editor.on('change',()=>{showCompileError(null);setText(status,conflict?'请先处理文件冲突':'尚未保存…');clearTimeout(timer);timer=setTimeout(compile,800);});
+editor.on('change',()=>{showCompileError(null);setText(status,conflict?'请先处理文件冲突':'尚未保存…');clearTimeout(timer);scheduleSave();});
 document.querySelector('#compile').onclick=compile;
 openButton.onclick=openFile;
 document.querySelector('#reload').onclick=()=>load(true);
@@ -898,9 +941,69 @@ def history_pdf_changes(server, path, before, after):
     matcher = difflib.SequenceMatcher(None, old_lines, new_lines, autojunk=len(old_lines)*len(new_lines)>4_000_000)
     for kind, a, b, c, d in matcher.get_opcodes():
         if kind != 'equal':
-            changes.append({'kind': kind, 'before': history_pdf_regions(old, a, b),
-                            'after': history_pdf_regions(new, c, d)})
+            change = {'kind': kind, 'before': history_pdf_regions(old, a, b),
+                      'after': history_pdf_regions(new, c, d)}
+            changes.append(change)
+    history_pdf_highlights(old, new, changes)
     return {'before': '/history/pdf/' + old_key, 'after': '/history/pdf/' + new_key, 'changes': changes}
+
+
+def history_pdf_highlights(old, new, changes):
+    def words(snapshot):
+        if 'words' not in snapshot:
+            # Reuse the installed Poppler tools; no rasterization or source markup.
+            sibling = Path(shutil.which('pdfinfo')).with_name('pdftotext' + ('.exe' if os.name == 'nt' else ''))
+            executable = str(sibling) if sibling.is_file() else shutil.which('pdftotext')
+            if not executable:
+                raise ValueError('PDF 改动标红需要 Poppler 的 pdftotext。')
+            result = subprocess.run([executable, '-bbox', '-enc', 'UTF-8', str(snapshot['pdf']), '-'],
+                                    capture_output=True, timeout=10)
+            if result.returncode:
+                raise ValueError('无法读取历史 PDF 的文字位置。')
+            # Some TeX math fonts use control codes that Poppler emits as invalid XML text.
+            xml = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', lambda match: chr(0xe000 + ord(match[0])),
+                         result.stdout.decode('utf-8', errors='replace'))
+            try:
+                pages = ET.fromstring(xml).findall('.//{*}page')
+            except ET.ParseError as error:
+                raise ValueError('无法解析历史 PDF 的文字位置。') from error
+            snapshot['words'] = []
+            for number, page in enumerate(pages, 1):
+                left, _, _, top = snapshot['boxes'][number - 1]
+                for word in page.findall('.//{*}word'):
+                    rect = [left + float(word.get('xMin')), top - float(word.get('yMax')),
+                            left + float(word.get('xMax')), top - float(word.get('yMin'))]
+                    snapshot['words'].append((number, rect, unicodedata.normalize('NFKC', word.text or '')))
+        return snapshot['words']
+
+    def tokens(items):
+        result = []
+        for word in items:
+            page, rect, text = word
+            if result:
+                previous, parts = result[-1]
+                last_page, last_rect, _ = parts[-1]
+                if re.search(r'[^\W\d_]-$', previous) and text[:1].isalpha() and (
+                    page != last_page or rect[3] < last_rect[1]
+                ):
+                    result[-1] = (previous[:-1] + text, parts + [word])
+                    continue
+            result.append((text, [word]))
+        return result
+
+    # Compare before cropping; normalize line-end hyphens so reflow never colors unchanged words.
+    before, after = tokens(words(old)), tokens(words(new))
+    regions = [region for change in changes for region in change['after']]
+    for region in regions:
+        region['highlights'] = []
+    matcher = difflib.SequenceMatcher(None, [word[0] for word in before], [word[0] for word in after],
+                                     autojunk=len(before)*len(after)>4_000_000)
+    for kind, _, _, first, last in matcher.get_opcodes():
+        if kind in ('insert', 'replace'):
+            for page, rect, _ in (word for _, parts in after[first:last] for word in parts):
+                for region in regions:
+                    if page == region['page'] and region['rect'][0] <= (rect[0]+rect[2])/2 <= region['rect'][2] and region['rect'][1] <= (rect[1]+rect[3])/2 <= region['rect'][3]:
+                        region['highlights'].append(rect)
 
 
 def make_server(path, port=0, main_thread=None):
@@ -978,6 +1081,11 @@ def make_server(path, port=0, main_thread=None):
                     self.reply(400, {'error': str(error)})
                 except (OSError, UnicodeError, sqlite3.Error) as error:
                     self.reply(500, {'error': str(error)})
+            elif route == '/chat/history':
+                try:
+                    self.reply(200, history.chat_read())
+                except (OSError, sqlite3.Error) as error:
+                    self.reply(500, {'error': str(error)})
             elif route == '/chat/context':
                 try:
                     context = main_chat_context(main_thread)
@@ -1014,7 +1122,7 @@ def make_server(path, port=0, main_thread=None):
             nonlocal path, history
             if not self.local():
                 return
-            if self.path not in ('/compile', '/open', '/synctex', '/chat', '/chat/cancel', '/history/diff', '/history/label', '/history/restore', '/history/pdf'):
+            if self.path not in ('/compile', '/save', '/open', '/synctex', '/chat', '/chat/cancel', '/chat/new', '/history/diff', '/history/label', '/history/restore', '/history/pdf'):
                 self.reply(404, {'error': 'Not found.'})
                 return
             try:
@@ -1057,11 +1165,33 @@ def make_server(path, port=0, main_thread=None):
                         self.server.chat = None
                     self.reply(200, {'cancelled': True})
                     return
+                if self.path == '/chat/new':
+                    if data.get('path') != str(path):
+                        raise FileConflict('当前文件已切换，请重新打开对话。')
+                    if self.server.chat and self.server.chat.result['status'] == 'running':
+                        raise FileConflict('请先停止当前回复。')
+                    self.reply(200, history.chat_new())
+                    return
                 if self.path == '/chat':
                     if self.server.chat and self.server.chat.result['status'] == 'running':
                         self.reply(409, {'error': 'Codex 正在回复，请稍候或停止后重试。'})
                         return
-                    self.server.chat = ChatJob(chat_context(data, path, main_thread)).start()
+                    memory = None
+                    memory_revision = None
+                    if data.get('remember') is True:
+                        state = history.chat_read()
+                        if type(data.get('memory_revision')) is not int or data['memory_revision'] != state['revision']:
+                            raise FileConflict('项目对话已更新，请重新打开对话后重试。')
+                        incoming = data.get('messages')
+                        if not isinstance(incoming, list) or not incoming:
+                            raise ValueError('请输入问题。')
+                        recent = state['messages'][-38:]
+                        # ponytail: replay the recent 20 turns within 80k characters; summarize older turns if needed later.
+                        while recent and len(json.dumps(recent,ensure_ascii=False)) > 80_000:
+                            recent = recent[2:]
+                        data = {**data, 'messages': recent + [incoming[-1]]}
+                        memory, memory_revision = history, state['revision']
+                    self.server.chat = ChatJob(chat_context(data, path, main_thread), memory, memory_revision).start()
                     self.reply(200, {'id': self.server.chat.id})
                     return
                 if self.path == '/synctex':
@@ -1092,6 +1222,12 @@ def make_server(path, port=0, main_thread=None):
                     return
                 if not isinstance(data.get('source'), str) or not isinstance(data.get('version'), str):
                     raise ValueError('Expected source and version strings.')
+                if self.path == '/save':
+                    state = save_source(path, data['source'], data['version'], history)
+                    if state['version'] != self.server.sync_version:
+                        self.server.sync_version = ''
+                    self.reply(200, state)
+                    return
                 engine_name, _ = compiler(data['source'])
                 version = save_source(path, data['source'], data['version'], history)['version']
                 self.server.sync_version = ''

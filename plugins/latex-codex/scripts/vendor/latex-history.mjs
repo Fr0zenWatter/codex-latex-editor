@@ -1,5 +1,48 @@
 import {t, language} from './latex-settings.mjs';
 
+export function pdfChangeCard(index) {
+  const block = document.createElement('article'); block.className = 'history-pdf-change';
+  const header = document.createElement('div'); header.className = 'history-pdf-heading';
+  const heading = document.createElement('h3'), toggle = document.createElement('button');
+  toggle.type = 'button'; toggle.className = 'history-pdf-toggle';
+  toggle.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3H3v18h9"/><path d="M12 3h9v18h-9M12 3v18" stroke-dasharray="3 3"/></svg>';
+  const view = document.createElement('div'); view.className = 'history-pdf-image';
+  const columns = {};
+  for (const side of ['after','before']) {
+    columns[side] = document.createElement('section'); view.append(columns[side]);
+  }
+  let side = 'after';
+  function update() {
+    block.dataset.side = side;
+    heading.textContent = t('改动 {number}', {number:index+1}) + ' · ' + t(side === 'after' ? '修改后' : '修改前');
+    for (const name of ['before','after']) columns[name].hidden = name !== side;
+    const label = t(side === 'after' ? '查看修改前' : '查看修改后');
+    toggle.title = label; toggle.setAttribute('aria-label', label);
+    toggle.setAttribute('aria-pressed', String(side === 'before'));
+  }
+  toggle.onclick = () => { side = side === 'after' ? 'before' : 'after'; update(); };
+  header.append(heading, toggle); block.append(header, view); update();
+  return {block, columns};
+}
+
+export function markPdfText(canvas, viewport, x, y, rectangles) {
+  const context = canvas.getContext('2d');
+  for (const rect of rectangles) {
+    const box = [...viewport.convertToViewportPoint(...rect.slice(0,2)),...viewport.convertToViewportPoint(...rect.slice(2))];
+    const left = Math.max(0, Math.floor(Math.min(box[0],box[2])-x));
+    const top = Math.max(0, Math.floor(Math.min(box[1],box[3])-y));
+    const right = Math.min(canvas.width, Math.ceil(Math.max(box[0],box[2])-x));
+    const bottom = Math.min(canvas.height, Math.ceil(Math.max(box[1],box[3])-y));
+    if (right <= left || bottom <= top) continue;
+    const pixels = context.getImageData(left,top,right-left,bottom-top);
+    for (let i=0; i<pixels.data.length; i+=4) {
+      const ink = 1-Math.min(...pixels.data.subarray(i,i+3))/255;
+      pixels.data[i] = 255-35*ink; pixels.data[i+1] = pixels.data[i+2] = 255-217*ink;
+    }
+    context.putImageData(pixels,left,top);
+  }
+}
+
 export function sourceRows(runs) {
   const rows = []; let number = 1, row = {number:null, parts:[], changed:false};
   for (const run of runs) for (const part of run.text.split(/(\r\n|\n|\r)/)) {
@@ -75,12 +118,9 @@ export function attachHistory(editor, request, getState, restore) {
       }
       for (const [index, change] of data.changes.entries()) {
         if (ticket !== pdfSerial) return;
-        const block = document.createElement('article'); block.className = 'history-pdf-change';
-        const heading = document.createElement('h3'); heading.textContent = t('改动 {number}', {number:index+1}); block.append(heading);
-        const pair = document.createElement('div'); pair.className = 'history-pdf-pair'; block.append(pair); pdf.append(block);
-        for (const side of ['before','after']) {
-          const column = document.createElement('section'), label = document.createElement('h4');
-          label.textContent = t(side === 'before' ? '修改前' : '修改后'); column.append(label); pair.append(column);
+        const {block, columns} = pdfChangeCard(index); pdf.append(block);
+        for (const side of ['after','before']) {
+          const column = columns[side], label = t(side === 'before' ? '修改前' : '修改后');
           if (!change[side].length) {
             const empty = document.createElement('p');
             empty.textContent = t(side === 'before' && change.kind === 'insert' ? '此处新增' : side === 'after' && change.kind === 'delete' ? '此处删除' : '这处源码没有直接对应的 PDF 内容，请查看源码对比。'); column.append(empty);
@@ -88,15 +128,16 @@ export function attachHistory(editor, request, getState, restore) {
           for (const region of change[side]) {
             const page = await documents[side].getPage(region.page);
             if (ticket !== pdfSerial) return;
-            const ratio = window.devicePixelRatio || 1, width = Math.max(240, column.clientWidth || pdf.clientWidth/2);
+            const ratio = window.devicePixelRatio || 1, width = Math.max(240, columns.after.clientWidth || columns.before.clientWidth || pdf.clientWidth-32);
             const viewport = page.getViewport({scale:width/(region.rect[2]-region.rect[0])*ratio});
             const box = [...viewport.convertToViewportPoint(...region.rect.slice(0,2)),...viewport.convertToViewportPoint(...region.rect.slice(2))];
             const x = Math.floor(Math.min(box[0],box[2])), y = Math.floor(Math.min(box[1],box[3]));
             const canvas = document.createElement('canvas');
             canvas.width = Math.ceil(Math.max(box[0],box[2]))-x; canvas.height = Math.ceil(Math.max(box[1],box[3]))-y;
-            canvas.setAttribute('role','img'); canvas.setAttribute('aria-label',t('{side} · PDF 第 {page} 页',{side:label.textContent,page:region.page})); column.append(canvas);
+            canvas.setAttribute('role','img'); canvas.setAttribute('aria-label',t('{side} · PDF 第 {page} 页',{side:label,page:region.page})); column.append(canvas);
             await page.render({canvasContext:canvas.getContext('2d',{alpha:false}),viewport,transform:[1,0,0,1,-x,-y]}).promise;
             if (ticket !== pdfSerial) return;
+            if (side === 'after') markPdfText(canvas,viewport,x,y,region.highlights || []);
           }
         }
       }

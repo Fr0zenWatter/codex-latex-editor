@@ -45,6 +45,18 @@ with tempfile.TemporaryDirectory() as directory:
         assert accepted.wait(2)
         assert request('/')[0] == 200, 'An idle browser preconnect must not block the page.'
         revision = json.loads(request('/state')[1])['version']
+        server.pdf, server.pdf_revision, server.sync_version = b'%PDF-preserved', 'preserved', revision
+        with patch('editor.compile_tex') as no_compile:
+            assert request('/save', {'source': 'Original.', 'version': revision})[0] == 200
+            assert server.sync_version == revision, 'Unchanged autosave preserves synchronization.'
+            code, body = request('/save', {'source': 'Saved without compile.', 'version': revision})
+            assert code == 200 and path.read_text(encoding='utf-8') == 'Saved without compile.'
+            assert not server.sync_version and server.pdf == b'%PDF-preserved'
+            assert request('/save', {'source': 'Stale.', 'version': revision})[0] == 409
+            assert request('/save', {'source': 123, 'version': revision})[0] == 400
+            no_compile.assert_not_called()
+        revision = json.loads(body)['version']
+
 
         def compile_tex(*args):
             started.set()

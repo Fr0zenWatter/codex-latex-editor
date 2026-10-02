@@ -3,12 +3,21 @@ import json
 from pathlib import Path
 import tempfile
 import threading
+from types import SimpleNamespace
 from urllib.error import HTTPError
 from urllib.request import ProxyHandler, Request, build_opener
 from unittest.mock import patch
 
-from editor import make_server, snapshot
+from editor import make_server, snapshot, history_pdf_highlights
 from history import History
+
+old = {'words':[(1, [0, 0, 1, 1], 'x')]}
+new = {'pdf':Path('unused.pdf'), 'boxes':[[0, 0, 10, 10]]}
+changes = [{'after':[{'page':1,'rect':[0, 0, 10, 10]}]}]
+xml = b'<html><page><word xMin="1" yMin="2" xMax="3" yMax="4">\x10</word></page></html>'
+with patch('editor.subprocess.run', return_value=SimpleNamespace(returncode=0, stdout=xml)):
+    history_pdf_highlights(old, new, changes)
+assert new['words'][0][2] == '\ue010' and changes[0]['after'][0]['highlights'] == [[1, 6, 3, 8]]
 
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory) / 'main.tex'
@@ -48,6 +57,9 @@ with tempfile.TemporaryDirectory() as directory:
         assert snapshot(path) == state and history.list() == revisions, 'Historical compilation must preserve source and history.'
         assert request('/pdf')[1] == b'%PDF-live-preview' and server.pdf_revision == 'live-preview'
         assert len(server.history_pdfs) == 2
+        highlights = data['changes'][0]['after'][0]['highlights']
+        marked = [text for cached in server.history_pdfs.values() for _, rect, text in cached.get('words', []) if rect in highlights]
+        assert marked == ['improved'], marked
         with patch('editor.compile_tex', side_effect=AssertionError('Cached snapshots must not recompile')):
             assert request('/history/pdf', payload)[0] == 200
         assert request('/history/pdf', {**payload, 'compare':'current', 'source':after})[1]['changes'] == []

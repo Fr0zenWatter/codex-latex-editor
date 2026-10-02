@@ -1,6 +1,6 @@
 // Run: node test_history_ui.mjs. Exercise browsing/restore without a browser or TeX.
 import assert from 'node:assert/strict';
-import {attachHistory, sourceRows} from './vendor/latex-history.mjs';
+import {attachHistory, sourceRows, pdfChangeCard, markPdfText} from './vendor/latex-history.mjs';
 
 const numbered = sourceRows([{kind:'equal',text:'first\n'}, {kind:'delete',text:'removed\n'}, {kind:'insert',text:'new\n'}, {kind:'equal',text:'last'}]);
 assert.deepEqual(numbered.map(row=>row.number), [1,null,2,3]);
@@ -30,6 +30,20 @@ globalThis.document = {querySelector:selector => $(selector.slice(9)), createEle
 globalThis.ResizeObserver = class {observe(){}};
 globalThis.window = {addEventListener(){}};
 globalThis.matchMedia = ()=>({matches:true});
+const card = pdfChangeCard(0), toggle = card.block.children[0].children[1];
+assert.equal(card.block.dataset.side,'after');
+assert(card.columns.before.hidden && !card.columns.after.hidden);
+assert.equal(toggle.attributes['aria-label'],'查看修改前');
+toggle.onclick(); assert.equal(card.block.dataset.side,'before');
+assert(!card.columns.before.hidden && card.columns.after.hidden);
+assert.equal(toggle.attributes['aria-label'],'查看修改后');
+toggle.onclick(); assert.equal(card.block.dataset.side,'after');
+const pixels = {data:new Uint8ClampedArray([0,0,0,255,255,255,255,255,128,128,128,255])};
+let written;
+markPdfText({width:3,height:1,getContext:()=>({getImageData:()=>pixels,putImageData:data=>written=data})},
+  {convertToViewportPoint:(x,y)=>[x,y]},0,0,[[0,0,3,1]]);
+assert.deepEqual([...written.data.slice(0,8)],[220,38,38,255,255,255,255,255]);
+assert(written.data[8]>written.data[9] && written.data[11]===255,'Keep antialiasing and alpha while tinting changed glyphs red.');
 const events = {};
 const context = {path:'paper.tex', source:'unsaved draft', version:'current-version'};
 const rows = [{id:2, created:'2026-10-01T00:01:00Z', kind:'save', label:''}, {id:1, created:'2026-10-01T00:00:00Z', kind:'open', label:'初稿'}];

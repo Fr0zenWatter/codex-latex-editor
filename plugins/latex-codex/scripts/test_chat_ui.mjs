@@ -14,10 +14,10 @@ function el(id) {
 globalThis.document = {querySelector:el,createElement:()=>el(Symbol())};
 const windowEvents = {};
 globalThis.window = {innerWidth:1000,innerHeight:800,addEventListener(name,handler){windowEvents[name]=handler;}};
-let escapes=0,source='before chosen after',selection={from:{line:0,ch:7},to:{line:0,ch:13}},mark,doc={},selected=true;
+let keyMap='vim',escapes=0,source='before chosen after',selection={from:{line:0,ch:7},to:{line:0,ch:13}},mark,doc={},selected=true;
 globalThis.CodeMirror = {Vim:{handleKey(_,key){assert.equal(key,'<Esc>');escapes++;}}};
 const events={},editor={
-  on(name,callback){events[name]=callback;},getDoc:()=>doc,getOption:()=>false,
+  on(name,callback){events[name]=callback;},getDoc:()=>doc,getOption:name=>name==='keyMap'?keyMap:false,
   somethingSelected:()=>selected,listSelections:()=>[selection],
   getCursor:key=>selection[key],getValue:()=>source,getRange:(from,to)=>source.slice(from.ch,to.ch),
   charCoords:pos=>({top:pos.ch===selection.from.ch?700:710,bottom:730}),
@@ -28,6 +28,7 @@ const events={},editor={
 let calls=[],answer={status:'done',reply:'Suggestion',replacement:'revised',segments:[['revised','color']]},deferred=null;
 const request=async(url,options)=>{
   calls.push({url,body:options?JSON.parse(options.body):null});
+  if(url==='/chat/history')return {messages:[],revision:0};
   if(url==='/chat')return deferred?await deferred:{id:'job'};
   if(url==='/chat/context')return {available:true,count:12,truncated:false};
   if(url==='/chat/models')return {models:[{id:'test-model',name:'Test Model',efforts:['low','high'],default_effort:'low'}, {id:'other',name:'Other Model',efforts:['low'],default_effort:'low'}]};
@@ -59,7 +60,7 @@ assert.equal(el('#chat-effort').value,'');assert.equal(el('#chat-quick-efforts')
 el('#chat-quick-models').children.find(button=>button.textContent==='跟随 Codex 默认').onclick();
 assert.equal(el('#chat-model').value,'');assert.equal(el('#chat-effort').disabled,true);
 el('#chat-quick').hidePopover();
-el('#chat-open').onclick();assert.equal(el('#chat-selection').textContent,'chosen');
+el('#chat-menu').onclick();assert.equal(el('#chat-selection').textContent,'chosen');
 await Promise.resolve();
 el('#chat-model').value='test-model';el('#chat-model').onchange();
 el('#chat-effort').value='high';el('#chat-effort').onchange();
@@ -75,7 +76,7 @@ assert.equal(el('#chat-color').dataset.color,'blue');
 assert.equal(el('#chat-replacement').textContent,'{\\color{blue}revised}');
 palette.find(button=>button.textContent==='无').onclick();
 assert.equal(el('#chat-replacement').textContent,'revised');
-el('#chat-close').onclick();el('#chat-open').onclick();
+el('#chat-close').onclick();el('#chat-menu').onclick();
 assert.equal(el('#chat-proposal').hidden,false,'Reopening the same selection keeps the proposal.');
 source='before CHOSEN after';el('#chat-apply').onclick();
 assert.equal(source,'before CHOSEN after');assert.match(el('#chat-status').textContent,/选区内容已变化/);
@@ -92,19 +93,22 @@ assert(followup.messages.some(message=>message.content==='Remember my terminolog
 assert(followup.messages.some(message=>message.role==='assistant'));
 assert.equal(followup.selection,'revised');assert.equal(followup.source,source);
 palette.find(button=>button.textContent==='红色').onclick();
+keyMap='default';const beforeStandardApply=escapes;
 el('#chat-apply').onclick();assert.equal(source,'extra before revised after','An unchanged response must not add color.');
+assert.equal(escapes,beforeStandardApply,'Applying a proposal in standard mode must not invoke Vim.');
+assert.match(el('#chat-status').textContent,/Ctrl\+Z/);keyMap='vim';
 el('#chat-model').value='other';el('#chat-model').onchange();
 assert.equal(el('#chat-effort').value,'');assert.equal(el('#chat-effort').children.length,2);
 el('#chat-model').value='';el('#chat-model').onchange();assert.equal(el('#chat-effort').disabled,true);
 palette.find(button=>button.textContent==='无').onclick();
-el('#chat-end').onclick();assert.equal(el('#chat-panel').hidden,true);assert.equal(el('#chat-messages').children.length,0);
+await el('#chat-end').onclick();assert.equal(el('#chat-panel').hidden,true);assert.equal(el('#chat-messages').children.length,0);
 selection={from:{line:0,ch:13},to:{line:0,ch:20}};
-el('#chat-open').onclick();el('#chat-input').value='New conversation';
+el('#chat-menu').onclick();el('#chat-input').value='New conversation';
 await el('#chat-form').onsubmit({preventDefault(){}});
 assert.equal(calls.filter(call=>call.url==='/chat').at(-1).body.messages.length,1);
 let release;deferred=new Promise(resolve=>release=resolve);
 el('#chat-input').value='Slow request';const pending=el('#chat-form').onsubmit({preventDefault(){}});
-el('#chat-end').onclick();release({id:'late-job'});await pending;
+await el('#chat-end').onclick();release({id:'late-job'});await pending;
 assert(calls.some(call=>call.url==='/chat/cancel'&&call.body.id==='late-job'));
 assert.equal(el('#chat-messages').children.length,0,'A late reply cannot revive an ended conversation.');
 deferred=null;source='before chosen after';selection={from:{line:0,ch:7},to:{line:0,ch:13}};
@@ -168,7 +172,7 @@ assert(calls.some(call=>call.url==='/chat/cancel'&&call.body.id==='cancelled-aut
 assert.equal(source,'before chosen after');assert.equal(el('#chat-panel').hidden,true);
 assert.equal(el('#chat-quick-send').attributes['aria-busy'],'false');
 selected=false;el('#chat-quick-menu').onclick();assert.equal(el('#chat-quick-send').disabled,true);
-el('#chat-end').onclick();assert.equal(el('#chat-quick').open,false);assert.equal(el('#chat-quick-input').value,'');
+await el('#chat-end').onclick();assert.equal(el('#chat-quick').open,false);assert.equal(el('#chat-quick-input').value,'');
 selected=true;chat.open();assert.equal(el('#chat-selection').textContent,'chosen');
 el('#chat-close').onclick();chat.openQuick({left:110,top:220});
 assert.equal(el('#chat-quick').style.left,'110px');assert.equal(el('#chat-quick').style.top,'742px');
@@ -198,3 +202,23 @@ handle.onpointerdown({button:0,pointerId:4,clientX:80,clientY:20,preventDefault(
 quick.hidePopover();assert.equal(handle.capture,null);assert.equal(quick.dataset.dragging,undefined);
 console.log('PASS: selection-aware placement, captured pointer drag, bounds, keyboard, resize, cancellation and preserved draft/selection');
 console.log('PASS: full chat, automatic quick apply, shared model/effort/color, spinner lifecycle, inline errors, stale-source protection and dismissal cancellation');
+
+// A reloaded editor restores project questions and uses them after changing selections.
+source='before chosen after';selection={from:{line:0,ch:7},to:{line:0,ch:13}};doc={};selected=true;
+let resumedBody;
+const resumedRequest=async(url,options)=>{
+  if(url==='/chat/history')return {revision:4,messages:[{role:'user',content:'Keep energy norm.',selection:'Old passage.'},
+    {role:'assistant',content:JSON.stringify({reply:'Terminology remembered.',replacement:null})}]};
+  if(url==='/chat'){resumedBody=JSON.parse(options.body);return {id:'resumed-job'};}
+  if(url==='/chat?id=resumed-job')return {status:'done',reply:'Continued.',replacement:null,memory_revision:6};
+  return request(url,options);
+};
+const resumed=attachSelectionChat(editor,resumedRequest);resumed.open();
+await new Promise(resolve=>setTimeout(resolve,0));
+assert.equal(el('#chat-messages').children.length,2);
+assert.equal(el('#chat-messages').children[1].children[1].textContent,'Terminology remembered.');
+el('#chat-input').value='Explain this new selection.';await el('#chat-form').onsubmit({preventDefault(){}});
+assert.equal(resumedBody.remember,true);assert.equal(resumedBody.memory_revision,4);
+assert(resumedBody.messages.some(message=>message.content==='Keep energy norm.'));
+assert.equal(resumedBody.selection,'chosen');
+console.log('PASS: project chat rehydration and remembered context across selections');

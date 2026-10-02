@@ -1,5 +1,6 @@
 """Run: python test_history.py (stdlib only; no TeX needed)."""
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -23,6 +24,26 @@ for old, new in [('the smoothing iteration is convergent', 'the smoothing factor
 assert word_changes('the smooth factor', 'the stable factor') == [
     {'kind':'equal', 'text':'the '}, {'kind':'delete', 'text':'smooth'},
     {'kind':'insert', 'text':'stable'}, {'kind':'equal', 'text':' factor'}]
+
+
+with tempfile.TemporaryDirectory() as directory:
+    grouped = History(Path(directory) / 'grouped.tex')
+    start = datetime(2026, 10, 1, 12, 0, tzinfo=timezone.utc)
+    ids = []
+    for minutes, kind in [(0,'open'), (1,'save'), (2,'save'), (4,'external'), (5,'save'), (6,'save'), (7,'before-restore'), (8,'restore'), (9,'save')]:
+        with patch('history.datetime') as clock:
+            clock.now.return_value = start + timedelta(minutes=minutes)
+            ids.append(grouped.record(str(minutes), kind))
+    shown = [row['id'] for row in grouped.list()['revisions']]
+    assert shown == [ids[8],ids[7],ids[6],ids[5],ids[3],ids[0]], shown
+    assert grouped.previous(ids[8])['id'] == ids[7], 'Restoration markers stay separate.'
+    assert grouped.previous(ids[3])['id'] == ids[0], 'Compare whole editing groups, not hidden keystrokes.'
+    assert grouped.get(ids[1])['source'] == '1', 'Grouping must retain original backups and immutable IDs.'
+    assert [row['id'] for row in grouped.list(ids[3])['revisions']] == [ids[0]], 'Pagination must not resurface hidden rows.'
+    grouped.label(ids[2], 'named')
+    assert ids[2] in [row['id'] for row in grouped.list()['revisions']]
+    assert grouped.previous(ids[3])['id'] == ids[2], 'Named versions stay visible and become comparison boundaries.'
+    assert [row['id'] for row in History(Path(directory) / 'grouped.tex').list()['revisions']] == [row['id'] for row in grouped.list()['revisions']]
 
 
 with tempfile.TemporaryDirectory() as directory:
@@ -130,7 +151,9 @@ with tempfile.TemporaryDirectory() as directory:
                 pass
         assert snapshot(path) == before and not list(path.parent.glob('*.tmp'))
         for i in range(105):
-            history.record(f'version {i}')
+            with patch('history.datetime') as clock:
+                clock.now.return_value = start + timedelta(minutes=5*i)
+                history.record(f'version {i}')
         page = history.list()
         older = history.list(page['next'])
         assert len(page['revisions']) == 100 and older['revisions'] and not older['next']
@@ -147,4 +170,4 @@ with tempfile.TemporaryDirectory() as directory:
     restarted.server_close(); restarted.build.cleanup()
     assert History(path).get(first)['label'] == '投稿前'
     assert History(path).get(second)['source'] == edited
-    print('PASS: history persistence, deduplication, diff, labels, failed compile, draft-safe restore, conflicts, file isolation, pagination and failed writes')
+    print('PASS: five-minute grouping, protected checkpoints, immutable backups, grouped pagination, history persistence, deduplication, diff, labels, failed compile, draft-safe restore, conflicts, file isolation, pagination and failed writes')

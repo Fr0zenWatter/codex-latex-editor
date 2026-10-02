@@ -3,9 +3,22 @@ from contextlib import closing
 from datetime import datetime, timezone
 import difflib
 import hashlib
+import json
 import re
 import sqlite3
 import zlib
+
+
+# Keep immutable backups; show the last automatic save in each five-minute window.
+VISIBLE_REVISIONS = """WITH checkpoints AS (
+    SELECT id, created, kind, label, SUM(CASE WHEN kind NOT IN ('save', 'external') OR label!=''
+        THEN 1 ELSE 0 END) OVER (ORDER BY id) AS checkpoint
+    FROM revisions WHERE file=?), visible AS (
+    SELECT id, created, kind, label, ROW_NUMBER() OVER (
+        PARTITION BY checkpoint, CASE WHEN kind IN ('save', 'external') AND label=''
+            THEN CAST(strftime('%s', created) AS INTEGER)/300 ELSE -id END
+        ORDER BY id DESC) AS position
+    FROM checkpoints) """
 
 
 class History:
@@ -19,11 +32,35 @@ class History:
                 kind TEXT NOT NULL, label TEXT NOT NULL DEFAULT '',
                 digest TEXT NOT NULL, source BLOB NOT NULL)''')
             db.execute('CREATE INDEX IF NOT EXISTS file_revisions ON revisions(file, id)')
+            db.execute("CREATE TABLE IF NOT EXISTS chat_messages (id INTEGER PRIMARY KEY, role TEXT NOT NULL, content TEXT NOT NULL, file TEXT NOT NULL DEFAULT '', selection TEXT NOT NULL DEFAULT '')")
 
     def connect(self):
         db = sqlite3.connect(self.database, timeout=10)
         db.row_factory = sqlite3.Row
         return db
+
+    def chat_read(self):
+        with closing(self.connect()) as db:
+            revision = db.execute('SELECT COALESCE(MAX(id),0) FROM chat_messages').fetchone()[0]
+            boundary = db.execute("SELECT COALESCE(MAX(id),0) FROM chat_messages WHERE role='boundary'").fetchone()[0]
+            rows = db.execute('SELECT role, content, file, selection FROM chat_messages WHERE id>? ORDER BY id DESC LIMIT 41', (boundary,)).fetchall()
+        return {'revision': revision, 'messages': [dict(row) for row in reversed(rows[:40])],
+                'truncated': len(rows)>40, 'project': str(self.database.parent.parent)}
+
+    def chat_append(self, revision, question, answer, file, selection):
+        with closing(self.connect()) as db, db:
+            db.execute('BEGIN IMMEDIATE')
+            if db.execute('SELECT COALESCE(MAX(id),0) FROM chat_messages').fetchone()[0] != revision:
+                raise ValueError('项目对话已更新，请重新打开对话后重试。')
+            db.execute('INSERT INTO chat_messages(role,content,file,selection) VALUES (?,?,?,?)', ('user',question,file,selection))
+            return db.execute('INSERT INTO chat_messages(role,content) VALUES (?,?)',
+                              ('assistant',json.dumps(answer,ensure_ascii=False))).lastrowid
+
+    def chat_new(self):
+        # Archive the preceding conversation without deleting its stored messages.
+        with closing(self.connect()) as db, db:
+            db.execute("INSERT INTO chat_messages(role,content) VALUES ('boundary','')")
+        return self.chat_read()
 
     def record(self, source, kind='external', force=False):
         raw = source.encode('utf-8')
@@ -41,8 +78,8 @@ class History:
         if before is not None and (type(before) is not int or before < 1):
             raise ValueError('历史记录游标无效。')
         with closing(self.connect()) as db:
-            rows = db.execute('''SELECT id, created, kind, label FROM revisions
-                WHERE file=? AND (? IS NULL OR id<?) ORDER BY id DESC LIMIT 101''',
+            rows = db.execute(VISIBLE_REVISIONS + '''SELECT id, created, kind, label FROM visible
+                WHERE position=1 AND (? IS NULL OR id<?) ORDER BY id DESC LIMIT 101''',
                               (self.file, before, before)).fetchall()
         return {'revisions': [dict(row) for row in rows[:100]],
                 'next': rows[99]['id'] if len(rows) > 100 else None}
@@ -67,7 +104,7 @@ class History:
     def previous(self, revision):
         self.get(revision)
         with closing(self.connect()) as db:
-            row = db.execute('SELECT id FROM revisions WHERE file=? AND id<? ORDER BY id DESC LIMIT 1',
+            row = db.execute(VISIBLE_REVISIONS + 'SELECT id FROM visible WHERE position=1 AND id<? ORDER BY id DESC LIMIT 1',
                              (self.file, revision)).fetchone()
         return self.get(row['id']) if row else None
 

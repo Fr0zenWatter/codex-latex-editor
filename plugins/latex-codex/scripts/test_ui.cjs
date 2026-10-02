@@ -13,7 +13,7 @@ function element(id) {
     remove() { this.parent.children.splice(this.parent.children.indexOf(this), 1); },
     dataset: {}, srcWrites: 0, set src(value) { this.imageSource=value; this.srcWrites++; },
     style: {setProperty(key, value) { this[key] = value; }},
-    classList: {add() {}, remove() {}, toggle() {}}, setAttribute() {},
+    attributes:{},classList: {add() {}, remove() {}, toggle() {}}, setAttribute(key,value) {this.attributes[key]=value;},
     showPopover(){this.open=true;},hidePopover(){this.open=false;},focus(){this.focused=true;},
     addEventListener(){},getBoundingClientRect(){return {left:120,top:180};},
     offsetWidth:240,offsetHeight:42,
@@ -25,10 +25,13 @@ function element(id) {
   return elements.get(id);
 }
 const actions = {}, mappings = [], options = {}, editorEvents = {};
+const stored = new Map([['latex-codex-editor-mode','default']]);
+let vimEscapes=0;
 let selected=false,commentCalls=0,cursorChanges=0;
 const chatOpened=[];
 const editor = {
-  lineCount:()=>100,addLineClass(line,where,name){this.marks??=new Set();this.marks.add(where+':'+name);return {line};},
+  state:{},closeHint(){this.closedHint=true;},showHint(config){this.hint=config;},swapDoc(doc){this.doc=doc;},
+  lastLine:()=>99,lineCount:()=>100,addLineClass(line,where,name){this.marks??=new Set();this.marks.add(where+':'+name);return {line};},
   removeLineClass(line,where,name){this.marks.delete(where+':'+name);},
   scrollIntoView(cursor,margin){this.jump={...cursor,margin};},
   on(name,fn) {editorEvents[name]=fn;}, setOption(key, value) { options[key] = value; },
@@ -48,7 +51,7 @@ const viewer = {
 };
 const pdf = {numPages:2,getPage:async()=>({})};
 let destroyed=0,downloads=0;
-const windowHandlers={};
+const windowHandlers={},uiTimers=new Map();let uiTimerId=0;
 const context = vm.createContext({
   t:key=>key, setText:(element,key,values={})=>{element.textContent=key.replace(/\{(\w+)\}/g,(match,name)=>values[name]??match);},initSettings(){},
   attachMathHover(){},attachSelectionChat(){return {open(){chatOpened.push('full');},openQuick(anchor){chatOpened.push(anchor);},busy:false};},attachHistory(){},katex:{},
@@ -56,16 +59,34 @@ const context = vm.createContext({
   EventBus:class{},PDFLinkService:class{setViewer(){} setDocument(){}},PDFViewer:function(){return viewer;},
   ResizeObserver:class{observe(){}},Uint8Array,
   document: {querySelector: element, createElement: () => element(Symbol()), documentElement: {dataset: {}}},
-  CodeMirror: {fromTextArea: (_,configuration) => {Object.assign(options,configuration);return editor;}, commands: {}, Vim: {
-    handleKey(cm,key){assert.equal(key,'<Esc>');},
+  CodeMirror: {Doc:class{constructor(source,mode){this.source=source;this.mode=mode;}},hint:{latex:()=>({list:['\\begin']})},fromTextArea: (_,configuration) => {Object.assign(options,configuration);return editor;}, commands: {}, Vim: {
+    handleKey(cm,key){assert.equal(key,'<Esc>');vimEscapes++;},
     defineAction: (name, fn) => actions[name] = fn,
     mapCommand: (...args) => mappings.push(args),
   }},
-  localStorage: {getItem() { return null; }, setItem() {}},
-  window: {innerWidth:1000,innerHeight:800,addEventListener(name,handler) {(windowHandlers[name]??=[]).push(handler);}}, setInterval() {},
+  localStorage: {getItem(key) { return stored.get(key); }, setItem(key,value) { stored.set(key,value); }},
+  window: {innerWidth:1000,innerHeight:800,addEventListener(name,handler) {(windowHandlers[name]??=[]).push(handler);}}, setInterval() {},setTimeout(fn){uiTimers.set(++uiTimerId,fn);return uiTimerId;},clearTimeout(id){uiTimers.delete(id);},
   fetch: () => new Promise(() => {}),
 });
 vm.runInContext(script, context);
+assert.equal(options.keyMap,'default','Load the remembered non-Vim mode.');
+element('#log').hidden=true;const logPosition=element('#preview').scrollTop;
+element('#log-toggle').onclick();assert(!element('#log').hidden);assert(element('#preview').inert);
+assert.equal(element('#log-toggle').attributes['aria-pressed'],'true');assert.equal(element('#preview').style.visibility,'hidden');
+element('#log-toggle').onclick();assert(element('#log').hidden);assert(!element('#preview').inert);assert.equal(element('#preview').scrollTop,logPosition,'PDF/log switching must preserve PDF position.');
+options.readOnly=false;
+vm.runInContext('completeLatex(editor)',context);
+assert(editor.hint,'Standard editing must offer LaTeX completion.');
+editor.hint.extraKeys.Esc(editor,{close(){}});assert.equal(vimEscapes,0,'Escape must not enter Vim from standard completion.');
+vm.runInContext("display({source:'loaded source',version:'v',name:'paper.tex',path:'paper.tex'})",context);
+assert.equal(options.keyMap,'default','Opening/reloading/restoring must preserve standard editing.');
+const modeSelect=element('#editor-mode');modeSelect.value='vim';modeSelect.onchange();
+assert.equal(options.keyMap,'vim');
+options.keyMap='vim-insert';vm.runInContext('completeLatex(editor)',context);
+editor.hint.extraKeys.Esc(editor,{close(){}});assert.equal(vimEscapes,1);
+modeSelect.value='default';modeSelect.onchange();assert.equal(stored.get('latex-codex-editor-mode'),'default');
+assert.equal(options.showCursorWhenSelecting,true);
+modeSelect.value='vim';modeSelect.onchange();assert.equal(options.keyMap,'vim');
 const splitter=element('#splitter');element('main').clientWidth=1006;
 const resizePointer={pointerId:2,button:0,buttons:1,clientX:500,preventDefault(){}};
 splitter.onpointerdown(resizePointer);splitter.onpointermove({...resizePointer,clientX:700});
@@ -168,7 +189,9 @@ direction=null;preview.ondblclick(pointer);
 assert.equal(direction,null,'Double-click in selection mode must retain the PDF word selection.');
 const space={code:'Space',target:{closest:()=>null},preventDefault(){this.prevented=true;}};
 preview.onkeydown(space);assert(space.prevented);assert.equal(vm.runInContext('spacePan',context),true);
-assert.equal(element('#pan-mode').textContent,'选字','Temporary panning must preserve the selected mode.');
+assert.equal(element('#pan-label').textContent,'选字','Temporary panning must preserve the selected mode.');
+assert(!element('#pan-hint').hidden,'Selecting text briefly explains Space panning.');
+uiTimers.get(uiTimerId)();assert(element('#pan-hint').hidden,'The hint must disappear automatically.');
 preview.onkeydown({...space,repeat:true});
 preview.onpointerdown(pointer);preview.onpointerup(pointer);direction=null;preview.ondblclick(pointer);
 assert.equal(direction,'backward','Space double-click must locate the LaTeX source.');
@@ -232,6 +255,39 @@ context.fetch=async()=>{downloads++;return{ok:true,arrayBuffer:async()=>new Arra
   assert.equal(vm.runInContext('pdfBuild',context),'second');
   let source='compiled source',release;
   editor.getValue=()=>source;
+  const automatic=element('#auto-compile');
+  assert.equal(automatic.checked,true);
+  vm.runInContext("busy=false;conflict=false;version=pdfVersion='v';saved='compiled source'",context);
+  automatic.checked=false;automatic.onchange();
+  assert.equal(stored.get('latex-codex-auto-compile'),'off');
+  source='saved without compilation';let autoRoute;
+  context.fetch=async(url)=>{autoRoute=url;return {ok:true,json:async()=>({version:'saved-v'})};};
+  editorEvents.change();await uiTimers.get(vm.runInContext('timer',context))();
+  assert.equal(autoRoute,'/save','Disabling compilation must still autosave.');
+  assert.equal(vm.runInContext('saved',context),source);assert.equal(vm.runInContext('pdfVersion',context),'');
+  assert.equal(viewer.pdfDocument,pdf,'Save-only keeps the previous PDF mounted.');
+  context.fetch=async(url)=>{autoRoute=url;return {ok:true,json:async()=>({version:'saved-v',ok:true,log:'ok',sync:true,pdf_revision:'second'})};};
+  automatic.checked=true;automatic.onchange();
+  await uiTimers.get(vm.runInContext('timer',context))();assert.equal(autoRoute,'/compile','Re-enabling compiles saved edits.');
+  automatic.checked=false;automatic.onchange();
+  await vm.runInContext('compile()',context);assert.equal(autoRoute,'/compile','Manual compilation always works.');
+  source='next edit';let finishSave;
+  context.fetch=()=>new Promise(resolve=>finishSave=resolve);
+  const saving=vm.runInContext('compile(false)',context);
+  source='edited while saving';editorEvents.change();
+  finishSave({ok:true,json:async()=>({version:'next-v'})});await saving;
+  context.fetch=async(url)=>{autoRoute=url;return {ok:true,json:async()=>({version:'latest-v'})};};
+  await uiTimers.get(vm.runInContext('timer',context))();assert.equal(autoRoute,'/save');assert.equal(vm.runInContext('saved',context),source,'Edits during saving must also be saved.');
+  context.fetch=()=>new Promise(resolve=>finishSave=resolve);
+  const slowSave=vm.runInContext('compile(false)',context);
+  automatic.checked=true;automatic.onchange();await uiTimers.get(vm.runInContext('timer',context))();
+  finishSave({ok:true,json:async()=>({version:'latest-v'})});await slowSave;
+  context.fetch=async(url)=>{autoRoute=url;return {ok:true,json:async()=>({version:'latest-v',ok:true,log:'ok',sync:true,pdf_revision:'second'})};};
+  await uiTimers.get(vm.runInContext('timer',context))();assert.equal(autoRoute,'/compile','Enabling during an in-flight save must eventually compile.');
+  source='compiled source';vm.runInContext("saved='compiled source';version='v'",context);
+
+
+  editor.getValue=()=>source;
   context.clearTimeout=()=>{};context.setTimeout=()=>{};
   vm.runInContext("busy=false;conflict=false;pdfVersion='';pendingForward=false;saved='compiled source'",context);
   context.fetch=()=>new Promise(resolve=>release=resolve);
@@ -241,9 +297,9 @@ context.fetch=async()=>{downloads++;return{ok:true,arrayBuffer:async()=>new Arra
   await compiling;assert.equal(cursorChanges,beforeJumps,'Stale compilation must not move the cursor.');
   assert.equal(editor.marks.size,0);
   context.fetch=async()=>({ok:true,json:async()=>({ok:false,version:'v',log:'error',engine:'pdflatex',diagnostic:{line:23,message:'Undefined control sequence.'}})});
-  await vm.runInContext('compile()',context);assert.equal(editor.marks.size,2);assert.equal(cursorChanges,beforeJumps+1);
+  await vm.runInContext('compile()',context);assert(!element('#log').hidden,'Compilation failures display the right-side log.');assert.equal(element('#log').textContent,'error');assert.equal(editor.marks.size,2);assert.equal(cursorChanges,beforeJumps+1);
   context.fetch=async()=>({ok:true,json:async()=>({ok:true,version:'v',log:'success',engine:'pdflatex',pdf_revision:'second'})});
-  await vm.runInContext('compile()',context);assert.equal(editor.marks.size,0,'Successful compilation clears the error.');
+  await vm.runInContext('compile()',context);assert.equal(editor.marks.size,0,'Successful compilation clears the error.');assert(!element('#log').hidden,'Recompiling must not close a log the user is reading.');element('#log-toggle').onclick();assert(element('#log').hidden);
   context.synchronize=realSynchronize;
   const paragraphs='\\documentclass{article}\n\\begin{document}\n\\section{Intro}\nFirst paragraph\ncontinues here.\n\nSecond paragraph.\n\\par\nThird paragraph.\\par\nFourth paragraph.\n\\end{document}';
   context.paragraphs=paragraphs;
@@ -333,7 +389,10 @@ context.fetch=async()=>{downloads++;return{ok:true,arrayBuffer:async()=>new Arra
   preview.oncontextmenu(pdfClick);await element('#pdf-chat-menu').onclick();
   assert.equal(chatOpened.at(-1),'full');assert.deepEqual(JSON.parse(JSON.stringify(editor.selection)),{from:{line:3,ch:6},to:{line:4,ch:15}});
   assert.equal(lookups,2);
+  options.keyMap='default';const normalEscapes=vimEscapes;
+  await realSynchronize('backward',points[0]);assert.equal(vimEscapes,normalEscapes,'PDF jumps must not enter Vim in standard mode.');
   preview.oncontextmenu(pdfClick);await element('#pdf-chat-quick-menu').onclick();
+  assert.equal(vimEscapes,normalEscapes,'PDF selection mapping must not enter Vim in standard mode.');options.keyMap='vim';
   assert.deepEqual(JSON.parse(JSON.stringify(chatOpened.at(-1))),{left:120,top:180,selectionTop:30,selectionBottom:790});
   const opened=chatOpened.length,selectedRange=editor.selection;
   pdfText='no matching source';preview.oncontextmenu(pdfClick);

@@ -3,7 +3,7 @@ const english = {
   '正在编译历史版本并定位改动…':'Compiling historical versions and locating edits…',
   '两个版本没有需要预览的改动。':'These versions have no changes to preview.',
   '只显示改动附近，忽略后续排版移动。历史版本使用当前图片和引用等依赖重新编译。':'Only areas near source edits are shown; later reflow is ignored. Historical source is recompiled using current images, bibliography and other dependencies.',
-  '改动 {number}':'Change {number}', '修改前':'Before', '修改后':'After', '此处新增':'Added here', '此处删除':'Deleted here',
+  '改动 {number}':'Change {number}', '修改前':'Before', '修改后':'After', '查看修改前':'Show before', '查看修改后':'Show after', '此处新增':'Added here', '此处删除':'Deleted here',
   '这处源码没有直接对应的 PDF 内容，请查看源码对比。':'This source change has no directly mapped PDF content. See the source comparison.',
   '{side} · PDF 第 {page} 页':'{side} · PDF page {page}', 'PDF 对比失败：':'Unable to compare PDFs: ',
   'PDF 选区操作':'PDF selection actions',
@@ -16,6 +16,8 @@ const english = {
   '正在编译或定位，请稍后重试。':'Compiling or locating. Try again when it finishes.',
   '正在精确匹配选中的 LaTeX 文字…':'Matching the selected LaTeX text precisely…',
   '文件':'File', '打开文件':'Open file', '重新读取文件':'Reload file', '下载 PDF':'Download PDF', '历史':'History', '设置':'Settings',
+  '编辑模式':'Editing mode', '普通编辑':'Standard editing',
+  '已应用。回到源码按 Ctrl+Z / Cmd+Z 可撤销。':'Applied. Press Ctrl+Z / Cmd+Z in the source editor to undo.',
   '语言':'Language', '跟随系统':'System default', '配色':'Color theme', '当前用户修订色':'Your revision color', '当前用户':'You',
   '橙色':'Orange', '蓝色':'Blue', '紫色':'Purple', '绿色':'Green', '红色':'Red', '青色':'Teal', '洋红':'Magenta', '无':'None',
   'Cobalt · 深蓝':'Cobalt · Deep blue', 'Dracula · 紫灰':'Dracula · Purple', 'Monokai · 炭黑':'Monokai · Charcoal', 'Nord · 冷灰':'Nord · Cool gray',
@@ -23,7 +25,7 @@ const english = {
   '与上一版比较':'Previous snapshot', '当前编辑内容':'Current editor contents', '历史源码与差异':'Historical source and changes',
   '版本名称':'Version name', '例如：投稿前定稿':'e.g. Before submission', '保存名称':'Save name', '加载更早版本':'Load earlier versions',
   '按时间排列的版本':'Versions by date', '恢复此版本':'Restore this version', '确定恢复？':'Restore this version?', '取消':'Cancel', '确认恢复':'Confirm restore',
-  '新增高亮 · 删除线表示删去':'Highlighted additions · Struck-through deletions',
+  '自动记录按 5 分钟合并显示；命名版本单独保留。':'Automatic saves are grouped every 5 minutes; named versions remain separate.',
   '本地保存；恢复前会保留当前内容和未保存草稿。':'Stored locally. Restoring preserves current contents and unsaved drafts.',
   '首次打开':'First opened', '自动保存':'Saved', '外部修改':'External edit', '恢复版本':'Restored version', '恢复前的草稿':'Draft before restore',
   '保存版本':'Saved version', '正在读取版本…':'Loading version…', '正在读取历史…':'Loading history…', '暂时没有历史记录。':'No versions yet.',
@@ -37,7 +39,10 @@ const english = {
   'i 插入 · Esc 普通模式 · / 搜索 · :w 保存并编译':'i Insert · Esc Normal · / Search · :w Save and compile',
   '调整 LaTeX 和 PDF 宽度':'Resize source and PDF', '拖动调整宽度 · 双击恢复各半':'Drag to resize · Double-click for equal widths',
   '定位光标到 PDF':'Locate cursor in PDF', '跳到光标对应的 PDF 位置':'Jump to cursor location in PDF',
+  '自动编译':'Automatic compilation', '编译选项':'Compilation options',
+  '{name} · 自动保存，手动编译':'{name} · Autosave, manual compilation', '正在保存…':'Saving…', '已保存 · 自动编译已关闭':'Saved · Automatic compilation is off',
   '保存并编译':'Save and compile', '正在编译…':'Compiling…', '本机编译 · PDF 预览':'Local compiler · PDF preview',
+  '按住空格拖动 PDF':'Hold Space to pan the PDF',
   '拖动':'Pan', '选字':'Select text', '切换拖动页面与选择文字':'Switch between panning and text selection',
   '缩小 PDF':'Zoom out', '放大 PDF':'Zoom in', '适合宽度':'Fit width', '恢复适合宽度':'Reset to fit width', '编译后的 PDF':'Compiled PDF',
   '编译日志':'Compilation log', '源码操作':'Source actions', '注释 / 取消注释':'Toggle comment', '询问 Codex / 修改选区':'Ask Codex / Edit selection',
@@ -53,6 +58,7 @@ const english = {
   '重新读取会放弃编辑框中尚未保存的修改。继续？':'Reloading discards unsaved editor changes. Continue?',
   '编译失败 · 第 {line} 行：{message}':'Compilation failed · Line {line}: {message}', '已定位到 PDF 第 {page} 页':'Located on PDF page {page}',
   '已定位到源码第 {line} 行':'Located on source line {line}',
+  '收起项目对话':'Hide project chat', '项目侧边聊天':'Project side chat', 'Codex · 项目对话':'Codex · Project chat', '新对话':'New chat', '在侧边聊天中提问':'Ask in side chat', '项目记忆自动保存 · Ctrl+Enter 发送':'Project memory autosaved · Ctrl+Enter to send', '项目记忆读取失败，请重新打开对话。':'Unable to load project memory. Reopen the chat.',
   '临时 Codex 对话':'Temporary Codex conversation', 'Codex · 临时对话':'Codex · Temporary conversation', '结束并清空':'End and clear', '收起临时对话':'Hide conversation',
   '当前选区与上下文':'Selection and context', '使用当前选区':'Use current selection', '携带论文全文；正在读取主对话…':'Includes the document; loading main chat…',
   '对话记录':'Conversation', '选区修改建议':'Proposed replacement', '应用到选区':'Apply to selection', '模型':'Model', '思考等级':'Reasoning effort',
@@ -78,7 +84,7 @@ const english = {
   '修改建议已就绪。可继续讨论，或应用到选区。':'Replacement ready. Continue the conversation or apply it to the selection.',
   '可以继续追问；本次对话记忆保留。':'You can follow up; this conversation is remembered.',
   '选区内容已变化，未覆盖修改。请使用当前选区重新提问。':'Selection changed; edits were preserved. Use the current selection and ask again.',
-  '编辑器':'Editor', '已应用到选区，将自动保存并编译。':'Applied to selection. Autosave and compile will follow.',
+  '编辑器':'Editor', '已应用到选区，将自动保存。':'Applied to selection. Autosave will follow.',
   '已应用。回到源码按 u 可撤销。':'Applied. Press u in the source editor to undo.'
 };
 export let language = 'zh-CN';
@@ -110,12 +116,12 @@ export function initSettings() {
     try { localStorage.setItem('latex-codex-revision-color', colorSelect.value); } catch {}
   }
   languageSelect.onchange = applyLanguage; colorSelect.onchange = applyColor; applyLanguage(); applyColor();
-  for (const name of ['file', 'settings']) {
+  for (const name of ['file', 'settings', 'compile']) {
     const menu = $(name + '-menu'), button = $(name + '-menu-button');
     menu.addEventListener('beforetoggle', event => {
       button.setAttribute('aria-expanded', String(event.newState === 'open'));
       if (event.newState !== 'open') return;
-      const rect = button.getBoundingClientRect();
+      const rect = (name === 'compile' ? $('compile') : button).getBoundingClientRect();
       menu.style.top = rect.bottom + 6 + 'px';
       menu.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 280)) + 'px';
     });

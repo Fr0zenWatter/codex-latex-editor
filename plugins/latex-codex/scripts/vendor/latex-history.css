@@ -53,12 +53,13 @@
 #history-pdf-view{position:absolute;inset:0;overflow:auto;padding:16px;background:#f3f4f6;scrollbar-color:#c6c9cd #f3f4f6}
 .history-pdf-note{margin:0 0 14px;color:#72767c;font:12px/1.6 system-ui}
 .history-pdf-change{margin-bottom:20px;border:1px solid #dedfe2;border-radius:8px;overflow:hidden;background:#fff}
-.history-pdf-change h3{margin:0;padding:9px 12px;background:#f8f9fa;border-bottom:1px solid #dedfe2;font:600 13px system-ui}
-.history-pdf-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
-.history-pdf-pair section{min-width:0;padding:10px}
-.history-pdf-pair section+section{border-left:1px solid #dedfe2}
-.history-pdf-pair h4{margin:0 0 8px;color:#59616a;font:600 12px system-ui}
-.history-pdf-pair p{font:13px/1.6 system-ui;color:#72767c;padding:12px}
-.history-pdf-pair canvas{display:block;width:100%;height:auto;background:#fff;margin-bottom:8px}
+.history-pdf-heading{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:#f8f9fa;border-bottom:1px solid #dedfe2}
+.history-pdf-change h3{margin:0;font:600 13px system-ui}
+.history-pdf-toggle{display:flex;padding:4px;border:0;background:transparent;color:#59616a;border-radius:4px}
+.history-pdf-toggle:hover,.history-pdf-toggle[aria-pressed=true]{background:#e4e8ed}
+.history-pdf-toggle:focus-visible{outline:2px solid #526575}
+.history-pdf-toggle svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.history-pdf-image section{min-width:0;padding:10px}
+.history-pdf-image p{font:13px/1.6 system-ui;color:#72767c;padding:12px}
+.history-pdf-image canvas{display:block;width:100%;height:auto;background:#fff;margin-bottom:8px}
 #history-dialog[data-history-view=pdf] #history-next{display:none}
-@media(max-width:640px){.history-pdf-pair{grid-template-columns:1fr}.history-pdf-pair section+section{border-left:0;border-top:1px solid #dedfe2}}
