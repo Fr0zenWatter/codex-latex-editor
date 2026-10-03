@@ -99,6 +99,8 @@ const english = {
   '原生批量批注：逐条保存，最后在主对话统一发送。':'Native batch annotations: save each comment, then send them together from the main chat.',
   '返回编辑':'Return to editing',
   '保存批注后按 Esc 返回编辑，已保存批注可在主对话统一发送。':'After saving the annotation, press Esc to return to editing. Send saved annotations together from the main chat.',
+  '按 Esc 返回编辑':'Press Esc to return to editing',
+  '已保存批注可在主对话统一发送。':'Send saved annotations together from the main chat.',
   '原生批注暂不可用，请通过浏览器批注选择源码。':'Native annotation requests are unavailable. Use browser annotations to select the source.',
   '临时 Codex 对话':'Temporary Codex conversation', 'Codex · 临时对话':'Codex · Temporary conversation', '结束并清空':'End and clear', '收起临时对话':'Hide conversation',
   '当前选区与上下文':'Selection and context', '使用当前选区':'Use current selection', '携带论文全文；正在读取主对话…':'Includes the document; loading main chat…',

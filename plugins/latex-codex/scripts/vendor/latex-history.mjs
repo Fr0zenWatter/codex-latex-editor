@@ -74,13 +74,13 @@ export function attachHistory(editor, request, getState, restore) {
   const $ = id => document.querySelector('#history-' + id);
   const dialog = $('dialog'), list = $('list'), code = $('code'), target = $('target'), pdf = $('pdf-view');
   let context, revisions = [], selected = null, detail = null, next = null, serial = 0, mode = 'diff', working = false;
-  let pdfSerial = 0, pdfTasks = [], summaryJob = null, summaryLoading = false, summarySerial = 0;
+  let pdfSerial = 0, pdfTasks = [], pdfRequest = null, summaryJob = null, summaryLoading = false, summarySerial = 0;
   let menuId = null, editingId = null;
   const comparison = () => target.value === 'previous' ? {compare:'previous'} : target.value === 'current' ? {source:context.source} : {target_id:Number(target.value)};
   const time = historyTime;
   const title = row => row.label || row.sections?.slice(0,2).map(section=>t(section)).join(' · ') || t('正文');
   const needsSummary = row => row.baseline && !row.summary && !['调整空白或换行','内容与上一版相同'].includes(row.description);
-  const post = (route, data) => request('/history/' + route, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({path:context.path, ...data})});
+  const post = (route, data, options={}) => request('/history/' + route, {...options, method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({path:context.path, ...data})});
   const notice = (text='') => { $('status').textContent = text; $('status').hidden = !text; };
   function controls() {
     $('restore').disabled = working || !detail;
@@ -104,16 +104,23 @@ export function attachHistory(editor, request, getState, restore) {
   }
   function clearPdf() {
     pdfSerial++;
+    if (pdfRequest) {
+      const obsolete = pdfRequest; pdfRequest = null;
+      obsolete.controller.abort();
+      post('pdf-cancel', {path:obsolete.path, request_id:obsolete.id}).catch(()=>{});
+    }
     for (const task of pdfTasks) task.destroy().catch(()=>{});
     pdfTasks = []; pdf.replaceChildren();
   }
   async function renderPdf(recompile = false) {
     const ticket = pdfSerial;
+    const pending = {id:crypto.randomUUID(), path:context.path, controller:new AbortController()};
+    pdfRequest = pending;
     const selection = {id:selected, ...comparison()};
     $('recompile').disabled = true;
     pdf.textContent = t('正在读取历史对比图，缺失时编译生成…');
     try {
-      const data = await post('pdf', {...selection, recompile});
+      const data = await post('pdf', {...selection, recompile, request_id:pending.id}, {signal:pending.controller.signal});
       if (ticket !== pdfSerial || mode !== 'pdf' || !dialog.open) return;
       pdf.replaceChildren();
       if (!data.changes.length) { pdf.textContent = t('两个版本没有需要预览的改动。'); return; }
@@ -170,7 +177,10 @@ export function attachHistory(editor, request, getState, restore) {
         }
       }
     } catch (error) { if (ticket === pdfSerial && dialog.open) pdf.textContent = t('PDF 对比失败：') + error.message; }
-    finally { if (ticket === pdfSerial) $('recompile').disabled = false; }
+    finally {
+      if (pdfRequest === pending) pdfRequest = null;
+      if (ticket === pdfSerial) $('recompile').disabled = false;
+    }
   }
   function renderCode() {
     clearPdf(); code.replaceChildren(); code.hidden = mode === 'pdf'; pdf.hidden = mode !== 'pdf';

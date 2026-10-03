@@ -1,6 +1,12 @@
 CodeMirror 5.65.20 (MIT), obtained from:
 https://registry.npmjs.org/codemirror/-/codemirror-5.65.20.tgz
 
+The OpenAI selection-annotation toolbar icon is inlined from Simple Icons
+11.15.0 (CC0-1.0):
+https://github.com/simple-icons/simple-icons/blob/11.15.0/icons/openai.svg
+The license is retained in simple-icons.LICENSE.txt. Its fill uses currentColor
+to follow the editor theme; it does not load external assets at runtime.
+
 The history pill tabs are a locally bundled React island built from
 `../../frontend/` with React, Radix Tabs, Framer Motion and Tailwind CSS.
 Exact npm versions and integrity hashes are in the frontend package-lock.json.

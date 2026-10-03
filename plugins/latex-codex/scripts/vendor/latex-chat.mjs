@@ -190,6 +190,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   }
   function refreshAnnotations() {
     $('annotations-toggle').textContent = t('批注 · {count}', {count:annotations.length});
+    $('annotations-send').hidden = !annotations.length;
     $('annotations-send').disabled = sending || !annotations.length;
     $('annotations-list').replaceChildren();
     for (const item of annotations) {
@@ -248,7 +249,9 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   $('annotations-review').addEventListener('beforetoggle', event => {
     $('annotations-toggle').setAttribute('aria-expanded', String(event.newState === 'open'));
     if (event.newState !== 'open') return;
-    const box = $('annotations-toggle').getBoundingClientRect(), review = $('annotations-review');
+    const anchor = !$('annotations-toggle').hidden ? $('annotations-toggle')
+      : !$('annotations-send').hidden ? $('annotations-send') : $('app-toolbar');
+    const box = anchor.getBoundingClientRect(), review = $('annotations-review');
     review.style.left = 'auto';
     review.style.right = '8px';
     review.style.top = box.bottom + 6 + 'px';

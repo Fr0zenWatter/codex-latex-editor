@@ -3,6 +3,7 @@ import argparse
 import base64
 import binascii
 import difflib
+import gzip
 from functools import lru_cache
 import hashlib
 import json
@@ -71,12 +72,15 @@ PAGE = r'''<!doctype html>
 *{box-sizing:border-box}body{margin:0;height:100vh;display:flex;flex-direction:column;background:var(--panel);color:var(--text);font:14px system-ui,sans-serif}
 header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 strong{font-size:17px}button,a,select{font:inherit}button,select{border:1px solid var(--border);border-radius:6px;padding:6px 12px;background:var(--bg);color:var(--text);cursor:pointer}button:hover,select:hover{border-color:var(--command)}button:disabled{opacity:.55;cursor:default}
-button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(--command)}a{color:var(--reference)}#status{flex:1;color:var(--muted)}#app-toolbar{padding:4px 12px;gap:8px;min-height:36px}#app-toolbar button{padding:4px 9px}#app-toolbar #settings-menu-button{width:28px;padding:4px}
+button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(--command)}a{color:var(--reference)}#status,#native-annotation-status{flex:1;color:var(--muted)}#app-toolbar{padding:4px 12px;gap:8px;min-height:36px}#app-toolbar button{padding:4px 9px}#app-toolbar #settings-menu-button{width:28px;padding:4px}
 main{position:relative;display:grid;grid-template-columns:minmax(0,var(--source-share,1fr)) 6px minmax(0,var(--pdf-share,1fr));flex:1;min-height:0;background:var(--border)}
 .sync-rail{position:relative;background:var(--panel)}#splitter{position:absolute;inset:0;cursor:col-resize;touch-action:none;z-index:2}#splitter::before{content:'';position:absolute;inset:0 -3px}#splitter:hover,#splitter:focus-visible,main.resizing #splitter{background:var(--command)}main.resizing,main.resizing *{cursor:col-resize!important;user-select:none!important}#splitter:focus-visible{outline:2px solid var(--command)}#forward{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:3;padding:3px 0;width:22px;font-size:18px}
 main>section{min-width:0;min-height:0;display:flex;flex-direction:column;background:var(--bg)}label,.caption{padding:9px 14px;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.source-caption{display:flex;align-items:center}.source-caption label{flex:1;min-width:0}
-#native-annotation-open{flex-shrink:0;margin-right:8px;padding:3px 8px;font-size:12px}
+#filename[hidden]{display:none}
+#status,.native-annotation-feedback{animation:status-fade 4s ease forwards}
+@keyframes status-fade{0%,75%{opacity:1}100%{opacity:0}}
+@media(prefers-reduced-motion:reduce){#status,.native-annotation-feedback{animation-timing-function:step-end}}
+#native-annotation-open svg{width:18px;height:18px;fill:currentColor}#native-annotation-open[aria-pressed=true]{color:var(--command);border-color:var(--command);background:color-mix(in srgb,var(--command) 14%,var(--bg))}
 .pdf-toolbar{display:flex;align-items:center;gap:5px;padding:3px 8px;overflow-x:auto;flex-shrink:0}.pdf-toolbar button{padding:3px 8px;white-space:nowrap}
 #pan-mode{display:inline-flex;align-items:center;gap:5px}#pan-mode[aria-pressed=true] .pan-select-icon,#pan-mode[aria-pressed=false] .pan-hand-icon{display:none}
 #pan-hint{font-size:12px;color:var(--muted);white-space:nowrap;animation:pan-hint-fade 2.5s ease forwards}
@@ -125,10 +129,12 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 
 #chat-quick-brain{flex:1}#chat-quick-effort{flex-shrink:0;max-width:110px}#chat-quick-effort-name{overflow:hidden;text-overflow:ellipsis}#chat-quick-delete,#chat-quick-cancel{display:grid;place-items:center;flex-shrink:0;width:28px;height:28px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted)}#chat-quick-delete[hidden]{display:none}#chat-quick-delete:hover,#chat-quick-cancel:hover{background:color-mix(in srgb,var(--quick-accent) 10%,transparent);color:var(--quick-accent)}#chat-quick-delete svg,#chat-quick-cancel svg{width:15px;height:15px}
 .CodeMirror .chat-annotation{background:#ffc85733;text-decoration:underline;text-decoration-color:#d99a13}#annotations-send{display:flex;align-items:center;gap:6px;background:var(--quick-accent);color:var(--quick-foreground,var(--bg));font-weight:600}#annotations-send[aria-busy=true]::before{content:'';width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:compile-spin .8s linear infinite}#annotations-review{position:fixed;inset:auto;margin:0;width:min(360px,calc(100vw - 16px));max-height:70vh;overflow:auto;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--panel);color:var(--text);box-shadow:0 10px 32px #0004}#annotations-empty{margin:0;color:var(--muted);font-size:12px}#annotations-list{display:flex;flex-direction:column;gap:6px}.annotation-item{text-align:left;padding:8px 10px}.annotation-item b,.annotation-item span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}.annotation-item span{margin-top:4px;color:var(--muted)}#annotations-status{white-space:pre-wrap;font-size:12px;line-height:1.6}#annotations-status:not(:empty){margin-top:10px}#annotations-status[data-error=true]{color:light-dark(#b42318,#f87171)}.pdf-comment-highlight{position:absolute;z-index:5;pointer-events:none;background:#ffc85755;mix-blend-mode:multiply;border-radius:2px}.pdf-comment-pin{position:absolute;z-index:6;display:grid;place-items:center;min-width:22px;height:22px;padding:0 5px;border:1px solid #b87c00;border-radius:11px;background:#ffe09a;color:#5a3b00;font:bold 12px system-ui;box-shadow:0 2px 6px #0003;cursor:pointer}.pdf-comment-pin:hover,.pdf-comment-pin:focus-visible{background:#ffc857;outline:2px solid #b87c00;outline-offset:2px}
+#annotations-send[hidden]{display:none}
 @media(prefers-reduced-motion:reduce){#annotations-send::before{animation:none}}
 </style>
-<header id="app-toolbar"><button id="file-menu-button" class="icon-button" aria-label="文件" data-i18n-aria-label="文件" title="文件" data-i18n-title="文件" popovertarget="file-menu" aria-expanded="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H5v20h14V7zM14 2v6h5"/></svg></button><span id="status" role="status" aria-live="polite">正在打开…</span>
-<button id="annotations-toggle" popovertarget="annotations-review" aria-expanded="false">批注 · 0</button><button id="annotations-stop" hidden data-i18n="停止">停止</button><button id="annotations-send" disabled aria-busy="false" title="发送全部批注" data-i18n-title="发送全部批注">Send</button>
+<header id="app-toolbar"><button id="file-menu-button" class="icon-button" aria-label="文件" data-i18n-aria-label="文件" title="文件" data-i18n-title="文件" popovertarget="file-menu" aria-expanded="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H5v20h14V7zM14 2v6h5"/></svg></button><button id="native-annotation-open" class="icon-button" disabled aria-pressed="false" aria-label="原生批注选区" data-i18n-aria-label="原生批注选区" title="原生批注选区" data-i18n-title="原生批注选区"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg></button><span id="status" role="status" aria-live="polite">正在打开…</span>
+<span id="native-annotation-status" hidden role="status" aria-live="polite"><span data-i18n="按 Esc 返回编辑">按 Esc 返回编辑</span><span class="native-annotation-feedback" data-i18n="已保存批注可在主对话统一发送。" style="margin-left:8px">已保存批注可在主对话统一发送。</span></span>
+<button id="annotations-toggle" hidden popovertarget="annotations-review" aria-expanded="false">批注 · 0</button><button id="annotations-stop" hidden data-i18n="停止">停止</button><button id="annotations-send" hidden disabled aria-busy="false" title="发送全部批注" data-i18n-title="发送全部批注">Send</button>
 <button id="history-open" class="icon-button" disabled><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2.6 7M3 4v7h7M12 7v5l3 2"/></svg><span data-i18n="历史">历史</span></button><button id="settings-menu-button" class="icon-button" popovertarget="settings-menu" aria-label="设置" data-i18n-aria-label="设置" title="设置" data-i18n-title="设置" aria-expanded="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3 1-2h4l1 2 2 1 2-.2 2 3-1 2v3l1 2-2 3-2-.2-2 1-1 3h-4l-1-3-2-1-2 .2-2-3 1-2V9L3 7l2-3 2 .2z" transform="translate(0 1) scale(1 .95)"/><circle cx="12" cy="11" r="3"/></svg></button></header>
 <div id="file-menu" class="toolbar-menu" popover="auto" aria-label="文件" data-i18n-aria-label="文件"><button id="open" data-i18n="打开文件">打开文件</button><button id="reload" data-i18n="重新读取文件">重新读取文件</button><a href="/pdf" download="document.pdf" data-i18n="下载 PDF">下载 PDF</a></div>
 <div id="settings-menu" class="toolbar-menu" popover="auto" aria-label="设置" data-i18n-aria-label="设置"><label for="language"><span data-i18n="语言">语言</span><select id="language" aria-label="语言" data-i18n-aria-label="语言"><option value="system" data-i18n="跟随系统">跟随系统</option><option value="zh-CN" data-i18n="简体中文">简体中文</option><option value="en">English</option></select></label><label for="editor-mode"><span data-i18n="编辑模式">编辑模式</span><select id="editor-mode" aria-label="编辑模式" data-i18n-aria-label="编辑模式"><option value="vim">Vim</option><option value="default" data-i18n="普通编辑">普通编辑</option></select></label><div class="theme-setting"><div class="theme-setting-heading"><label for="theme" data-i18n="配色">配色</label><button id="theme-customize" class="icon-button" aria-label="截图生成主题" data-i18n-aria-label="截图生成主题" title="截图生成主题" data-i18n-title="截图生成主题"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3 1-2h4l1 2 2 1 2-.2 2 3-1 2v3l1 2-2 3-2-.2-2 1-1 3h-4l-1-3-2-1-2 .2-2-3 1-2V9L3 7l2-3 2 .2z" transform="translate(0 1) scale(1 .95)"/><circle cx="12" cy="11" r="3"/></svg></button></div><select id="theme" aria-label="配色" data-i18n-aria-label="配色"><optgroup label="浅色" data-i18n-label="浅色"><option value="eclipse" data-i18n="Eclipse · 白底">Eclipse · 白底</option><option value="idea" data-i18n="IDEA · 白底">IDEA · 白底</option><option value="neo" data-i18n="Neo · 简洁白">Neo · 简洁白</option><option value="base16-light" data-i18n="Base16 · 浅灰">Base16 · 浅灰</option><option value="solarized-light" data-i18n="Solarized · 暖白">Solarized · 暖白</option></optgroup><optgroup label="深色" data-i18n-label="深色"><option value="cobalt" data-i18n="Cobalt · 深蓝">Cobalt · 深蓝</option><option value="dracula" data-i18n="Dracula · 紫灰">Dracula · 紫灰</option><option value="monokai" data-i18n="Monokai · 炭黑">Monokai · 炭黑</option><option value="nord" data-i18n="Nord · 冷灰">Nord · 冷灰</option><option value="material-darker" data-i18n="Material · 深灰">Material · 深灰</option><option value="material-palenight" data-i18n="Palenight · 蓝紫">Palenight · 蓝紫</option><option value="ayu-dark" data-i18n="Ayu · 深夜">Ayu · 深夜</option><option value="gruvbox-dark" data-i18n="Gruvbox · 暖黑">Gruvbox · 暖黑</option><option value="solarized-dark" data-i18n="Solarized · 深青">Solarized · 深青</option></optgroup></select></div><label for="revision-color"><span data-i18n="当前用户修订色">当前用户修订色</span><select id="revision-color" aria-label="当前用户修订色" data-i18n-aria-label="当前用户修订色"><option value="orange" data-i18n="橙色">橙色</option><option value="blue" data-i18n="蓝色">蓝色</option><option value="purple" data-i18n="紫色">紫色</option><option value="green" data-i18n="绿色">绿色</option><option value="red" data-i18n="红色">红色</option></select></label></div>
@@ -147,7 +153,7 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 <span style="color:var(--environment-command)">\end</span>{<span style="color:var(--environment)">equation</span>}
 <span style="color:var(--command)">\cite</span>{<span style="color:var(--reference)">example2026</span>}</pre><div class="theme-sample-capsule"><span data-i18n="询问 Codex…">询问 Codex…</span><span class="theme-sample-send" aria-hidden="true">↑</span></div></div>
 </div><div class="theme-dialog-actions"><button id="theme-save" disabled data-i18n="保存并使用">保存并使用</button></div></dialog>
-<main><section><div class="source-caption"><label id="filename" for="source" data-i18n="LaTeX 源码">LaTeX 源码</label><button id="native-annotation-open" disabled data-i18n="原生批注选区">原生批注选区</button></div><textarea id="source" spellcheck="false" disabled aria-label="LaTeX 源码" data-i18n-aria-label="LaTeX 源码"></textarea></section>
+<main><section><label id="filename" hidden for="source" data-i18n="LaTeX 源码">LaTeX 源码</label><textarea id="source" spellcheck="false" disabled aria-label="LaTeX 源码" data-i18n-aria-label="LaTeX 源码"></textarea></section>
 <div class="sync-rail"><div id="splitter" role="separator" tabindex="0" aria-label="调整 LaTeX 和 PDF 宽度" data-i18n-aria-label="调整 LaTeX 和 PDF 宽度" aria-orientation="vertical" aria-valuemin="15" aria-valuemax="85" aria-valuenow="50" title="拖动调整宽度 · 双击恢复各半" data-i18n-title="拖动调整宽度 · 双击恢复各半"></div><button id="forward" disabled aria-label="定位光标到 PDF" data-i18n-aria-label="定位光标到 PDF" title="跳到光标对应的 PDF 位置" data-i18n-title="跳到光标对应的 PDF 位置">→</button></div>
 <section><div class="pdf-toolbar"><div class="compile-group"><button id="compile" aria-busy="false" disabled><span class="compile-idle" data-i18n="保存并编译">保存并编译</span><span class="compile-busy" data-i18n="正在编译…">正在编译…</span></button><button id="compile-menu-button" popovertarget="compile-menu" aria-label="编译选项" data-i18n-aria-label="编译选项" title="编译选项" data-i18n-title="编译选项" aria-expanded="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></button></div><div id="compile-menu" class="toolbar-menu" popover="auto" aria-label="编译选项" data-i18n-aria-label="编译选项"><label for="auto-compile"><span data-i18n="自动编译">自动编译</span><input id="auto-compile" type="checkbox" checked aria-label="自动编译" data-i18n-aria-label="自动编译"></label></div><button id="log-toggle" aria-label="编译日志" data-i18n-aria-label="编译日志" title="编译日志" data-i18n-title="编译日志" aria-pressed="false" aria-controls="log"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 2H5v20h14V7zM14 2v6h5M8 12h8M8 16h8"/></svg></button><span id="pan-hint" role="status" hidden data-i18n="按住空格拖动 PDF">按住空格拖动 PDF</span><button id="pan-mode" aria-pressed="true" title="切换拖动页面与选择文字" data-i18n-title="切换拖动页面与选择文字" ><svg class="toolbar-icon pan-hand-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 11V7a2 2 0 0 0-4 0v3M14 10V5a2 2 0 0 0-4 0v6M10 10.5V7a2 2 0 0 0-4 0v5l-1-1a2 2 0 0 0-3 2l4 6a6 6 0 0 0 5 3h3a6 6 0 0 0 6-6v-3a2 2 0 0 0-4 0v1"/></svg><svg class="toolbar-icon pan-select-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m4 3 15 10-7 1-4 7Z"/></svg><span id="pan-label" data-i18n="拖动">拖动</span></button><button id="zoom-out" aria-label="缩小 PDF" data-i18n-aria-label="缩小 PDF" title="缩小 PDF" data-i18n-title="缩小 PDF">−</button><button id="zoom-fit" aria-label="适合宽度" data-i18n-aria-label="适合宽度" title="恢复适合宽度" data-i18n-title="恢复适合宽度">100%</button><button id="zoom-in" aria-label="放大 PDF" data-i18n-aria-label="放大 PDF" title="放大 PDF" data-i18n-title="放大 PDF">+</button></div><div class="preview-shell"><div id="preview" class="hand-tool" role="region" aria-label="编译后的 PDF" data-i18n-aria-label="编译后的 PDF" tabindex="0"><div id="pdf-viewer" class="pdfViewer"></div></div><pre id="log" hidden tabindex="0" role="region" aria-label="编译日志" data-i18n-aria-label="编译日志"></pre></div></section></main>
 <aside id="chat-panel" role="dialog" aria-label="项目侧边聊天" data-i18n-aria-label="项目侧边聊天" hidden>
@@ -189,6 +195,11 @@ import {initScreenshotThemes, applyCustomTheme} from '/vendor/latex-themes.mjs';
 initSettings();
 mountHistoryTabs(t);
 const source=document.querySelector('#source'),status=document.querySelector('#status'),log=document.querySelector('#log');
+new MutationObserver(()=>{
+  status.style.animation='none';
+  void status.offsetWidth;
+  status.style.animation='';
+}).observe(status,{childList:true,characterData:true,subtree:true,attributes:true,attributeFilter:['hidden']});
 setText(status,'正在打开…');
 const openButton=document.querySelector('#open'),compileButton=document.querySelector('#compile'),forwardButton=document.querySelector('#forward'),preview=document.querySelector('#preview');
 function showCompileLog(show){
@@ -308,6 +319,11 @@ new ResizeObserver(()=>{if(preview.clientWidth!==previewWidth){previewWidth=prev
 document.querySelector('#zoom-out').onclick=()=>setPdfZoom(pdfZoom-25);
 document.querySelector('#zoom-in').onclick=()=>setPdfZoom(pdfZoom+25);
 document.querySelector('#zoom-fit').onclick=()=>setPdfZoom(100);
+preview.addEventListener('wheel',event=>{
+  if(!event.ctrlKey||!event.deltaY||preview.inert||!pdfViewer.pagesCount)return;
+  event.preventDefault();
+  setPdfZoom(pdfZoom+(event.deltaY<0?25:-25));
+},{passive:false});
 const theme=document.querySelector('#theme');
 initScreenshotThemes(theme,setTheme);
 try{theme.value=localStorage.getItem('latex-codex-theme')||'cobalt';}catch(e){}
@@ -1046,7 +1062,7 @@ def locate(path, build, boxes, data):
 
 
 def history_pdf_cache_file(path, before, after):
-    key = hashlib.sha256(json.dumps([str(path), before, after, 'paragraph-block-images-v4'], ensure_ascii=False).encode()).hexdigest()
+    key = hashlib.sha256(json.dumps([str(path), before, after, 'changed-sentence-images-v6'], ensure_ascii=False).encode()).hexdigest()
     return path.parent / '.latex-codex' / 'pdf-diff-cache' / (key + '.zip')
 
 
@@ -1163,21 +1179,79 @@ def history_pdf_snapshot(server, path, source):
         raise
 
 
+def history_pdf_line_index(snapshot):
+    if 'line_index' in snapshot:
+        return snapshot['line_index']
+    entry = snapshot['entry']
+    compressed, plain = entry.with_suffix('.synctex.gz'), entry.with_suffix('.synctex')
+    try:
+        text = (gzip.decompress(compressed.read_bytes()) if compressed.is_file() else plain.read_bytes()).decode('utf-8', errors='replace')
+        header, content = text.split('Content:', 1)
+        values = dict(re.findall(r'^(Magnification|Unit|X Offset|Y Offset):(-?\d+)$', header, re.M))
+        unit = int(values['Unit']) * int(values['Magnification']) / 1000 / 65781.76
+        offsets = [int(values[name]) * unit for name in ('X Offset', 'Y Offset')]
+        tag = next(int(number) for number, filename in re.findall(r'^Input:(\d+):(.+)$', header, re.M)
+                   if Path(filename).resolve() == entry.resolve())
+    except (OSError, ValueError, KeyError, StopIteration, EOFError):
+        snapshot['line_index'] = None
+        return None  # Unrecognized SyncTeX formats retain the CLI fallback.
+    index, stack, page = {}, [], 0
+    node = re.compile(r'^([\[(hvxkg$])(\d+),(\d+)(?:,\d+)?:')
+    for row in content.splitlines():
+        if row.startswith('{'):
+            try: page = int(row[1:])
+            except ValueError: page = 0
+            stack = []
+        elif row in (')', ']'):
+            if stack: stack.pop()
+        match = node.match(row)
+        if not match or not 1 <= page <= len(snapshot['boxes']):
+            continue
+        kind, source_tag, line = match[1], int(match[2]), int(match[3])
+        rect = None
+        # Hboxes hold the complete rendered row, including glyphs from other source lines.
+        if kind in ('(', 'h'):
+            coordinates = re.fullmatch(r'(-?\d+),(-?\d+):(-?\d+),(-?\d+),(-?\d+)', row[match.end():])
+            if coordinates:
+                x, y, width, height, depth = map(int, coordinates.groups())
+                if width > 0 and height + depth > 0:
+                    left, _, _, top = snapshot['boxes'][page - 1]
+                    rect = [left + x*unit + offsets[0], top - (y+depth)*unit - offsets[1],
+                            left + (x+width)*unit + offsets[0], top - (y-height)*unit - offsets[1]]
+        if kind in ('(', '['):
+            stack.append(rect)
+        if source_tag != tag or kind == '[':
+            continue
+        rect = rect or next((box for box in reversed(stack) if box is not None), None)
+        if rect is None: continue
+        regions = index.setdefault(line, {})
+        old = regions.get(page)
+        regions[page] = rect if old is None else [min(old[0],rect[0]), min(old[1],rect[1]), max(old[2],rect[2]), max(old[3],rect[3])]
+    snapshot['line_index'] = index or None
+    return snapshot['line_index']
+
+
 def history_pdf_regions(snapshot, first, last):
     regions = {}
     lines = snapshot['entry'].read_text(encoding='utf-8').splitlines()
+    index = history_pdf_line_index(snapshot)
     # Query source lines, not page differences: later reflow never creates another change.
     for line in range(first, last):
         if not lines[line].strip() or lines[line].lstrip().startswith('%'):
             continue
-        for column in (1, max(1, len(lines[line]))):
-            records = synctex_records(['view', '-i', f"{line + 1}:{column}:{snapshot['entry']}", '-o', str(snapshot['pdf'])], snapshot['directory'].name)
-            for point in forward_pdf_points(records, snapshot['boxes']):
-                page, rect = point['page'], point['rect']
-                if page in regions:
-                    old = regions[page]
-                    rect = [min(old[0], rect[0]), min(old[1], rect[1]), max(old[2], rect[2]), max(old[3], rect[3])]
-                regions[page] = rect
+        if index is not None:
+            points = [{'page':page, 'rect':rect} for page, rect in index.get(line+1, {}).items()]
+        else:
+            points = []
+            for column in (1, max(1, len(lines[line]))):
+                records = synctex_records(['view', '-i', f"{line + 1}:{column}:{snapshot['entry']}", '-o', str(snapshot['pdf'])], snapshot['directory'].name)
+                points.extend(forward_pdf_points(records, snapshot['boxes']))
+        for point in points:
+            page, rect = point['page'], point['rect']
+            if page in regions:
+                old = regions[page]
+                rect = [min(old[0], rect[0]), min(old[1], rect[1]), max(old[2], rect[2]), max(old[3], rect[3])]
+            regions[page] = rect
     result = []
     for page, rect in sorted(regions.items()):
         left, bottom, right, top = snapshot['boxes'][page - 1]
@@ -1185,7 +1259,11 @@ def history_pdf_regions(snapshot, first, last):
     return result
 
 
-def history_pdf_changes(server, path, before, after, recompile=False):
+def history_pdf_changes(server, path, before, after, recompile=False, cancelled=None):
+    def check_cancelled():
+        if cancelled and cancelled():
+            raise InterruptedError('历史对比已取消。')
+    check_cancelled()
     cache = history_pdf_cache_file(path, before, after)
     if not recompile:
         images = read_history_pdf_images(cache)
@@ -1199,7 +1277,9 @@ def history_pdf_changes(server, path, before, after, recompile=False):
     if before == after:
         return {'changes': []}
     old_key, old = history_pdf_snapshot(server, path, before)
+    check_cancelled()
     new_key, new = history_pdf_snapshot(server, path, after)
+    check_cancelled()
     changes = []
     old_lines, new_lines = before.splitlines(), after.splitlines()
     matcher = difflib.SequenceMatcher(None, old_lines, new_lines, autojunk=len(old_lines)*len(new_lines)>4_000_000)
@@ -1226,18 +1306,11 @@ def history_pdf_changes(server, path, before, after, recompile=False):
             else:
                 groups.append([kind, a, b, c, d])
     for kind, a, b, c, d in groups:
-        def paragraph_extent(lines, first, last):
-            if first == last:
-                return first, last  # Insertions/deletions retain their empty side.
-            while first > 0 and not paragraph_break(lines[first-1:first]):
-                first -= 1
-            while last < len(lines) and not paragraph_break(lines[last:last+1]):
-                last += 1
-            return first, last
-        # Include unchanged continuation sentences/formulas on the next page too.
-        changes.append({'kind': kind, 'before': history_pdf_regions(old, *paragraph_extent(old_lines, a, b)),
-                        'after': history_pdf_regions(new, *paragraph_extent(new_lines, c, d))})
+        check_cancelled()
+        changes.append({'kind': kind, 'before': history_pdf_regions(old, a, b),
+                        'after': history_pdf_regions(new, c, d)})
     history_pdf_highlights(old, new, changes)
+    check_cancelled()
     return {'before': '/history/pdf/' + old_key, 'after': '/history/pdf/' + new_key, 'changes': changes}
 
 
@@ -1320,6 +1393,7 @@ def history_pdf_highlights(old, new, changes):
 
     # Compare complete sentences, including deletions within a sentence, before cropping.
     before, after = sentences(tokens(words(old))), sentences(tokens(words(new)))
+    crop_words = [{'before': [], 'after': []} for change in changes]
     for region in (region for change in changes for region in change['after']):
         region['highlights'] = []
     matcher = difflib.SequenceMatcher(None, [sentence[0] for sentence in before], [sentence[0] for sentence in after], autojunk=False)
@@ -1329,25 +1403,27 @@ def history_pdf_highlights(old, new, changes):
             ('after', new, after[c:d] if kind in ('insert', 'replace') else []),
         ):
             for _, sentence in sentences_to_expand:
-                for change in changes:
+                for index, change in enumerate(changes):
                     if not any(page == region['page'] and
                                region['rect'][0] <= (rect[0]+rect[2])/2 <= region['rect'][2] and
                                region['rect'][1] <= (rect[1]+rect[3])/2 <= region['rect'][3]
                                for page, rect, _ in sentence for region in change.get(side, [])):
                         continue
-                    # Include the whole sentence even beyond the changed source line or across pages.
-                    for page, rect, _ in sentence:
-                        region = next((region for region in change[side] if region['page'] == page), None)
-                        left, bottom, right, top = snapshot['boxes'][page - 1]
-                        if region is None:
-                            region = {'page': page, 'rect': [left, rect[1], right, rect[3]]}
-                            if side == 'after': region['highlights'] = []
-                            change[side].append(region)
-                        region['rect'][1] = max(bottom, min(region['rect'][1], rect[1] - 12))
-                        region['rect'][3] = min(top, max(region['rect'][3], rect[3] + 12))
-                        if side == 'after': region['highlights'].append(rect)
-    for change in changes:
-        for side in ('before', 'after'):
+                    crop_words[index][side].extend(sentence)
+    for index, change in enumerate(changes):
+        for side, snapshot in (('before', old), ('after', new)):
+            if crop_words[index][side]:
+                # Source lines can contain a whole paragraph: rebuild the crop from
+                # changed PDF sentences, rather than retain that oversized seed.
+                regions = {}
+                for page, rect, _ in crop_words[index][side]:
+                    left, bottom, right, top = snapshot['boxes'][page - 1]
+                    region = regions.setdefault(page, {'page':page, 'rect':[left, top, right, bottom]})
+                    region['rect'][1] = max(bottom, min(region['rect'][1], rect[1] - 6))
+                    region['rect'][3] = min(top, max(region['rect'][3], rect[3] + 6))
+                    if side == 'after': region.setdefault('highlights', []).append(rect)
+                change[side] = list(regions.values())
+            # Formatting-only changes retain their direct source-line fallback.
             change.get(side, []).sort(key=lambda region: region['page'])
 
 
@@ -1492,8 +1568,11 @@ def make_server(path, port=0, main_thread=None):
                 # Protect their LRU/temp files independently of editing and polling.
                 try:
                     with history_pdf_lock:
-                        result = history_pdf_changes(self.server, *pdf_request)
+                        *arguments, cancellation = pdf_request
+                        result = history_pdf_changes(self.server, *arguments, cancelled=cancellation.is_set)
                     self.reply(200, result)
+                except InterruptedError as error:
+                    self.reply(409, {'error': str(error)})
                 except subprocess.TimeoutExpired:
                     self.reply(500, {'error': '历史版本编译或定位超时，请重试。'})
                 except (ValueError, UnicodeError) as error:
@@ -1505,7 +1584,7 @@ def make_server(path, port=0, main_thread=None):
             nonlocal path, history
             if not self.local():
                 return
-            if self.path not in ('/compile', '/save', '/open', '/synctex', '/chat', '/chat/cancel', '/chat/new', '/history/diff', '/history/label', '/history/restore', '/history/pdf', '/history/pdf-cache', '/history/summaries', '/history/summaries/cancel'):
+            if self.path not in ('/compile', '/save', '/open', '/synctex', '/chat', '/chat/cancel', '/chat/new', '/history/diff', '/history/label', '/history/restore', '/history/pdf', '/history/pdf-cancel', '/history/pdf-cache', '/history/summaries', '/history/summaries/cancel'):
                 self.reply(404, {'error': 'Not found.'})
                 return
             try:
@@ -1518,6 +1597,11 @@ def make_server(path, port=0, main_thread=None):
                 if not isinstance(data, dict):
                     raise ValueError('Expected a JSON object.')
                 if self.path.startswith('/history/'):
+                    if self.path == '/history/pdf-cancel':
+                        job = self.server.history_pdf_request
+                        if job and data.get('request_id') == job[0]: job[1].set()
+                        self.reply(200, {'ok': True})
+                        return
                     if data.get('path') != str(path):
                         raise FileConflict('当前文件已切换，请重新打开历史。')
                     if self.path == '/history/summaries/cancel':
@@ -1549,7 +1633,14 @@ def make_server(path, port=0, main_thread=None):
                         if not isinstance(target, str):
                             raise ValueError('缺少用于对比的源码。')
                         if self.path == '/history/pdf':
-                            return path, old, target, data.get('recompile') is True
+                            request_id = data.get('request_id')
+                            if request_id is not None and (not isinstance(request_id, str) or not re.fullmatch(r'[0-9a-f-]{36}', request_id)):
+                                raise ValueError('历史对比请求 ID 无效。')
+                            previous = self.server.history_pdf_request
+                            if previous: previous[1].set()
+                            cancellation = threading.Event()
+                            self.server.history_pdf_request = request_id, cancellation
+                            return path, old, target, data.get('recompile') is True, cancellation
                         if self.path == '/history/pdf-cache':
                             self.reply(200, {'cache_error': save_history_pdf_images(history_pdf_cache_file(path, old, target), data.get('images'))})
                             return
@@ -1679,6 +1770,7 @@ def make_server(path, port=0, main_thread=None):
     server.chat = None
     server.history_summary = None
     server.history_pdfs = {}
+    server.history_pdf_request = None
     server.pdf = b''
     server.pdf_revision = ''
     server.page_boxes = []

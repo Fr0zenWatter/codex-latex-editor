@@ -29,6 +29,11 @@ const editor = {
 };
 attachNativeAnnotations(editor, (el, text) => { el.textContent = text; }, document);
 const button = document.getElementById('native-annotation-open');
+const hint = document.getElementById('native-annotation-status'), status = document.getElementById('status');
+assert.equal(hint.hidden, true);
+assert.equal(status.hidden, false);
+assert.equal(button['aria-pressed'], 'false');
+assert.equal(button['aria-label'], '原生批注选区');
 assert(button.disabled);
 assert(document.getElementById('native-annotation-preview').removed, 'Remove the drawer even from an older server page.');
 assert.equal(document.getElementById('wrapper')['oai-annotation-container-text'], '');
@@ -56,6 +61,7 @@ assert.equal(marks[0].replacedWith.textContent, selection, 'Keep all macros, new
 assert.deepEqual(marks[0].from, {line:10,ch:3});
 assert.deepEqual(marks[0].to, {line:15,ch:0});
 assert(!marks[0].cleared);
+assert.equal(hint.hidden, true, 'An accepted request alone must not display exit instructions before native mode opens.');
 const captured = selection;
 selection = 'x'.repeat(20001); button.onclick();
 assert.equal(requests, 1, 'Reject oversize selections without truncation.');
@@ -64,14 +70,25 @@ selection = 'two ranges'; ranges = 2; button.onclick(); assert.equal(requests, 1
 selection = ' \n '; ranges = 1; button.onclick(); assert.equal(requests, 1);
 
 active = true; selection = '';
+status.textContent = '已保存 · 编译成功';
 domEvents.oaiannotationmodechange({detail:{active:true}});
-assert.equal(button.textContent, '返回编辑');
+assert.equal(hint.hidden, false);
+assert.equal(status.hidden, true);
+status.textContent = '正在保存并编译…';
+assert.equal(button['aria-label'], '返回编辑');
+assert.equal(button.title, '返回编辑');
+assert.equal(button['aria-pressed'], 'true');
+assert.equal(button.textContent, undefined, 'Mode changes must preserve the icon without inserting visible text.');
 assert(!button.disabled, 'Exit remains available even when CodeMirror collapses a selection.');
 button.onclick(); assert(!marks[0].cleared, 'Wait for confirmed mode exit rather than removing a pending native target.');
 active = false;
 domEvents.oaiannotationmodechange({detail:{active:false}});
 assert(marks[0].cleared, 'Restore syntax display when leaving native mode.');
-assert.equal(button.textContent, '原生批注选区');
+assert.equal(button['aria-label'], '原生批注选区');
+assert.equal(button['aria-pressed'], 'false');
+assert.equal(hint.hidden, true, 'Escape/toolbar exit must hide the native-mode instructions.');
+assert.equal(status.hidden, false);
+assert.equal(status.textContent, '正在保存并编译…', 'Reveal the latest editor status without replacing newer compile messages.');
 
 selection = captured;
 document.oai.annotation.request = () => ({accepted:false});

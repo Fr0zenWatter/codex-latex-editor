@@ -57,7 +57,7 @@ const calls = [];
 let restorePayload, deferred, pdfError=false, pdfImages=false;
 const flush = () => new Promise(resolve => setImmediate(resolve));
 async function request(route, options) {
-  const data = options ? JSON.parse(options.body) : null; calls.push({route, data});
+  const data = options ? JSON.parse(options.body) : null; calls.push({route, data, signal:options?.signal});
   if (route.startsWith('/history?')) return {revisions:rows.map(row=>({...row})), next:null};
   if (route === '/history/label') {rows.find(row=>row.id===data.id).label=data.label.trim();return {ok:true};}
   if (route === '/history/summaries') return {status:'done',summaries:[{id:2,summary:'更新稳定性估计。'}]};
@@ -126,7 +126,11 @@ pdfError=true; $('pdf').onclick(); await flush();
 assert.match($('pdf-view').textContent,/PDF 对比失败：compile failed/);pdfError=false;
 $('source').onclick();
 deferred={}; $('pdf').onclick(); const oldPdf=deferred; deferred=null;
-$('source').onclick(); oldPdf.resolve({changes:[]}); await flush();
+const pendingPdfCall = calls.findLast(call=>call.route==='/history/pdf');
+$('source').onclick();
+assert(pendingPdfCall.signal.aborted, 'Changing tabs aborts the obsolete browser request.');
+assert.equal(calls.findLast(call=>call.route==='/history/pdf-cancel').data.request_id,pendingPdfCall.data.request_id, 'Cancel the same backend comparison.');
+oldPdf.resolve({changes:[]}); await flush();
 assert(!$('code').hidden && $('pdf-view').hidden,'A late PDF response must not replace the source tab.');
 
 // A late response from a previously closed dialog must not overwrite a fresh selection.

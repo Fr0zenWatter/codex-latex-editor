@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
-const script = fs.readFileSync(path.join(__dirname, 'editor.py'), 'utf8').match(/<script type="module">\n([\s\S]*?)<\/script>/)[1].replace(/^import .*;\n/gm, '');
+const script = fs.readFileSync(path.join(__dirname, 'editor.py'), 'utf8').replace(/\r\n/g, '\n').match(/<script type="module">\n([\s\S]*?)<\/script>/)[1].replace(/^import .*;\n/gm, '');
 const elements = new Map();
 function element(id) {
   if (!elements.has(id)) elements.set(id, {
@@ -57,7 +57,7 @@ const context = vm.createContext({
   attachMathHover(){},attachNativeAnnotations(){},attachSelectionChat(){return {open(){chatOpened.push('full');},openQuick(anchor){chatOpened.push(anchor);},refreshAnnotations(){},busy:false};},attachHistory(){},mountHistoryTabs(){},katex:{},
   pdfjsLib:{GlobalWorkerOptions:{},getDocument:()=>({promise:Promise.resolve(pdf),async destroy(){destroyed++;}})},
   EventBus:class{on(){}},PDFLinkService:class{setViewer(){} setDocument(){}},PDFViewer:function(){return viewer;},
-  ResizeObserver:class{observe(){}},Uint8Array,
+  ResizeObserver:class{observe(){}},MutationObserver:class{observe(){}},Uint8Array,
   document: {querySelector: element, createElement: () => element(Symbol()), documentElement: {dataset: {}}},
   CodeMirror: {Doc:class{constructor(source,mode){this.source=source;this.mode=mode;}},hint:{latex:()=>({list:['\\begin']})},fromTextArea: (_,configuration) => {Object.assign(options,configuration);return editor;}, commands: {}, Vim: {
     handleKey(cm,key){assert.equal(key,'<Esc>');vimEscapes++;},
@@ -144,6 +144,24 @@ assert.equal(element('#zoom-out').disabled, true);
 element('#zoom-fit').onclick();
 assert.equal(viewer.currentScale, 1);
 assert.equal(element('#zoom-out').disabled, false);
+const zoomWheel={ctrlKey:true,deltaY:-120,preventDefault(){this.prevented=true;}};
+element('#preview').events.wheel(zoomWheel);
+assert(zoomWheel.prevented, 'Ctrl+wheel must suppress browser-wide zoom.');
+assert.equal(element('#zoom-fit').textContent,'125%');
+assert.equal(viewer.currentScale,1.25);
+element('#preview').events.wheel({...zoomWheel,deltaY:120});
+assert.equal(element('#zoom-fit').textContent,'100%');
+for(const ignored of [{ctrlKey:false},{deltaY:0}]){
+  const event={...zoomWheel,...ignored,prevented:false};
+  element('#preview').events.wheel(event);
+  assert.equal(event.prevented,false);
+  assert.equal(element('#zoom-fit').textContent,'100%');
+}
+element('#preview').inert=true;
+const logWheel={...zoomWheel,prevented:false};
+element('#preview').events.wheel(logWheel);
+assert.equal(logWheel.prevented,false,'Do not zoom the hidden PDF while viewing compile logs.');
+element('#preview').inert=false;
 vm.runInContext("busy=true;synchronize('forward')", context);
 assert.equal(vm.runInContext('pendingForward', context), true);
 vm.runInContext("pendingForward=false;synchronize('backward')", context);

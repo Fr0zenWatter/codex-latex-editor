@@ -65,16 +65,17 @@ with tempfile.TemporaryDirectory() as directory:
     path.write_text(before, encoding='utf-8')
     server = make_server(path, main_thread='')
     try:
-        data = history_pdf_changes(server, path, before, after)
+        with patch('editor.synctex_records', side_effect=AssertionError('History uses one SyncTeX index, not a process per line.')):
+            data = history_pdf_changes(server, path, before, after)
         assert len(data['changes']) == 1, 'Unchanged math must not split the edited paragraph into separate cards.'
         for side in ('before', 'after'):
             assert [region['page'] for region in data['changes'][0][side]] == [1, 2], (side, data)
-        # An unchanged sentence on the next page still belongs to this paragraph.
+        # An unchanged sentence on another page must not inflate a small edit.
         one_edit = before.replace('original iteration', 'updated iteration')
         continued = history_pdf_changes(server, path, before, one_edit)
         assert len(continued['changes']) == 1
         for side in ('before', 'after'):
-            assert [region['page'] for region in continued['changes'][0][side]] == [1, 2]
+            assert [region['page'] for region in continued['changes'][0][side]] == [1]
         # Without a blank line, a theorem/proof still starts a separate block.
         bounded_before = before.replace('\\newpage\nwhere', '\\begin{quote}\n\\newpage\nwhere').replace(
             '\n\nAn unchanged paragraph.', '\n\\end{quote}\n\nAn unchanged paragraph.')
@@ -136,7 +137,7 @@ with tempfile.TemporaryDirectory() as directory:
             assert request(data[side])[1].startswith(b'%PDF-')
             regions = data['changes'][0][side]
             assert regions and regions[0]['page'] == 1, regions
-            assert 40 < regions[0]['rect'][3] - regions[0]['rect'][1] < 400, 'Crop should cover the changed wrapped paragraph, not the full page.'
+            assert 15 < regions[0]['rect'][3] - regions[0]['rect'][1] < 100, 'One edited sentence in a long single source line must not crop the whole paragraph.'
         assert snapshot(path) == state and history.list() == revisions, 'Historical compilation must preserve source and history.'
         assert request('/pdf')[1] == b'%PDF-live-preview' and server.pdf_revision == 'live-preview'
         assert len(server.history_pdfs) == 2

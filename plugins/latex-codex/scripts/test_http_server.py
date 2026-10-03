@@ -83,7 +83,7 @@ with tempfile.TemporaryDirectory() as directory:
         assert json.loads(request('/state')[1])['source'] == 'First edit.'
         # A slow history comparison must not lock the live document after closing history.
         started.clear(); release.clear()
-        def history_pdf_changes(*args):
+        def history_pdf_changes(*args, **kwargs):
             started.set()
             assert release.wait(5)
             return {'changes': []}
@@ -99,6 +99,24 @@ with tempfile.TemporaryDirectory() as directory:
                 release.set()
             assert preview.result()[0] == 200
         print('PASS: state polling and saving remain responsive during history PDF generation')
+        started.clear(); release.clear()
+        def cancellable_pdf(*args, cancelled):
+            started.set()
+            while not release.wait(.01):
+                if cancelled(): raise InterruptedError('History cancelled')
+            return {'changes': []}
+        with patch('editor.history_pdf_changes', side_effect=cancellable_pdf), ThreadPoolExecutor(1) as pool:
+            preview = pool.submit(request, '/history/pdf', {'path':str(path), 'id':latest, 'compare':'previous', 'request_id':'1'*36})
+            try:
+                assert started.wait(2)
+                assert request('/history/pdf-cancel', {'request_id':'2'*36})[0] == 200
+                assert not preview.done(), 'A late cancellation must not cancel a newer comparison.'
+                assert request('/history/pdf-cancel', {'request_id':'1'*36})[0] == 200
+                assert preview.result(timeout=2)[0] == 409
+                assert request('/state')[0] == 200
+            finally:
+                release.set()
+        print('PASS: targeted history cancellation stops obsolete work without blocking state reads')
         batch = {'request_id': '1' * 32, 'source': 'First edit.', 'selection': 'First',
                  'messages': [{'role': 'user', 'content': 'Shorten this.'}],
                  'remember': True, 'memory_revision': 0,

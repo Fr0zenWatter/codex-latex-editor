@@ -42,6 +42,7 @@ const request=async(url,options)=>{
 };
 let painted=[];
 const chat=attachSelectionChat(editor,request,items=>painted=[...items]);
+assert.equal(el('#annotations-send').hidden,true);
 // A closed popover has zero width; pin its right edge without measuring it.
 el('#annotations-review').offsetWidth=0;
 el('#annotations-review').events.beforetoggle({newState:'open'});
@@ -144,6 +145,7 @@ assert.equal(painted[0].original,'chosen','Capture the selection before focus mo
 assert.equal(calls.filter(call=>call.url==='/chat').length,sent,'Adding a comment never calls the model.');
 assert.equal(source,'before chosen after');assert.equal(chat.hasAnnotations,true);
 assert.equal(el('#annotations-toggle').textContent,'批注 · 1');
+assert.equal(el('#annotations-send').hidden,false);
 selection={from:{line:0,ch:14},to:{line:0,ch:19}};
 chat.openQuick({left:100,top:100,pdf:{pdf_revision:'build',rectangles:[{page:2,rect:[1,2,3,4]}]}});
 el('#chat-quick-input').value='Rewrite the ending';await el('#chat-quick-form').onsubmit({preventDefault(){}});
@@ -173,6 +175,7 @@ assert.equal(source,'extra before {\\color{blue}revised} {\\color{blue}ending}')
 assert.equal(operations,1,'Apply the complete batch in one undoable editor operation.');
 assert.equal(el('#chat-input').value,'Keep my full-panel draft.');assert.equal(el('#chat-panel').hidden,true);
 assert.equal(painted.length,0);assert.equal(el('#annotations-send').disabled,true);
+assert.equal(el('#annotations-send').hidden,true);
 assert.equal(el('#annotations-send').attributes['aria-busy'],'false');assert.equal(el('#annotations-status').textContent,'Both updated.');
 // Identical words have separate source anchors; non-BMP text must use Python offsets on the wire.
 palette.find(button=>button.textContent==='无').onclick();

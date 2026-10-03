@@ -1,7 +1,8 @@
 // Native browser annotations are independent of the editor's local comments.
+import {t} from './latex-settings.mjs';
 export function attachNativeAnnotations(editor, setText, document = globalThis.document) {
   const $ = id => document.getElementById(id);
-  const button = $('native-annotation-open'), status = $('status');
+  const button = $('native-annotation-open'), status = $('status'), hint = $('native-annotation-status');
   // Also remove the old drawer in pages served by an already-running editor.
   $('native-annotation-preview')?.remove();
   let marker = null;
@@ -10,9 +11,17 @@ export function attachNativeAnnotations(editor, setText, document = globalThis.d
   editor.getWrapperElement().setAttribute('oai-annotation-container-text', '');
   const update = () => {
     const active = annotationActive();
-    setText(button, active ? '返回编辑' : '原生批注选区');
+    const label = active ? '返回编辑' : '原生批注选区';
+    for (const attribute of ['title', 'aria-label']) {
+      button.setAttribute('data-i18n-' + attribute, label);
+      button.setAttribute(attribute, t(label));
+    }
+    button.setAttribute('aria-pressed', String(active));
     button.disabled = !active && !editor.somethingSelected();
+    hint.hidden = !active;
+    status.hidden = active;
   };
+  document.defaultView?.addEventListener('latex-language-change', update);
   editor.on('cursorActivity', update);
   editor.on('changes', clear);
   editor.on('swapDoc', clear);
@@ -49,7 +58,7 @@ export function attachNativeAnnotations(editor, setText, document = globalThis.d
         // Persistent annotation mode uses Save/Add; a quick request defaults to Send.
         // Keep this synchronous inside the user's click to preserve the activation.
         if (annotation.request(range, {enterAnnotationMode:true}).accepted) {
-          setText(status, '保存批注后按 Esc 返回编辑，已保存批注可在主对话统一发送。');
+          update();
           return;
         }
       } catch { /* Rejected requests must leave normal source editing usable. */ }
