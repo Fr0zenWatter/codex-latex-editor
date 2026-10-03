@@ -5,7 +5,7 @@ from pathlib import Path
 import socket
 import tempfile
 import threading
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from urllib.error import HTTPError
 from urllib.request import ProxyHandler, Request, build_opener
 
@@ -45,6 +45,7 @@ with tempfile.TemporaryDirectory() as directory:
         assert accepted.wait(2)
         assert request('/')[0] == 200, 'An idle browser preconnect must not block the page.'
         assert request('/vendor/latex-themes.mjs')[0] == 200
+        assert request('/vendor/latex-native-annotations.mjs')[0] == 200
         for theme in ('eclipse', 'idea', 'neo', 'base16-light', 'solarized', 'material-darker', 'material-palenight', 'ayu-dark', 'gruvbox-dark'):
             code, css = request('/vendor/' + theme + '.css')
             assert code == 200 and b'.cm-s-' in css, 'Bundled themes must be available offline.'
@@ -80,18 +81,61 @@ with tempfile.TemporaryDirectory() as directory:
             assert second.result()[0] == 409, 'Concurrent stale saves must never overwrite the first edit.'
         assert path.read_text(encoding='utf-8') == 'First edit.'
         assert json.loads(request('/state')[1])['source'] == 'First edit.'
+        # A slow history comparison must not lock the live document after closing history.
+        started.clear(); release.clear()
+        def history_pdf_changes(*args):
+            started.set()
+            assert release.wait(5)
+            return {'changes': []}
+        latest = json.loads(request('/history?path=' + str(path))[1])['revisions'][0]['id']
+        current = json.loads(request('/state')[1])
+        with patch('editor.history_pdf_changes', side_effect=history_pdf_changes), ThreadPoolExecutor(1) as pool:
+            preview = pool.submit(request, '/history/pdf', {'path':str(path), 'id':latest, 'compare':'previous'})
+            try:
+                assert started.wait(2)
+                assert json.loads(request('/state')[1])['source'] == 'First edit.'
+                assert request('/save', {'source':'First edit.', 'version':current['version']})[0] == 200
+            finally:
+                release.set()
+            assert preview.result()[0] == 200
+        print('PASS: state polling and saving remain responsive during history PDF generation')
+        batch = {'request_id': '1' * 32, 'source': 'First edit.', 'selection': 'First',
+                 'messages': [{'role': 'user', 'content': 'Shorten this.'}],
+                 'remember': True, 'memory_revision': 0,
+                 'annotations': [{'id': 1, 'start': 0, 'end': 5, 'selection': 'First', 'request': 'Shorten this.'}]}
+        job = Mock(result={'status': 'running'})
+        job.start.return_value = job
+        with patch('editor.ChatJob', return_value=job) as spawn:
+            code, body = request('/chat', batch)
+            assert code == 200 and json.loads(body)['id'] == batch['request_id']
+            assert request('/chat', batch) == (code, body), 'A lost acknowledgement must not start a second model request.'
+            job.result = {'status': 'done'}
+            assert request('/chat', batch) == (code, body), 'Retries after completion must reuse the original task.'
+            assert spawn.call_count == job.start.call_count == 1
+            assert request('/chat', {**batch, 'selection': 'First edit.'})[0] == 409
+            assert request('/chat', {**batch, 'request_id': 'invalid'})[0] == 400
+        server.chat = None
+        print('PASS: Send retries reuse one task and reject changed or invalid requests')
         build = Path(server.build.name)
         (build / 'main.pdf').write_bytes(b'%PDF-test')
-        (build / 'main.aux').write_text(r'\newlabel{eq:regularity}{{3.13}{17}{}{equation*.114}{}}' + '\n' + r'\newlabel{custom}{{\dangerous{data}}{1}}', encoding='utf-8')
+        (build / 'main.aux').write_text('\n'.join([
+            r'\newlabel{eq:regularity}{{3.13}{17}{}{equation*.114}{}}',
+            r'\newlabel{custom}{{\dangerous{data}}{1}}',
+            r'\bibcite{BankXu2003b}{9}', r'\bibcite{BankXuZheng2007}{10}',
+            r'\bibcite{BankNguyen2011}{{6}{2011}{{Bank and Nguyen}}{{}}}',
+            r'\bibcite{eq:regularity}{7}', r'\bibcite{custom}{\dangerous{data}}',
+            r'\bibcite{author-year}{{Doe(2026)}{2026}{{Doe}}{{}}}',
+        ]), encoding='utf-8')
         with patch('editor.compiler', return_value=('xelatex', 'unused')), patch('editor.compile_tex', return_value=(True, 'ok', 'xelatex')), patch('editor.pdf_page_boxes', return_value=[[0, 0, 600, 800]]):
             revision = json.loads(request('/state')[1])['version']
             code, body = request('/compile', {'source': 'First edit.', 'version': revision})
             assert code == 200 and json.loads(body)['labels'] == {'eq:regularity': '3.13'}
+            assert json.loads(body)['citations'] == {'BankXu2003b': '9', 'BankXuZheng2007': '10', 'BankNguyen2011': '6', 'eq:regularity': '7'}
         with patch('editor.compiler', return_value=('xelatex', 'unused')), patch('editor.compile_tex', return_value=(False, 'error', 'xelatex')):
             revision = json.loads(request('/state')[1])['version']
             code, body = request('/compile', {'source': 'First edit.', 'version': revision})
-            assert code == 200 and json.loads(body)['labels'] == {} and not json.loads(body)['sync']
-        print('PASS: compiled reference metadata and failed-build isolation')
+            assert code == 200 and json.loads(body)['labels'] == json.loads(body)['citations'] == {} and not json.loads(body)['sync']
+        print('PASS: compiled reference/citation metadata and failed-build isolation')
         print('PASS: idle browser connections, page/assets during compilation, serialized saves and conflict protection')
     finally:
         release.set()

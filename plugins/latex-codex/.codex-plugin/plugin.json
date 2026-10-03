@@ -1,6 +1,6 @@
 {
   "name": "latex-codex",
-  "version": "0.1.0+codex.20260930235134",
+  "version": "0.2.6",
   "description": "Local LaTeX editing and live PDF preview in the Codex browser side panel.",
   "author": {
     "name": "Local developer"

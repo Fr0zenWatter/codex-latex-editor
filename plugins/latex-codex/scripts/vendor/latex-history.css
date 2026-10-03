@@ -79,7 +79,8 @@
 @media(max-width:640px){.history-body:has(.history-sidebar:hover),.history-body:has(.history-sidebar :focus-visible),#history-dialog[data-sidebar-open=true] .history-body{grid-template-columns:minmax(0,1fr) min(280px,60vw)}.history-activity{min-width:240px}.history-toolbar{gap:5px;padding:7px}.history-toolbar button,.history-toolbar select{font-size:12px;padding:5px 7px}.history-toolbar select{max-width:160px}#history-file{display:none}#history-dialog footer small{font-size:11px}.history-line-number{width:36px}#history-next{right:8px;padding:8px 11px;font-size:12px}}
 @media(prefers-reduced-motion:reduce){.history-body,.history-activity,#history-sidebar-toggle span{transition:none}}
 
-#history-pdf-view{position:absolute;inset:0;overflow:auto;padding:16px;background:#f3f4f6;scrollbar-color:#c6c9cd #f3f4f6}
+#history-pdf-view{position:absolute;inset:0;overflow:auto;overflow-anchor:none;padding:16px 16px max(96px,20vh);background:#f3f4f6;scrollbar-color:#c6c9cd #f3f4f6}
+#history-dialog[data-history-view=pdf]{user-select:none;-webkit-user-select:none}
 .history-pdf-change{margin-bottom:20px;border:1px solid #dedfe2;border-radius:8px;overflow:hidden;background:#fff}
 .history-pdf-heading{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:#f8f9fa;border-bottom:1px solid #dedfe2}
 .history-pdf-change h3{margin:0;font:600 13px system-ui}
@@ -88,7 +89,9 @@
 .history-pdf-toggle:hover,.history-pdf-toggle[aria-pressed=true]{background:#e4e8ed}
 .history-pdf-toggle:focus-visible{outline:2px solid #526575}
 .history-pdf-toggle svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
-.history-pdf-image section{min-width:0;padding:10px}
+.history-pdf-image{display:grid;align-items:start}
+.history-pdf-image section{grid-area:1/1;min-width:0;padding:10px}
+#history-dialog .history-pdf-image section[hidden]{display:block;visibility:hidden}
 .history-pdf-image p{font:13px/1.6 system-ui;color:#72767c;padding:12px}
-.history-pdf-image canvas{display:block;width:100%;height:auto;background:#fff;margin-bottom:8px}
+.history-pdf-image canvas,.history-pdf-image img{display:block;width:100%;height:auto;background:#fff;margin-bottom:8px;-webkit-user-drag:none}
 #history-dialog[data-history-view=pdf] #history-next{display:none}

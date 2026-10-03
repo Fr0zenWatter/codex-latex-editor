@@ -36,7 +36,7 @@ python plugins/latex-codex/scripts/editor.py /path/to/main.tex
 
 打开终端打印的回环地址；AI 功能使用已登录的 Codex CLI。完整操作说明见 `plugins/latex-codex/skills/latex-codex/SKILL.md`。
 
-编辑会自动保存到原始 `.tex` 文件；版本历史保存在文档旁的 `.latex-codex/history.sqlite3`。历史只记录入口文件，旧版本编译会使用当前的图片、参考文献和引用文件。当前不支持多文件导航和 Biber。
+编辑会自动保存到原始 `.tex` 文件；版本历史保存在文档旁的 `.latex-codex/history.sqlite3`。仅在查看历史“PDF 改动”时，将每处修改前后的 PNG 对比图（包含整句标红）存入 `.latex-codex/pdf-diff-cache/`；普通编译不保存完整 PDF 或 SyncTeX 存档。再次查看直接读图，缺失或损坏时按需编译生成；“重新编译”强制更新这一组对比图。跨页改动按页保存，新增或删除的一侧显示空白说明。缓存可删除，每项目上限 256 MiB，30 天未使用的存档在缓存读写时清理；源码历史不受影响。失败编译或未完成的渲染不覆盖已有对比图。旧版 `.latex-codex/pdf-cache/` 已停用，可删除。永久历史只记录入口文件，旧版本补编译会使用当前的图片、参考文献和引用文件。当前不支持多文件导航和 Biber。
 
 ## 维护
 

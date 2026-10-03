@@ -54,7 +54,7 @@ const events = {};
 const context = {path:'paper.tex', source:'unsaved draft', version:'current-version'};
 const rows = [{id:2, created:'2026-10-01T00:01:00Z', kind:'save', label:'',sections:['2.1 Stability'],baseline:1,summary:'',description:'调整公式与论述'}, {id:1, created:'2026-10-01T00:00:00Z', kind:'open', label:'初稿'}];
 const calls = [];
-let restorePayload, deferred, pdfError=false;
+let restorePayload, deferred, pdfError=false, pdfImages=false;
 const flush = () => new Promise(resolve => setImmediate(resolve));
 async function request(route, options) {
   const data = options ? JSON.parse(options.body) : null; calls.push({route, data});
@@ -62,7 +62,7 @@ async function request(route, options) {
   if (route === '/history/label') {rows.find(row=>row.id===data.id).label=data.label.trim();return {ok:true};}
   if (route === '/history/summaries') return {status:'done',summaries:[{id:2,summary:'更新稳定性估计。'}]};
   if (deferred) return new Promise(resolve => { deferred.resolve = resolve; });
-  if (route === '/history/pdf') { if(pdfError)throw new Error('compile failed'); return {changes:[]}; }
+  if (route === '/history/pdf') { if(pdfError)throw new Error('compile failed'); return pdfImages ? {images:true, changes:[{kind:'replace', before:[{page:1,image:'/before.png'},{page:2,image:'/before-continuation.png'}], after:[{page:2,image:'/after.png'},{page:3,image:'/after-continuation.png'}]}]} : {changes:[]}; }
   return {...rows.find(row=>row.id===data.id), source:'old source', changes:[{kind:'equal',text:'same\n'.repeat(10)},{kind:'delete',text:'old'},{kind:'insert',text:'new'},{kind:'equal',text:'\nend'}], same:false};
 }
 attachHistory({on:(name, fn)=>events[name]=fn}, request, ()=>({...context}), async data=>{restorePayload=data;});
@@ -87,6 +87,20 @@ assert.equal(calls.at(-1).route,'/history/pdf');assert.equal(calls.at(-1).data.c
 assert($('code').hidden && !$('pdf-view').hidden && $('next').hidden);
 assert.equal($('pdf').attributes['aria-pressed'],'true');
 assert.match($('pdf-view').textContent,/没有需要预览/);
+pdfImages=true; $('target').onchange(); await flush();
+const cachedCard = $('pdf-view').children[0];
+assert.equal(cachedCard.children[1].children[0].children[0].src,'/after.png');
+assert.equal(cachedCard.children[1].children[1].children[0].src,'/before.png');
+assert.equal(cachedCard.children[1].children[0].children[0].alt,'修改后 · PDF 第 2 页');
+assert.equal($('pdf-view').children.length,1, 'Cross-page crops share a single change card.');
+assert.equal(cachedCard.children[1].children[0].children[1].src,'/after-continuation.png');
+assert.equal(cachedCard.children[1].children[1].children[1].src,'/before-continuation.png');
+cachedCard.children[0].children[1].onclick();
+assert(!cachedCard.children[1].children[1].hidden && cachedCard.children[1].children[0].hidden, 'Switch the entire multi-page stack together.');
+assert(!calls.some(call=>call.route==='/history/pdf-cache'),'Cached PNGs must display without PDF.js or another save.');
+$('recompile').onclick(); await flush();
+assert.equal(calls.at(-1).data.recompile,true,'Explicit recompile must bypass the image cache.');
+pdfImages=false;
 $('target').value='current'; $('target').onchange(); await flush();
 assert.equal(calls.at(-1).data.source, 'unsaved draft');
 await $('list').children[1].onclick();

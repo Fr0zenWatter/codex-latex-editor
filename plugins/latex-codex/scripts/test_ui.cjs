@@ -15,7 +15,7 @@ function element(id) {
     style: {setProperty(key, value) { this[key] = value; }},
     attributes:{},classList: {add() {}, remove() {}, toggle() {}}, setAttribute(key,value) {this.attributes[key]=value;},
     showPopover(){this.open=true;},hidePopover(){this.open=false;},focus(){this.focused=true;},
-    addEventListener(){},getBoundingClientRect(){return {left:120,top:180};},
+    events:{},addEventListener(name,handler){this.events[name]=handler;},getBoundingClientRect(){return {left:120,top:180};},
     offsetWidth:240,offsetHeight:42,
     setPointerCapture(id) { this.captured = id; },
     hasPointerCapture(id) { return this.captured === id; },
@@ -36,13 +36,13 @@ const editor = {
   scrollIntoView(cursor,margin){this.jump={...cursor,margin};},
   on(name,fn) {editorEvents[name]=fn;}, setOption(key, value) { options[key] = value; },
   toggleComment(){commentCalls++;},somethingSelected:()=>selected,
-  coordsChar:()=>({line:3,ch:2}),setCursor(){cursorChanges++;},focus(){},refresh(){},
+  coordsChar:()=>({line:3,ch:2}),setCursor(cursor){cursorChanges++;this.cursor=cursor;},focus(){},refresh(){},
   setSelection(from,to){this.selection={from,to};},
   getOption: key => options[key], getCursor: () => ({line: 88, ch: 8}),
   charCoords: () => ({left:80,bottom:900}), getScrollInfo: () => ({clientHeight: 600}),
   scrollTo(x, y) { this.scroll = [x, y]; },
 };
-const views = [element('page1'),element('page2')].map(div=>({div,viewport:{width:500,height:700,convertToPdfPoint:(x,y)=>[x,700-y]},setPdfPage(page){this.pdfPage=page;}}));
+const views = [element('page1'),element('page2')].map(div=>({div,viewport:{width:500,height:700,convertToPdfPoint:(x,y)=>[x,700-y],convertToViewportPoint:(x,y)=>[x,700-y]},setPdfPage(page){this.pdfPage=page;}}));
 const viewer = {
   currentPageNumber:1,pagesCount:2,currentScale:1,pdfDocument:null,
   getPageView(index){return views[index];},update(){},
@@ -54,9 +54,9 @@ let destroyed=0,downloads=0;
 const windowHandlers={},uiTimers=new Map();let uiTimerId=0;
 const context = vm.createContext({
   t:key=>key, setText:(element,key,values={})=>{element.textContent=key.replace(/\{(\w+)\}/g,(match,name)=>values[name]??match);},initSettings(){}, initScreenshotThemes(){}, applyCustomTheme(){return false;},
-  attachMathHover(){},attachSelectionChat(){return {open(){chatOpened.push('full');},openQuick(anchor){chatOpened.push(anchor);},busy:false};},attachHistory(){},mountHistoryTabs(){},katex:{},
+  attachMathHover(){},attachNativeAnnotations(){},attachSelectionChat(){return {open(){chatOpened.push('full');},openQuick(anchor){chatOpened.push(anchor);},refreshAnnotations(){},busy:false};},attachHistory(){},mountHistoryTabs(){},katex:{},
   pdfjsLib:{GlobalWorkerOptions:{},getDocument:()=>({promise:Promise.resolve(pdf),async destroy(){destroyed++;}})},
-  EventBus:class{},PDFLinkService:class{setViewer(){} setDocument(){}},PDFViewer:function(){return viewer;},
+  EventBus:class{on(){}},PDFLinkService:class{setViewer(){} setDocument(){}},PDFViewer:function(){return viewer;},
   ResizeObserver:class{observe(){}},Uint8Array,
   document: {querySelector: element, createElement: () => element(Symbol()), documentElement: {dataset: {}}},
   CodeMirror: {Doc:class{constructor(source,mode){this.source=source;this.mode=mode;}},hint:{latex:()=>({list:['\\begin']})},fromTextArea: (_,configuration) => {Object.assign(options,configuration);return editor;}, commands: {}, Vim: {
@@ -157,6 +157,20 @@ assert.equal(mappings[0][4].context, 'normal');
 actions[mappings[0][2]](editor);
 assert.deepEqual(editor.scroll, [null, 600]);
 assert.equal(direction, 'forward');
+const beforeGutterCursor=cursorChanges;
+let gutterPrevented=0;
+const gutterClick={button:0,detail:1,preventDefault(){gutterPrevented++;}};
+editorEvents.gutterClick(editor,12,'CodeMirror-linenumbers',gutterClick);
+editorEvents.gutterClick(editor,12,'CodeMirror-linenumbers',{...gutterClick,detail:2,button:2});
+editorEvents.gutterClick(editor,12,'other-gutter',{...gutterClick,detail:2});
+options.readOnly='nocursor';
+editorEvents.gutterClick(editor,12,'CodeMirror-linenumbers',{...gutterClick,detail:2});
+assert.equal(cursorChanges,beforeGutterCursor,'Single clicks, other gutters, right clicks and readonly mode do not jump.');
+options.readOnly=false;direction=null;
+editorEvents.gutterClick(editor,12,'CodeMirror-linenumbers',{...gutterClick,detail:2});
+assert.equal(gutterPrevented,1);
+assert.deepEqual(JSON.parse(JSON.stringify(editor.cursor)),{line:12,ch:0});
+assert.equal(direction,'forward','Double-clicking a logical source line uses the existing SyncTeX forward lookup.');
 const preview = element('#preview');
 const pdfImage = {dataset: {pageNumber: '2'},clientLeft:0,clientTop:0,clientWidth:500,clientHeight:700,getBoundingClientRect: () => ({left: 0, top: 0, width: 500, height: 700})};
 const pointer = {pointerId: 1, pointerType: 'mouse', button: 0, buttons: 1, clientX: 200, clientY: 200,
@@ -295,17 +309,21 @@ context.fetch=async()=>{downloads++;return{ok:true,arrayBuffer:async()=>new Arra
 
   editor.getValue=()=>source;
   context.clearTimeout=()=>{};context.setTimeout=()=>{};
-  vm.runInContext("busy=false;conflict=false;pdfVersion='';pendingForward=false;saved='compiled source'",context);
+  vm.runInContext("busy=false;conflict=false;pdfVersion='';pendingForward=false;saved='compiled source';compiledLabels={old:'1'};compiledCitations={old:'9'}",context);
   context.fetch=()=>new Promise(resolve=>release=resolve);
   const compiling=vm.runInContext('compile()',context),beforeJumps=cursorChanges;
   source='edited during compilation';
   release({ok:true,json:async()=>({ok:false,version:'v',log:'error',engine:'pdflatex',diagnostic:{line:23,message:'Undefined control sequence.'}})});
   await compiling;assert.equal(cursorChanges,beforeJumps,'Stale compilation must not move the cursor.');
+  assert.equal(vm.runInContext('Object.keys(compiledLabels).length+Object.keys(compiledCitations).length',context),0,'Failed builds cannot reuse compiled labels or citations.');
   assert.equal(editor.marks.size,0);
   context.fetch=async()=>({ok:true,json:async()=>({ok:false,version:'v',log:'error',engine:'pdflatex',diagnostic:{line:23,message:'Undefined control sequence.'}})});
   await vm.runInContext('compile()',context);assert(!element('#log').hidden,'Compilation failures display the right-side log.');assert.equal(element('#log').textContent,'error');assert.equal(editor.marks.size,2);assert.equal(cursorChanges,beforeJumps+1);
-  context.fetch=async()=>({ok:true,json:async()=>({ok:true,version:'v',log:'success',engine:'pdflatex',pdf_revision:'second'})});
+  context.fetch=async()=>({ok:true,json:async()=>({ok:true,version:'v',log:'success',engine:'pdflatex',pdf_revision:'second',labels:{eq:'2.1'},citations:{paper:'9'}})});
   await vm.runInContext('compile()',context);assert.equal(editor.marks.size,0,'Successful compilation clears the error.');assert(!element('#log').hidden,'Recompiling must not close a log the user is reading.');element('#log-toggle').onclick();assert(element('#log').hidden);
+  assert.equal(vm.runInContext("compiledCitations.paper",context),'9','Successful preview installs its citation values.');
+  vm.runInContext("display({source:'Other file.',version:'other',name:'other.tex',path:'other.tex'})",context);
+  assert.equal(vm.runInContext('Object.keys(compiledLabels).length+Object.keys(compiledCitations).length',context),0,'File switches discard the previous build metadata.');
   context.synchronize=realSynchronize;
   const paragraphs='\\documentclass{article}\n\\begin{document}\n\\section{Intro}\nFirst paragraph\ncontinues here.\n\nSecond paragraph.\n\\par\nThird paragraph.\\par\nFourth paragraph.\n\\end{document}';
   context.paragraphs=paragraphs;
@@ -318,7 +336,7 @@ context.fetch=async()=>{downloads++;return{ok:true,arrayBuffer:async()=>new Arra
   assert.equal(vm.runInContext(String.raw`sourceParagraphRange('\\begin{document}\n\\newpage\nText.\n\\end{document}',[3,3]).from.line`,context),2);
   assert.equal(vm.runInContext(String.raw`sourceParagraphRange('\\begin{abstract}\nAbstract text.\n\n\\end{abstract}',[2,2]).from.line`,context),1,'Do not pull a neighboring environment opener into the paragraph.');
   assert.equal(vm.runInContext(String.raw`sourceParagraphRange('\\begin{align}\nx&=y\n\\end{align}',[2,2]).to.line`,context),1,'Keep equation environment delimiters outside a selected body.');
-  const exact=(text,locations,pdfText,labels={})=>JSON.parse(JSON.stringify(vm.runInContext('sourcePdfTextRange('+JSON.stringify(text)+','+JSON.stringify(locations)+','+JSON.stringify(pdfText)+','+JSON.stringify(labels)+')',context)));
+  const exact=(text,locations,pdfText,labels={},citations={})=>JSON.parse(JSON.stringify(vm.runInContext('sourcePdfTextRange('+JSON.stringify(text)+','+JSON.stringify(locations)+','+JSON.stringify(pdfText)+','+JSON.stringify(labels)+','+JSON.stringify(citations)+')',context)));
   assert.deepEqual(exact('Before. On the matrix level, we solve it. After.',[1,1],'On the matrix level'),{from:{line:0,ch:8},to:{line:0,ch:27}});
   assert.deepEqual(exact('Before. On the\nmatrix~level, after.',[1,2],'On the matrix level'),{from:{line:0,ch:8},to:{line:1,ch:12}});
   assert.deepEqual(exact('efficient method',[1,1],'ef\ufb01cient method'),{from:{line:0,ch:0},to:{line:0,ch:16}});
@@ -354,6 +372,22 @@ context.fetch=async()=>{downloads++;return{ok:true,arrayBuffer:async()=>new Arra
   assert.deepEqual(exact(regularitySource,[1,2],regularityPdf,compiledRefs),{from:{line:0,ch:0},to:{line:2,ch:14},approximate:true});
   assert.deepEqual(exact(iteratorsSource,[1,4],iteratorsPdf,compiledRefs),{from:{line:0,ch:0},to:{line:4,ch:15},approximate:true});
   assert.deepEqual(exact('Before. See \\eqref{eq:biharmonic}. After.',[1,1],'See (3.11).',compiledRefs),{from:{line:0,ch:8},to:{line:0,ch:34},approximate:true});
+  const citationSentence=String.raw`Superconvergence in FE methods by smoothing was initiated in the seminal work \cite{BankXu2003b} and generalized to high-order and $h$-$p$ FEs in \cite{BankXuZheng2007,BankNguyen2011}.`;
+  const citationPdf='Superconvergence in FE methods by smoothing was initiated in the seminal work\n[9] and generalized to high-order and h-p FEs in [10, 6].';
+  const compiledCites={BankXu2003b:'9',BankXuZheng2007:'10',BankNguyen2011:'6'};
+  assert.deepEqual(exact('Before. '+citationSentence+' After.',[1,1],citationPdf,{},compiledCites),{from:{line:0,ch:8},to:{line:0,ch:8+citationSentence.length},approximate:true},'Citations and inline math preserve the exact sentence, excluding adjacent prose.');
+  assert.deepEqual(exact(String.raw`See \cite{BankXuZheng2007,BankNguyen2011}.`,[1,1],'[10, 6]',{},compiledCites),{from:{line:0,ch:4},to:{line:0,ch:41},approximate:true},'Selecting citation text keeps the entire source macro.');
+  assert.deepEqual(exact(String.raw`See \citep{ BankXu2003b }.`,[1,1],'[9]',{},compiledCites),{from:{line:0,ch:4},to:{line:0,ch:25},approximate:true});
+  assert.throws(()=>exact(String.raw`See \cite{BankXu2003b,missing}.`,[1,1],'[9, 8]',{},compiledCites),/唯一匹配/,'Partially known citations cannot guess missing labels.');
+  assert.deepEqual(exact('Before. '+citationSentence+' After.',[1,1],citationPdf),{from:{line:0,ch:8},to:{line:0,ch:8+citationSentence.length},approximate:true},'Unique prose anchors locate a sentence without compiled citation numbers.');
+  assert.deepEqual(exact(citationSentence,[1,1],citationPdf,{}, {BankXu2003b:'9'}),{from:{line:0,ch:0},to:{line:0,ch:citationSentence.length},approximate:true},'Known and unknown citations share the same prose fallback.');
+  assert.throws(()=>exact(citationSentence+' '+citationSentence.replace('BankXu2003b','other'),[1,1],citationPdf),/唯一匹配/,'Matching prose with different unknown citation keys is still ambiguous.');
+  assert.throws(()=>exact(citationSentence,[1,1],citationPdf.replace('smoothing','completely unrelated theory')),/唯一匹配/,'Prose anchors reject substantial differences rather than skipping arbitrary text.');
+  assert.deepEqual(exact(citationSentence,[1,1],citationPdf+'◆'),{from:{line:0,ch:0},to:{line:0,ch:citationSentence.length},approximate:true},'A tiny PDF extraction artifact must not defeat the complete sentence anchors.');
+  const edgeSource='Prior lastword.\n'+citationSentence+'\nNext sentence.';
+  assert.deepEqual(exact(edgeSource,[1,3],'lastword.\n'+citationPdf+'\nN'),{from:{line:0,ch:6},to:{line:2,ch:1},approximate:true},'Keep an accidentally selected previous word and next initial within the precise mapped range.');
+  assert.throws(()=>exact(String.raw`\cite{unknown}`,[1,1],'[9]'),/唯一匹配/,'Citation-only selections need compiled numbers.');
+  assert.throws(()=>exact(citationSentence+' '+citationSentence,[1,1],citationPdf,{},compiledCites),/唯一匹配/,'Repeated citation sentences must remain ambiguous.');
   source=paragraphs;
   vm.runInContext("panMode=false;busy=false;syncBusy=false;conflict=false;version=pdfVersion='v';saved=paragraphs;pdfBuild='second'",context);
   const gutterPage={};
@@ -377,7 +411,8 @@ context.fetch=async()=>{downloads++;return{ok:true,arrayBuffer:async()=>new Arra
   let pdfText='paragraph\ncontinues here.';
   context.window.getSelection=()=>({isCollapsed:!pdfSelected,rangeCount:1,toString:()=>pdfSelected?pdfText:'',getRangeAt:()=>range});
   preview.contains=node=>nodes.includes(node);
-  preview.querySelectorAll=()=>nodes.map((node,i)=>({firstChild:node,closest:()=>pages[i]}));
+  preview.querySelectorAll=selector=>selector==='.textLayer span'?nodes.map((node,i)=>({firstChild:node,closest:()=>pages[i]})):
+    [...elements.values()].filter(node=>['pdf-comment-highlight','pdf-comment-pin'].includes(node.className)&&node.parent?.children.includes(node));
   const pdfClick={...contextClick,prevented:false};
   preview.oncontextmenu(pdfClick);
   assert(pdfClick.prevented,JSON.stringify(vm.runInContext('({panMode,readOnly:editor.getOption("readOnly"),points:selectedPdfPoints()})',context)));assert(element('#pdf-menu').open);assert(element('#pdf-chat-menu').focused);
@@ -399,7 +434,46 @@ context.fetch=async()=>{downloads++;return{ok:true,arrayBuffer:async()=>new Arra
   await realSynchronize('backward',points[0]);assert.equal(vimEscapes,normalEscapes,'PDF jumps must not enter Vim in standard mode.');
   preview.oncontextmenu(pdfClick);await element('#pdf-chat-quick-menu').onclick();
   assert.equal(vimEscapes,normalEscapes,'PDF selection mapping must not enter Vim in standard mode.');options.keyMap='vim';
-  assert.deepEqual(JSON.parse(JSON.stringify(chatOpened.at(-1))),{left:120,top:180,selectionTop:30,selectionBottom:790});
+  assert.deepEqual(JSON.parse(JSON.stringify(chatOpened.at(-1))),{left:120,top:180,selectionTop:30,selectionBottom:790,
+    pdf:{pdf_revision:'second',rectangles:[{page:1,rect:[20,670,100,650]},{page:2,rect:[50,650,130,630]}]}});
+  const automaticOpened=chatOpened.length,automaticLookups=lookups;
+  preview.onpointerup({pointerId:1,button:0});
+  preview.onkeydown({code:'ArrowRight',key:'ArrowRight',shiftKey:true});
+  assert.equal(chatOpened.length,automaticOpened,'Selecting text alone never opens the comment composer.');
+  assert.equal(lookups,automaticLookups,'Selection alone makes no synchronization request.');
+  assert.equal(preview.events.pointerup,undefined);assert.equal(preview.events.keyup,undefined);
+  assert.equal(chatOpened.at(-1).pdf.rectangles.length,2,'Keep rectangles across pages for highlights and pins.');
+  context.annotationItems=[{id:7,request:'Revise this passage',pdf:chatOpened.at(-1).pdf}];
+  let editedComment;context.editComment=item=>editedComment=item;
+  vm.runInContext('paintPdfAnnotations(annotationItems,editComment)',context);
+  assert.equal(preview.querySelectorAll('.pdf-comment-pin').length,4,'Two highlights and a pin on each selected page.');
+  const pin=views[0].div.children.find(child=>child.className==='pdf-comment-pin');
+  pin.onclick();assert.equal(editedComment.id,7);assert.equal(pin.style.left,'8px');
+  context.annotationItems.push({...context.annotationItems[0],id:8});
+  vm.runInContext('paintPdfAnnotations(annotationItems,editComment)',context);
+  const nearbyPins=views[0].div.children.filter(child=>child.className==='pdf-comment-pin');
+  assert.deepEqual(nearbyPins.map(pin=>pin.style.left),['8px','36px'],'Nearby comment numbers are inset from the left edge without overlapping.');
+  nearbyPins[1].onclick();assert.equal(editedComment.id,8);
+  context.annotationItems.pop();
+  views[0].viewport.convertToViewportPoint=(x,y)=>[x*2,(700-y)*2];views[0].viewport.width=1000;
+  vm.runInContext('paintPdfAnnotations(annotationItems,editComment)',context);
+  assert.equal(views[0].div.children.find(child=>child.className==='pdf-comment-highlight').style.width,'160px','Zoom reprojects PDF points.');
+  context.annotationItems[0].pdf={...context.annotationItems[0].pdf,pdf_revision:'old-build'};
+  vm.runInContext('paintPdfAnnotations(annotationItems,editComment)',context);
+  assert.equal(preview.querySelectorAll('.pdf-comment-pin').length,0,'Never show old PDF geometry on another build.');
+  views[0].viewport.convertToViewportPoint=(x,y)=>[x,700-y];views[0].viewport.width=500;
+  const beforeAnchorFetch=context.fetch,anchorDoc={};editor.getDoc=()=>anchorDoc;editor.getRange=()=> 'annotated';
+  context.sourceComment={doc:anchorDoc,original:'annotated',marker:{find:()=>({from:{line:3,ch:6},to:{line:3,ch:15}})}};
+  let anchorLookups=0;
+  context.fetch=async(url,options)=>{
+    const body=JSON.parse(options.body);assert.equal(body.direction,'forward');assert.equal(body.line,4);assert.equal(body.column,7);anchorLookups++;
+    return {ok:true,json:async()=>({page:1,rect:[10,600,30,620]})};
+  };
+  await vm.runInContext('locatePdfAnnotation(sourceComment)',context);
+  assert.equal(context.sourceComment.pdf.pdf_revision,'second');
+  assert.deepEqual(context.sourceComment.pdf.rectangles[0].rect,[10,600,30,620]);
+  await vm.runInContext('locatePdfAnnotation(sourceComment)',context);assert.equal(anchorLookups,1,'One source lookup per build/range.');
+  context.fetch=beforeAnchorFetch;
   const opened=chatOpened.length,selectedRange=editor.selection;
   pdfText='no matching source';preview.oncontextmenu(pdfClick);
   await element('#pdf-chat-menu').onclick();assert.equal(chatOpened.length,opened);assert.equal(editor.selection,selectedRange);
@@ -420,6 +494,39 @@ context.fetch=async()=>{downloads++;return{ok:true,arrayBuffer:async()=>new Arra
   await element('#pdf-chat-menu').onclick();assert.equal(chatOpened.length,opened);
   assert.match(element('#status').textContent,/included.tex/);
   assert.equal(editor.selection,selectedRange,'Mapping failures preserve the source selection.');
+  context.setTimeout=fn=>{fn();return 0;};
+  let networkCalls=0;
+  context.fetch=async()=>{if(++networkCalls===1)throw new TypeError('Failed to fetch');return {ok:true,json:async()=>({status:'done'})};};
+  assert.equal((await vm.runInContext('request("/chat?id=test")',context)).status,'done');
+  assert.equal(networkCalls,2,'A transient poll failure resumes the same request.');
+  networkCalls=0;
+  context.fetch=async(url,options)=>{
+    assert.equal(JSON.parse(options.body).request_id,'1'.repeat(32));
+    return {ok:true,json:async()=>{if(++networkCalls===1)throw new TypeError('Failed to fetch');return {id:'same-job'};}};
+  };
+  assert.equal((await vm.runInContext('request("/chat",{method:"POST",body:JSON.stringify({request_id:"1".repeat(32)})})',context)).id,'same-job');
+  assert.equal(networkCalls,2,'A lost Send response retries with the same task ID.');
+  networkCalls=0;context.fetch=async()=>{networkCalls++;throw new TypeError('Failed to fetch');};
+  await assert.rejects(vm.runInContext('request("/compile",{method:"POST"})',context),/连接中断/);
+  assert.equal(networkCalls,1,'Never automatically repeat a save or compile.');
+  networkCalls=0;
+  await assert.rejects(vm.runInContext('request("/state")',context),/连接中断/);
+  assert.equal(networkCalls,3,'Repeated failures stop with a readable message.');
+  vm.runInContext("loading=false;busy=false;syncBusy=false;historyDialog.open=false;version='poll-version'",context);
+  let finishPoll, polls=0;
+  context.fetch=()=>{polls++;return new Promise(resolve=>finishPoll=resolve);};
+  const activePoll=vm.runInContext('load()',context);
+  await vm.runInContext('load()',context);
+  await vm.runInContext('load()',context);
+  assert.equal(polls,1,'A slow state poll must not accumulate overlapping requests.');
+  finishPoll({ok:true,json:async()=>({version:'poll-version'})});
+  await activePoll;
+  assert.equal(vm.runInContext('loading',context),false);
+  context.fetch=async()=>{polls++;return {ok:true,json:async()=>({version:'poll-version'})};};
+  await vm.runInContext('load()',context);
+  assert.equal(polls,2,'Polling resumes after the previous request completes.');
+  console.log('PASS: slow state polling stays single-flight and resumes after completion');
+  console.log('PASS: transient connection recovery, safe Send retry and no duplicate saves');
   console.log('PASS: exact PDF text ranges, whitespace, ligatures, line hyphenation, ambiguity rejection, both Codex entries and stale mapping protection');
   console.log('PASS: context comment menu/shortcut/selection/readonly, zz, PDF zoom, drag/select, versions, scroll retention and load failure');
 })().catch(error=>{console.error(error);process.exitCode=1;});

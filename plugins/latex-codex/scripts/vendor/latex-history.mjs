@@ -107,25 +107,31 @@ export function attachHistory(editor, request, getState, restore) {
     for (const task of pdfTasks) task.destroy().catch(()=>{});
     pdfTasks = []; pdf.replaceChildren();
   }
-  async function renderPdf() {
+  async function renderPdf(recompile = false) {
     const ticket = pdfSerial;
-    pdf.textContent = t('正在编译历史版本并定位改动…');
+    const selection = {id:selected, ...comparison()};
+    $('recompile').disabled = true;
+    pdf.textContent = t('正在读取历史对比图，缺失时编译生成…');
     try {
-      const data = await post('pdf', {id:selected, ...comparison()});
+      const data = await post('pdf', {...selection, recompile});
       if (ticket !== pdfSerial || mode !== 'pdf' || !dialog.open) return;
       pdf.replaceChildren();
       if (!data.changes.length) { pdf.textContent = t('两个版本没有需要预览的改动。'); return; }
-      const pdfjs = await import('./pdfjs/build/pdf.mjs');
-      if (ticket !== pdfSerial) return;
       const documents = {};
-      for (const side of ['before','after']) {
-        const task = pdfjs.getDocument({url:data[side],cMapUrl:'/vendor/pdfjs/cmaps/',cMapPacked:true,standardFontDataUrl:'/vendor/pdfjs/standard_fonts/',wasmUrl:'/vendor/pdfjs/wasm/',iccUrl:'/vendor/pdfjs/iccs/',isEvalSupported:false}); pdfTasks.push(task);
-        documents[side] = await task.promise;
+      if (!data.images) {
+        const pdfjs = await import('./pdfjs/build/pdf.mjs');
         if (ticket !== pdfSerial) return;
+        for (const side of ['before','after']) {
+          const task = pdfjs.getDocument({url:data[side],cMapUrl:'/vendor/pdfjs/cmaps/',cMapPacked:true,standardFontDataUrl:'/vendor/pdfjs/standard_fonts/',wasmUrl:'/vendor/pdfjs/wasm/',iccUrl:'/vendor/pdfjs/iccs/',isEvalSupported:false}); pdfTasks.push(task);
+          documents[side] = await task.promise;
+          if (ticket !== pdfSerial) return;
+        }
       }
+      const images = [];
       for (const [index, change] of data.changes.entries()) {
         if (ticket !== pdfSerial) return;
         const {block, columns} = pdfChangeCard(index); pdf.append(block);
+        const saved = {kind:change.kind, before:[], after:[]}; images.push(saved);
         for (const side of ['after','before']) {
           const column = columns[side], label = t(side === 'before' ? '修改前' : '修改后');
           if (!change[side].length) {
@@ -133,10 +139,16 @@ export function attachHistory(editor, request, getState, restore) {
             empty.textContent = t(side === 'before' && change.kind === 'insert' ? '此处新增' : side === 'after' && change.kind === 'delete' ? '此处删除' : '这处源码没有直接对应的 PDF 内容，请查看源码对比。'); column.append(empty);
           }
           for (const region of change[side]) {
+            if (data.images) {
+              const image = document.createElement('img'); image.src = region.image;
+              image.alt = t('{side} · PDF 第 {page} 页',{side:label,page:region.page});
+              image.onerror = () => { if (ticket === pdfSerial && dialog.open) { clearPdf(); renderPdf(true); } };
+              column.append(image); continue;
+            }
             const page = await documents[side].getPage(region.page);
             if (ticket !== pdfSerial) return;
-            const ratio = window.devicePixelRatio || 1, width = Math.max(240, columns.after.clientWidth || columns.before.clientWidth || pdf.clientWidth-32);
-            const viewport = page.getViewport({scale:width/(region.rect[2]-region.rect[0])*ratio});
+            // ponytail: fixed 1400px crops; regenerate at a higher size if export needs it.
+            const viewport = page.getViewport({scale:1400/(region.rect[2]-region.rect[0])});
             const box = [...viewport.convertToViewportPoint(...region.rect.slice(0,2)),...viewport.convertToViewportPoint(...region.rect.slice(2))];
             const x = Math.floor(Math.min(box[0],box[2])), y = Math.floor(Math.min(box[1],box[3]));
             const canvas = document.createElement('canvas');
@@ -145,14 +157,25 @@ export function attachHistory(editor, request, getState, restore) {
             await page.render({canvasContext:canvas.getContext('2d',{alpha:false}),viewport,transform:[1,0,0,1,-x,-y]}).promise;
             if (ticket !== pdfSerial) return;
             if (side === 'after') markPdfText(canvas,viewport,x,y,region.highlights || []);
+            saved[side].push({page:region.page, png:canvas.toDataURL('image/png')});
           }
         }
       }
+      if (!data.images && ticket === pdfSerial) {
+        try {
+          const result = await post('pdf-cache', {...selection, images});
+          if (ticket === pdfSerial && result.cache_error) notice(t('历史对比图缓存未保存：{message}', {message:result.cache_error}));
+        } catch (error) {
+          if (ticket === pdfSerial) notice(t('历史对比图缓存未保存：{message}', {message:error.message}));
+        }
+      }
     } catch (error) { if (ticket === pdfSerial && dialog.open) pdf.textContent = t('PDF 对比失败：') + error.message; }
+    finally { if (ticket === pdfSerial) $('recompile').disabled = false; }
   }
   function renderCode() {
     clearPdf(); code.replaceChildren(); code.hidden = mode === 'pdf'; pdf.hidden = mode !== 'pdf';
     dialog.dataset.historyView = mode;
+    $('recompile').hidden = mode !== 'pdf'; $('recompile').disabled = !detail;
     $('panes').setAttribute('aria-labelledby','history-'+mode);
     $('pdf').setAttribute('aria-pressed', String(mode === 'pdf'));
     $('diff').setAttribute('aria-pressed', String(mode === 'diff'));
@@ -291,6 +314,7 @@ export function attachHistory(editor, request, getState, restore) {
     menuId = editingId = null;
   });
   $('refresh').onclick = () => refresh();
+  $('recompile').onclick = () => { notice(); clearPdf(); renderPdf(true); };
   $('more').onclick = () => refresh(true);
   target.onchange = () => { if (selected !== null) select(selected); };
   for (const name of ['diff','pdf','source']) $(name).onclick = () => { if (mode === name) return; mode = name; renderCode(); };

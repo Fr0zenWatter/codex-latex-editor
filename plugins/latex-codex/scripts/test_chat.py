@@ -89,6 +89,69 @@ with patch('chat.shutil.which', return_value='codex.exe'), patch('chat.subproces
     assert cancelled.result['status'] == 'cancelled'
 print('PASS: selection validation, ephemeral/read-only invocation, context, output, errors and cancellation')
 
+batch = {'source': '😀 chosen gap chosen.', 'selection': 'chosen',
+         'messages': [{'role': 'user', 'content': 'Apply both comments.'}],
+         'annotations': [{'id': 1, 'start': 2, 'end': 8, 'selection': 'chosen', 'request': 'Polish first.'},
+                         {'id': 2, 'start': 13, 'end': 19, 'selection': 'chosen', 'request': 'Polish second.'}]}
+batch_context = chat_context(batch, Path('paper.tex'))
+assert [{key: item[key] for key in batch['annotations'][0]} for item in batch_context['annotations']] == batch['annotations']
+assert batch_context['annotations'][1]['context_before'] == '😀 chosen gap '
+assert batch_context['annotations'][1]['context_after'] == '.'
+large_source = 'UNRELATED PREAMBLE' + 'x' * 5000 + '\nFirst nearby: chosen.\n' + 'y' * 5000 + '\nSecond nearby: chosen.\n' + 'z' * 5000 + 'UNRELATED END'
+ranges = [large_source.index('chosen'), large_source.rindex('chosen')]
+local_batch = {**batch, 'source': large_source,
+               'messages': [{'role': 'user', 'content': 'UNRELATED OLD QUESTION'}, *batch['messages']],
+               'annotations': [{**item, 'start': start, 'end': start + len(item['selection'])}
+                               for item, start in zip(batch['annotations'], ranges)]}
+with patch('chat.main_chat_context', side_effect=AssertionError('Batch requests must not read the main chat.')):
+    local_context = chat_context(local_batch, Path('paper.tex'), 'parent')
+assert 'document' not in local_context and 'main_conversation' not in local_context
+assert local_context['messages'] == batch['messages']
+assert 'First nearby:' in local_context['annotations'][0]['context_before']
+assert 'Second nearby:' in local_context['annotations'][1]['context_before']
+assert all(len(item[key]) <= 1200 for item in local_context['annotations'] for key in ('context_before', 'context_after'))
+for bad in ([], [None], [{**batch['annotations'][0], 'start': 3}],
+            [{**batch['annotations'][0], 'id': True}],
+            [batch['annotations'][0], batch['annotations'][0]],
+            [{**batch['annotations'][0], 'request': ' '}],
+            list(reversed(batch['annotations']))):
+    try:
+        chat_context({**batch, 'annotations': bad}, Path('paper.tex'))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('Invalid annotations accepted')
+with patch('chat.codex_executable', return_value='codex.exe'), patch('chat.subprocess.Popen') as spawn:
+    process = Mock(returncode=0)
+    spawn.return_value = process
+
+    def run_batch(replacements):
+        process.communicate.return_value = (json.dumps({'type': 'item.completed', 'item': {
+            'type': 'agent_message', 'text': json.dumps({'reply': 'Reviewed.', 'replacements': replacements})}}).encode(), b'')
+        job = ChatJob(batch_context)
+        job.run()
+        return job.result
+
+    result = run_batch([{'id': 2, 'replacement': None}, {'id': 1, 'replacement': 'better'}])
+    assert result['status'] == 'done' and result['replacement'] is None
+    assert result['replacements'][1]['segments'] == revision_segments('chosen', 'better')
+    prompt = process.communicate.call_args.args[0].decode()
+    assert 'multiple annotations' in prompt and 'Polish second.' in prompt
+    assert 'context_before' in prompt and 'context_after' in prompt
+    assert 'chosen' not in ' '.join(spawn.call_args.args[0])
+    for malformed in ([], [{'id': 1, 'replacement': 'partial'}],
+                      [{'id': 1, 'replacement': 'a'}, {'id': 1, 'replacement': 'b'}],
+                      [{'id': 1, 'replacement': 'a'}, {'id': 9, 'replacement': 'b'}],
+                      [{'id': 1, 'replacement': 'a'}, {'id': 2, 'replacement': 123}]):
+        assert run_batch(malformed)['status'] == 'error', 'Do not apply incomplete or mismatched batches.'
+    ChatJob(local_context).run()
+    local_prompt = process.communicate.call_args.args[0].decode()
+    assert 'First nearby:' in local_prompt and 'Second nearby:' in local_prompt
+    assert all(noise not in local_prompt for noise in ('UNRELATED PREAMBLE', 'UNRELATED END', 'UNRELATED OLD QUESTION', 'main_conversation'))
+    assert len(local_prompt) < len(large_source)
+print('PASS: batch range validation, repeated text/Unicode anchors and complete per-comment responses')
+print('PASS: batch prompts contain only annotated ranges and bounded nearby source, without document or chat history')
+
 items = [{'id':7,'baseline':1,'sections':['2.1 Stability'],'diff':'- x^2\n+ x^3'}]
 summaries = [{'id':7,'summary':'将稳定性估计中的平方项改为立方项。'}]
 with patch('chat.codex_executable',return_value='codex.exe'), patch('chat.subprocess.Popen') as spawn:

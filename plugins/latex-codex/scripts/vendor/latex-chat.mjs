@@ -9,13 +9,14 @@ export function colorReplacement(text, color, segments) {
   }).join('');
 }
 
-export function attachSelectionChat(editor, request) {
+export function attachSelectionChat(editor, request, paintAnnotations = () => {}) {
   const $ = id => document.querySelector('#' + id);
   const panel = $('chat-panel'), input = $('chat-input'), messages = $('chat-messages'), status = $('chat-status');
   let memoryRevision=null,memoryLoading=null,memoryEpoch=0;
   let history = [], marker = null, job = null, generation = 0, sending = false, proposal = null;
   const quick = $('chat-quick'), quickInput = $('chat-quick-input');
-  let quickMarker = null, quickDoc = null, quickOriginal = '', quickSending = false;
+  let quickMarker = null, quickDoc = null, quickOriginal = '', quickPdf = null, editingAnnotation = null;
+  let annotations = [], annotationId = 0, annotationSending = false;
   let color = '';
   let models = [], modelsLoaded = false, modelsLoading = false;
   const modelSelect = $('chat-model'), effortSelect = $('chat-effort');
@@ -34,7 +35,7 @@ export function attachSelectionChat(editor, request) {
     positionQuick(left, below + quick.offsetHeight + 8 <= window.innerHeight ? below : selectionTop - quick.offsetHeight - 12);
   }
   function sizeQuick(expanded = quick.dataset.expanded === 'true') {
-    expanded ||= !!quickInput.value || quickSending || !!$('chat-quick-status').textContent;
+    expanded ||= !!quickInput.value || !!$('chat-quick-status').textContent;
     quick.dataset.expanded = String(expanded);
     quickInput.style.height = 'auto';
     const height = expanded ? Math.max(68, Math.min(160, quickInput.scrollHeight)) : 48;
@@ -182,6 +183,88 @@ export function attachSelectionChat(editor, request) {
     $('chat-quick-status').textContent = text; $('chat-quick-status').dataset.error = String(error);
     sizeQuick();
   }
+  function annotationNotice(text, error = false) {
+    $('annotations-status').textContent = text;
+    $('annotations-status').dataset.error = String(error);
+    $('annotations-review').showPopover();
+  }
+  function refreshAnnotations() {
+    $('annotations-toggle').textContent = t('批注 · {count}', {count:annotations.length});
+    $('annotations-send').disabled = sending || !annotations.length;
+    $('annotations-list').replaceChildren();
+    for (const item of annotations) {
+      const button = document.createElement('button'); button.type = 'button';
+      button.className = 'annotation-item'; button.disabled = sending;
+      const quote = document.createElement('b'), requirement = document.createElement('span');
+      quote.textContent = '#' + item.id + ' · ' + item.original;
+      requirement.textContent = item.request;
+      button.append(quote, requirement);
+      button.onclick = () => editAnnotation(item, button.getBoundingClientRect());
+      $('annotations-list').append(button);
+    }
+    $('annotations-empty').hidden = !!annotations.length;
+    paintAnnotations(annotations, editAnnotation);
+  }
+  function validAnnotation(item) {
+    const pos = item.marker?.find();
+    return pos && editor.getDoc() === item.doc && editor.getRange(pos.from, pos.to) === item.original ? pos : null;
+  }
+  function saveAnnotation(close = true) {
+    if (sending || !quickInput.value.trim()) return false;
+    const pos = validAnnotation({marker:quickMarker,doc:quickDoc,original:quickOriginal});
+    if (!pos) { quickNotice(t('选区已变化，请重新选择后添加批注。'), true); return false; }
+    const start = editor.indexFromPos(pos.from), end = editor.indexFromPos(pos.to);
+    if (annotations.some(item => {
+      if (item === editingAnnotation) return false;
+      const range = item.marker.find();
+      return range && start < editor.indexFromPos(range.to) && end > editor.indexFromPos(range.from);
+    })) { quickNotice(t('批注选区重叠，请编辑原批注或另选位置。'), true); return false; }
+    if (!editingAnnotation && annotations.length >= 100) { quickNotice(t('每次最多发送 100 条批注。'), true); return false; }
+    if (editingAnnotation) editingAnnotation.request = quickInput.value.trim();
+    else annotations.push({id:++annotationId, marker:quickMarker, doc:quickDoc, original:quickOriginal,
+      request:quickInput.value.trim(), pdf:quickPdf});
+    quickInput.value = ''; editingAnnotation = null; quickMarker = null;
+    refreshAnnotations();
+    if (close) quick.hidePopover();
+    return true;
+  }
+  function editAnnotation(item, anchor) {
+    if (sending) return;
+    if (quickInput.value.trim() && !saveAnnotation(false)) return;
+    if (!editingAnnotation) quickMarker?.clear();
+    $('annotations-review').hidePopover();
+    quickMarker = item.marker; quickDoc = item.doc; quickOriginal = item.original;
+    quickPdf = item.pdf; editingAnnotation = item; quickInput.value = item.request;
+    showQuick({...anchor,selectionTop:anchor.selectionTop ?? anchor.top,selectionBottom:anchor.selectionBottom ?? anchor.bottom ?? anchor.top});
+    if (!validAnnotation(item)) quickNotice(t('选区已变化，请删除这条批注并重新选择。'), true);
+  }
+  $('chat-quick-delete').onclick = () => {
+    if (sending || !editingAnnotation) return;
+    annotations = annotations.filter(item => item !== editingAnnotation);
+    editingAnnotation.marker.clear(); quickMarker = null; editingAnnotation = null; quickInput.value = '';
+    quick.hidePopover(); refreshAnnotations();
+  };
+  $('chat-quick-cancel').onclick = () => { quickInput.value = ''; quick.hidePopover(); };
+  $('annotations-review').addEventListener('beforetoggle', event => {
+    $('annotations-toggle').setAttribute('aria-expanded', String(event.newState === 'open'));
+    if (event.newState !== 'open') return;
+    const box = $('annotations-toggle').getBoundingClientRect(), review = $('annotations-review');
+    review.style.left = 'auto';
+    review.style.right = '8px';
+    review.style.top = box.bottom + 6 + 'px';
+  });
+  $('annotations-send').onclick = () => {
+    if (quickInput.value.trim() && !saveAnnotation()) return;
+    const batch = [...annotations];
+    if (!batch.length || sending) return;
+    if (batch.some(item => !validAnnotation(item))) {
+      annotationNotice(t('批注选区已变化，未发送。请点批注检查并重新选择。'), true); return;
+    }
+    batch.sort((a,b) => editor.indexFromPos(a.marker.find().from) - editor.indexFromPos(b.marker.find().from));
+    const question = batch.map(item => '#' + item.id + '\n' + item.request).join('\n\n');
+    return send(question, null, batch);
+  };
+  $('annotations-stop').onclick = () => { stop(); annotationNotice(t('已停止，批注保留，可重新发送。')); };
   const range = () => marker?.find();
   const selectedText = () => { const pos = range(); return pos ? editor.getRange(pos.from, pos.to) : ''; };
   function message(who, text) {
@@ -216,10 +299,11 @@ export function attachSelectionChat(editor, request) {
     quickEffort.disabled = value || !modelSelect.value;
     if (value) quickSettings.hidePopover();
     $('chat-quick-send').disabled = value || !quickMarker;
-    const quickBusy = value && quickSending;
-    $('chat-quick-send').setAttribute('aria-busy', String(quickBusy));
-    $('chat-quick-send').setAttribute('aria-label', quickBusy ? t('正在修改选区') : t('发送'));
-    quickInput.readOnly = quickBusy;
+    $('chat-quick-delete').disabled = value;
+    quickInput.readOnly = value;
+    $('annotations-send').setAttribute('aria-busy', String(value && annotationSending));
+    $('annotations-stop').hidden = !value || !annotationSending;
+    refreshAnnotations();
     sizeQuick();
   }
   function clearProposal() { proposal = null; $('chat-proposal').hidden = true; }
@@ -245,12 +329,18 @@ export function attachSelectionChat(editor, request) {
     input.focus();
   }
   async function stop() {
-    generation++; const id = job; job = null; quickSending = false; setSending(false);
+    generation++; const id = job; job = null; annotationSending = false; setSending(false);
     if (id) { try { await request('/chat/cancel', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})}); } catch(e) { notice(e.message); } }
   }
-  function reset() {
+  function reset(preserveAnnotations = false) {
     stop();
-    quick.hidePopover(); quickInput.value = '';
+    if (!preserveAnnotations) quickInput.value = '';
+    quick.hidePopover();
+    if (!preserveAnnotations) {
+      quickMarker?.clear(); quickMarker = null; editingAnnotation = null;
+      annotations.forEach(item => item.marker.clear()); annotations = []; annotationId = 0;
+    }
+    $('annotations-status').textContent = ''; refreshAnnotations();
     memoryEpoch++;memoryRevision=null;memoryLoading=null;history = []; marker?.clear(); marker = null; clearProposal();
     messages.replaceChildren(); input.value = ''; $('chat-selection').textContent = ''; panel.hidden = true; notice('');
   }
@@ -258,22 +348,43 @@ export function attachSelectionChat(editor, request) {
   quick.addEventListener('beforetoggle', event => {
     if (event.newState === 'closed') {
       if (quickDrag) quickHandle.onpointercancel({pointerId:quickDrag.id});
-      quickMarker?.clear(); quickMarker = null;
-      if (quickSending) { stop(); notice(t('已取消悬浮修改。')); }
+      if (quickInput.value.trim() && !sending && !saveAnnotation(false)) {
+        annotationNotice(t('批注草稿尚未保存，请重新打开并检查选区。'), true); return;
+      }
+      if (!editingAnnotation) quickMarker?.clear();
+      quickMarker = null; editingAnnotation = null;
     }
   });
   function openQuick(anchor) {
+    if (sending) return;
+    if (quickInput.value.trim() && !saveAnnotation(false)) { quick.showPopover(); return; }
     quickAnchor = null; quickMoved = false;
-    loadMemory().catch(e=>quickNotice(e.message,true));
-    quickMarker?.clear(); quickMarker = null;
+    if (!editingAnnotation) quickMarker?.clear();
+    quickMarker = null; editingAnnotation = null; quickInput.value = '';
     quickDoc = editor.getDoc(); quickOriginal = '';
+    quickPdf = anchor.pdf || null;
     if (editor.somethingSelected() && editor.listSelections().length === 1) {
       const from = editor.getCursor('from'), to = editor.getCursor('to');
+      const existing = annotations.find(item => {
+        const pos = item.marker.find();
+        return pos && editor.indexFromPos(pos.from) === editor.indexFromPos(from) && editor.indexFromPos(pos.to) === editor.indexFromPos(to);
+      });
+      if (existing) return editAnnotation(existing, anchor);
       quickOriginal = editor.getRange(from, to);
-      quickMarker = editor.markText(from, to, {className:'chat-selection',clearWhenEmpty:false});
+      quickMarker = editor.markText(from, to, {className:'chat-annotation',clearWhenEmpty:false});
     }
-    quickInput.placeholder = quickOriginal ? t('询问 Codex…') : t('请先选中一段 LaTeX 源码');
-    quickNotice(sending ? t('Codex 正在回复，请稍后发送。') : '');
+    showQuick(anchor);
+  }
+  function labelQuickAction() {
+    const button = $('chat-quick-send'), label = t(editingAnnotation ? '保存批注' : '添加批注');
+    button.setAttribute('aria-label', label); button.title = label + ' · Ctrl+Enter';
+  }
+  function showQuick(anchor) {
+    quickAnchor = null; quickMoved = false;
+    quickInput.placeholder = quickOriginal ? t('写下这处的修改要求…') : t('请先选中一段 LaTeX 源码');
+    $('chat-quick-delete').hidden = !editingAnnotation;
+    labelQuickAction();
+    quickNotice('');
     $('chat-quick-send').disabled = sending || !quickOriginal;
     quick.showPopover();
     const selectionTop = anchor.selectionTop ?? (quickOriginal ? editor.charCoords(editor.getCursor('from'), 'window').top : anchor.top);
@@ -288,7 +399,7 @@ export function attachSelectionChat(editor, request) {
     $('editor-menu').hidePopover(); openQuick(anchor);
   };
   quickInput.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && !event.isComposing && !quickInput.value && !$('chat-quick-status').textContent && !quickSending && !quickSettings.matches(':popover-open') && quick.dataset.expanded === 'true') {
+    if (event.key === 'Escape' && !event.isComposing && !quickInput.value && !$('chat-quick-status').textContent && !quickSettings.matches(':popover-open') && quick.dataset.expanded === 'true') {
       event.preventDefault(); event.stopPropagation(); sizeQuick(false); quickHandle.focus(); return;
     }
     if (event.key === 'Enter' && !event.isComposing && (event.ctrlKey || event.metaKey)) {
@@ -297,20 +408,12 @@ export function attachSelectionChat(editor, request) {
   });
   $('chat-quick-form').onsubmit = async event => {
     event.preventDefault();
-    if (sending || !quickInput.value.trim()) return;
-    const pos = quickMarker?.find();
-    if (!pos || editor.getDoc() !== quickDoc || editor.getRange(pos.from, pos.to) !== quickOriginal) {
-      quickNotice(t('选区已变化，请重新选择后打开悬浮对话。'), true); return;
-    }
-    if (marker !== quickMarker) marker?.clear();
-    marker = quickMarker;
-    clearProposal(); $('chat-selection').textContent = quickOriginal;
-    return send(quickInput.value, quickInput, true);
+    return saveAnnotation();
   };
   $('chat-close').onclick = () => { palette.hidePopover(); panel.hidden = true; editor.focus(); };
   $('chat-end').onclick = async()=>{
     await stop();
-    try{await request('/chat/new',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:$('filename').title})});reset();}
+    try{await request('/chat/new',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:$('filename').title})});reset(true);}
     catch(e){notice(e.message);}
   };
   $('chat-use-selection').onclick = () => { useSelection(); input.focus(); };
@@ -325,22 +428,30 @@ export function attachSelectionChat(editor, request) {
     event.preventDefault();
     return send(input.value, input);
   };
-  async function send(text, draftInput, autoApply = false) {
+  async function send(text, draftInput, batch = null) {
     if (sending || !text.trim()) return;
-    const selection = selectedText(), question = text.trim();
+    const selection = batch ? batch[0].original : selectedText(), question = text.trim();
     if (!selection) { notice(t('选区已失效，请重新选择文本。')); return; }
     const token = ++generation, doc = editor.getDoc();
     let conversation;
-    quickSending = autoApply;
-    if (autoApply) quickNotice('');
+    annotationSending = !!batch;
+    if (batch) annotationNotice(t('Codex 正在处理批注…'));
     clearProposal(); setSending(true); notice(t('Codex 正在思考…'));
     try {
       if(memoryRevision===null)await loadMemory();
       if(token!==generation||doc!==editor.getDoc())return;
       conversation=[...history.slice(-38),{role:'user',content:question}];
-      message(t('你'),question);if(!autoApply)draftInput.value='';
+      message(t('你'),question);if(draftInput)draftInput.value='';
+      const source = editor.getValue();
+      const items = batch?.map(item => {
+        const pos = validAnnotation(item);
+        if (!pos) throw new Error(t('批注选区已变化，未发送。请点批注检查并重新选择。'));
+        // Python uses Unicode code points; CodeMirror positions use UTF-16 offsets.
+        return {id:item.id, start:Array.from(source.slice(0,editor.indexFromPos(pos.from))).length,
+          end:Array.from(source.slice(0,editor.indexFromPos(pos.to))).length, selection:item.original, request:item.request};
+      });
       const started = await request('/chat', {method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({source:editor.getValue(),selection,messages:conversation,remember:true,memory_revision:memoryRevision,model:modelSelect.value,effort:effortSelect.value})});
+        body:JSON.stringify({source,selection,messages:conversation,remember:true,memory_revision:memoryRevision,model:modelSelect.value,effort:effortSelect.value,request_id:crypto.randomUUID().replaceAll('-',''),...(items ? {annotations:items} : {})})});
       if (token !== generation) {
         await request('/chat/cancel', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:started.id})}); return;
       }
@@ -351,26 +462,46 @@ export function attachSelectionChat(editor, request) {
         if (result.status === 'running') { await new Promise(resolve => setTimeout(resolve, 700)); continue; }
         if (result.status !== 'done') throw new Error(result.error || t('本次回复已停止。'));
         memoryRevision=result.memory_revision??memoryRevision;
-        history = [...conversation, {role:'assistant',content:JSON.stringify({reply:result.reply,replacement:result.replacement})}];
+        history = [...conversation, {role:'assistant',content:JSON.stringify({reply:result.reply,replacement:result.replacement,...(batch ? {replacements:result.replacements} : {})})}];
         message('Codex', result.reply);
-        if (result.replacement !== null) {
+        if (batch) {
+          applyAnnotations(batch, result.replacements);
+          annotationNotice(result.reply);
+        } else if (result.replacement !== null) {
           proposal = {doc, original:selection, replacement:result.replacement, segments:result.segments};
           renderProposal(); $('chat-proposal').hidden = false;
-          if (autoApply) {
-            if (applyProposal()) {
-              draftInput.value = ''; quickSending = false; quick.hidePopover(); editor.focus();
-            } else quickNotice(status.textContent, true);
-          } else notice(t('修改建议已就绪。可继续讨论，或应用到选区。'));
+          notice(t('修改建议已就绪。可继续讨论，或应用到选区。'));
         } else {
           notice(t('可以继续追问；本次对话记忆保留。'));
-          if (autoApply) { quickNotice(result.reply); draftInput.value = ''; }
         }
         messages.scrollTop = messages.scrollHeight;
         return;
       }
     } catch(e) {
-      if (token === generation) { if(e.conflict)memoryRevision=null;notice(e.message); if (autoApply) quickNotice(e.message, true); draftInput.value = question; }
-    } finally { if (token === generation) { quickSending = false; job = null; setSending(false); } }
+      if (token === generation) { if(e.conflict)memoryRevision=null;notice(e.message); if (batch) annotationNotice(e.message, true); if(draftInput)draftInput.value = question; }
+    } finally { if (token === generation) { annotationSending = false; job = null; setSending(false); } }
+  }
+  function applyAnnotations(batch, replacements) {
+    if (!Array.isArray(replacements) || replacements.length !== batch.length
+        || new Set(replacements.map(item => item?.id)).size !== batch.length)
+      throw new Error(t('批注修改返回不完整，未应用。请重试。'));
+    const edits = batch.map(item => {
+      const pos = validAnnotation(item), result = replacements.find(result => result?.id === item.id);
+      if (!pos || editor.getOption('readOnly')) throw new Error(t('批注选区已变化，未应用任何修改。批注已保留。'));
+      if (!result || !(result.replacement === null || typeof result.replacement === 'string'))
+        throw new Error(t('批注修改返回不完整，未应用。请重试。'));
+      return {item, pos, start:editor.indexFromPos(pos.from), replacement:result.replacement === null ? null : colorReplacement(result.replacement, color, result.segments)};
+    }).sort((a,b) => b.start - a.start);
+    if (editor.getOption('keyMap').startsWith('vim')) CodeMirror.Vim.handleKey(editor, '<Esc>');
+    editor.operation(() => {
+      edits.forEach(({item,pos,replacement}) => {
+        item.marker.clear();
+        if (replacement !== null && replacement !== item.original) editor.replaceRange(replacement,pos.from,pos.to,'codex-chat');
+      });
+    });
+    annotations = annotations.filter(item => !batch.includes(item));
+    refreshAnnotations();
+    notice(t('批注已处理，修改将自动保存。'));
   }
   function applyProposal() {
     const pos = range();
@@ -391,7 +522,7 @@ export function attachSelectionChat(editor, request) {
     return true;
   }
   $('chat-apply').onclick = applyProposal;
-  editor.on('swapDoc', reset);
+  editor.on('swapDoc', () => reset());
   window.addEventListener('latex-language-change', () => {
     const effort = effortSelect.value;
     updateEfforts(); effortSelect.value = effort; renderQuickSettings(); renderProposal();
@@ -399,11 +530,18 @@ export function attachSelectionChat(editor, request) {
     colorOptions.forEach(([button], index) => { button.textContent = t(colors[index][1]); });
     colorButton.title = t('修改标记颜色：') + t(colors.find(([value]) => value === color)[1]);
     colorButton.setAttribute('aria-label', colorButton.title);
-    quickInput.placeholder = quickOriginal ? t('询问 Codex…') : t('请先选中一段 LaTeX 源码');
+    quickInput.placeholder = quickOriginal ? t('写下这处的修改要求…') : t('请先选中一段 LaTeX 源码');
+    labelQuickAction();
+    refreshAnnotations();
     refreshContext();
   });
   window.addEventListener('pagehide', () => {
     if (job) fetch('/chat/cancel', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:job}),keepalive:true});
   });
-  return {open, openQuick, get busy() { return sending; }};
+  window.addEventListener('beforeunload', event => {
+    if (annotations.length || quickInput.value.trim()) { event.preventDefault(); event.returnValue = ''; }
+  });
+  refreshAnnotations();
+  return {open, openQuick, refreshAnnotations, get busy() { return sending; },
+    get hasAnnotations() { return !!annotations.length || !!quickInput.value.trim(); }};
 }

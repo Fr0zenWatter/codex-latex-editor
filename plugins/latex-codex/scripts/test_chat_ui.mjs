@@ -17,6 +17,7 @@ const windowEvents = {};
 globalThis.window = {innerWidth:1000,innerHeight:800,addEventListener(name,handler){windowEvents[name]=handler;}};
 let quickResize;
 globalThis.ResizeObserver = class {constructor(callback){quickResize=callback;}observe(){}};
+let operations=0; const marks=[];
 let keyMap='vim',escapes=0,source='before chosen after',selection={from:{line:0,ch:7},to:{line:0,ch:13}},mark,doc={},selected=true;
 globalThis.CodeMirror = {Vim:{handleKey(_,key){assert.equal(key,'<Esc>');escapes++;}}};
 const events={},editor={
@@ -24,8 +25,9 @@ const events={},editor={
   somethingSelected:()=>selected,listSelections:()=>[selection],
   getCursor:key=>selection[key],getValue:()=>source,getRange:(from,to)=>source.slice(from.ch,to.ch),
   charCoords:pos=>({top:pos.ch===selection.from.ch?700:710,bottom:730}),
-  markText(from,to){mark={from:{...from},to:{...to},find(){return this.cleared?null:{from:this.from,to:this.to};},clear(){this.cleared=true;}};return mark;},
+  markText(from,to){mark={from:{...from},to:{...to},find(){return this.cleared?null:{from:this.from,to:this.to};},clear(){this.cleared=true;}};marks.push(mark);return mark;},
   indexFromPos:pos=>pos.ch,posFromIndex:ch=>({line:0,ch}),setCursor(){},focus(){},
+  operation(fn){operations++;fn();},
   replaceRange(text,from,to,origin){assert.equal(origin,'codex-chat');source=source.slice(0,from.ch)+text+source.slice(to.ch);},
 };
 let calls=[],answer={status:'done',reply:'Suggestion',replacement:'revised',segments:[['revised','color']]},deferred=null;
@@ -38,7 +40,17 @@ const request=async(url,options)=>{
   if(url.startsWith('/chat?id='))return answer;
   return {};
 };
-const chat=attachSelectionChat(editor,request);
+let painted=[];
+const chat=attachSelectionChat(editor,request,items=>painted=[...items]);
+// A closed popover has zero width; pin its right edge without measuring it.
+el('#annotations-review').offsetWidth=0;
+el('#annotations-review').events.beforetoggle({newState:'open'});
+assert.equal(el('#annotations-review').style.left,'auto');
+assert.equal(el('#annotations-review').style.right,'8px');
+assert.equal(el('#annotations-review').style.top,'786px');
+assert.equal(el('#annotations-toggle').attributes['aria-expanded'],'true');
+el('#annotations-review').events.beforetoggle({newState:'closed'});
+assert.equal(el('#annotations-toggle').attributes['aria-expanded'],'false');
 assert.equal(colorReplacement('raw',''),'raw');
 assert.equal(colorReplacement('','blue'),'');
 assert.equal(colorReplacement('text% comment','blue',[['text','color'],['% comment','']]),'{\\color{blue}text}% comment');
@@ -119,63 +131,94 @@ el('#chat-menu').onclick();el('#chat-input').value='Keep my full-panel draft.';
 el('#chat-model').value='test-model';el('#chat-model').onchange();el('#chat-effort').value='high';
 palette.find(button=>button.textContent==='蓝色').onclick();
 el('#chat-close').onclick();el('#chat-quick-menu').onclick();
-assert.equal(el('#chat-panel').hidden,true,'Opening the added popover must not open/change the full panel.');
-assert.equal(el('#chat-quick').open,true);assert.equal(el('#chat-quick-input').placeholder,'询问 Codex…');
-assert.equal(el('#chat-quick').style.left,'672px');assert.equal(el('#chat-quick').style.top,'642px');
-el('#chat-quick-input').value='Quick question';
+assert.equal(el('#chat-panel').hidden,true);
+assert.equal(el('#chat-quick-input').placeholder,'写下这处的修改要求…');
+assert.equal(el('#chat-quick-send').attributes['aria-label'],'添加批注');assert.equal(el('#chat-quick-send').textContent,'','Opening must preserve the circular action SVG');
+assert.equal(el('#chat-quick-input').value,'');
+assert(!elements.has('#chat-quick-selection'),'The composer never copies the selected text into the dialog.');
+const sent=calls.filter(call=>call.url==='/chat').length;
+el('#chat-quick-input').value='Polish this passage';
 selection={from:{line:0,ch:0},to:{line:0,ch:6}};
-answer={status:'done',reply:'Revised',replacement:'revised',segments:[['revised','color']]};
+await el('#chat-quick-form').onsubmit({preventDefault(){}});
+assert.equal(painted[0].original,'chosen','Capture the selection before focus moves.');
+assert.equal(calls.filter(call=>call.url==='/chat').length,sent,'Adding a comment never calls the model.');
+assert.equal(source,'before chosen after');assert.equal(chat.hasAnnotations,true);
+assert.equal(el('#annotations-toggle').textContent,'批注 · 1');
+selection={from:{line:0,ch:14},to:{line:0,ch:19}};
+chat.openQuick({left:100,top:100,pdf:{pdf_revision:'build',rectangles:[{page:2,rect:[1,2,3,4]}]}});
+el('#chat-quick-input').value='Rewrite the ending';await el('#chat-quick-form').onsubmit({preventDefault(){}});
+assert.equal(painted.length,2);assert.equal(painted[1].pdf.rectangles[0].page,2);
+el('#annotations-list').children[0].onclick();
+assert.equal(el('#chat-quick-input').value,'Polish this passage');assert.equal(el('#chat-quick-delete').hidden,false);
+assert.equal(el('#chat-quick-send').attributes['aria-label'],'保存批注');assert.equal(el('#chat-quick-send').textContent,'');
+el('#chat-quick-input').value='Use precise language';await el('#chat-quick-form').onsubmit({preventDefault(){}});
+assert.equal(painted.length,2);assert.equal(painted[0].request,'Use precise language');
+// Changes outside both comments move the markers and must survive the batch.
+source='extra '+source;for(const item of marks.filter(item=>!item.cleared)){item.from.ch+=6;item.to.ch+=6;}
+answer={status:'done',reply:'Both updated.',replacement:null,replacements:[
+  {id:2,replacement:'ending',segments:[['ending','color']]},
+  {id:1,replacement:'revised',segments:[['revised','color']]}]};
 deferred=new Promise(resolve=>release=resolve);
-const autoPending=el('#chat-quick-form').onsubmit({preventDefault(){}});
-assert.equal(el('#chat-quick-send').attributes['aria-busy'],'true');assert.equal(el('#chat-quick-input').readOnly,true);
-assert.equal(el('#chat-quick-brain').disabled,true);
-assert.equal(el('#chat-quick').open,true);assert.equal(el('#chat-panel').hidden,true);
-assert.equal(source,'before chosen after','Wait for the reply before applying.');
-release({id:'auto-job'});await autoPending;deferred=null;
-assert.equal(calls.filter(call=>call.url==='/chat').at(-1).body.selection,'chosen','Use the captured selection, not a later selection.');
-assert.equal(calls.filter(call=>call.url==='/chat').at(-1).body.model,'test-model');
-assert.equal(calls.filter(call=>call.url==='/chat').at(-1).body.effort,'high');
-assert.equal(el('#chat-input').value,'Keep my full-panel draft.');assert.equal(el('#chat-quick-input').value,'');
-assert.equal(el('#chat-quick').open,false);assert.equal(el('#chat-panel').hidden,true);
-assert.equal(source,'before {\\color{blue}revised} after');assert.equal(el('#chat-proposal').hidden,true);
-assert.equal(el('#chat-quick-send').attributes['aria-busy'],'false');assert.equal(el('#chat-quick-input').readOnly,false);
-assert.equal(el('#chat-quick-brain').disabled,false);
-const fullProposal=el('#chat-replacement').textContent, sent=calls.filter(call=>call.url==='/chat').length;
-el('#chat-quick-menu').onclick();el('#chat-quick-input').value='Do not send stale source';
-source='BEFORE chosen after';
+const batchPending=el('#annotations-send').onclick();
+assert.equal(el('#annotations-send').attributes['aria-busy'],'true');assert.equal(el('#annotations-stop').hidden,false);
+assert.equal(el('#chat-quick-brain').disabled,true);assert.equal(el('#chat-quick-input').readOnly,true);
+release({id:'batch-job'});await batchPending;deferred=null;
+const batchBody=calls.filter(call=>call.url==='/chat').at(-1).body;
+assert.equal(batchBody.annotations.length,2);assert.equal(batchBody.annotations[0].start,13);
+assert.equal(batchBody.model,'test-model');assert.equal(batchBody.effort,'high');
+assert.match(batchBody.request_id,/^[0-9a-f]{32}$/);
+assert.equal(batchBody.messages.at(-1).content,'#1\nUse precise language\n\n#2\nRewrite the ending');
+assert.equal(batchBody.annotations[0].selection,'chosen','The selection remains request context, separate from the conversation.');
+assert.equal(source,'extra before {\\color{blue}revised} {\\color{blue}ending}');
+assert.equal(operations,1,'Apply the complete batch in one undoable editor operation.');
+assert.equal(el('#chat-input').value,'Keep my full-panel draft.');assert.equal(el('#chat-panel').hidden,true);
+assert.equal(painted.length,0);assert.equal(el('#annotations-send').disabled,true);
+assert.equal(el('#annotations-send').attributes['aria-busy'],'false');assert.equal(el('#annotations-status').textContent,'Both updated.');
+// Identical words have separate source anchors; non-BMP text must use Python offsets on the wire.
+palette.find(button=>button.textContent==='无').onclick();
+source='😀 chosen gap chosen after';selection={from:{line:0,ch:3},to:{line:0,ch:9}};
+chat.openQuick({left:100,top:100});el('#chat-quick-input').value='First occurrence';
 await el('#chat-quick-form').onsubmit({preventDefault(){}});
-assert.equal(calls.filter(call=>call.url==='/chat').length,sent);assert.match(el('#chat-quick-status').textContent,/选区已变化/);
-el('#chat-quick').hidePopover();assert.equal(el('#chat-replacement').textContent,fullProposal);
-assert.equal(el('#chat-input').value,'Keep my full-panel draft.');
-// Errors and questions stay in the popover; they never open the full panel or alter source.
+selection={from:{line:0,ch:14},to:{line:0,ch:20}};
+chat.openQuick({left:100,top:100});el('#chat-quick-input').value='Second occurrence';
+await el('#chat-quick-form').onsubmit({preventDefault(){}});
+answer={status:'error',error:'Offline'};await el('#annotations-send').onclick();
+assert.equal(painted.length,2);assert.equal(el('#annotations-status').textContent,'Offline');
+const unicodeBody=calls.filter(call=>call.url==='/chat').at(-1).body;
+assert.deepEqual(unicodeBody.annotations.map(item=>item.start),[2,13]);
+// Reject an incomplete response before touching either range.
+answer={status:'done',reply:'Partial',replacement:null,replacements:[{id:3,replacement:'first'}]};
+await el('#annotations-send').onclick();assert.equal(source,'😀 chosen gap chosen after');assert.equal(painted.length,2);
+assert.match(el('#annotations-status').textContent,/不完整/);
+answer={status:'done',reply:'Changed',replacement:null,replacements:[{id:3,replacement:'first'},{id:4,replacement:'second'}]};
+deferred=new Promise(resolve=>release=resolve);const staleBatch=el('#annotations-send').onclick();
+source='😀 chosen gap CHOSEN after';release({id:'stale-batch'});await staleBatch;deferred=null;
+assert.equal(source,'😀 chosen gap CHOSEN after','One stale selection must prevent every edit.');
+assert.equal(painted.length,2);assert.match(el('#annotations-status').textContent,/未应用任何/);
+const beforeStaleSend=calls.filter(call=>call.url==='/chat').length;
+await el('#annotations-send').onclick();assert.equal(calls.filter(call=>call.url==='/chat').length,beforeStaleSend);
+source='😀 chosen gap chosen after';
+// Cancelling a late-starting batch keeps all notes, including after its job id arrives.
+deferred=new Promise(resolve=>release=resolve);const cancelledBatch=el('#annotations-send').onclick();
+el('#annotations-stop').onclick();release({id:'cancelled-batch'});await cancelledBatch;deferred=null;
+assert(calls.some(call=>call.url==='/chat/cancel'&&call.body.id==='cancelled-batch'));assert.equal(painted.length,2);
+// Overlapping new notes are rejected; cancelling does not discard a saved note.
+selection={from:{line:0,ch:4},to:{line:0,ch:8}};
+chat.openQuick({left:100,top:100});el('#chat-quick-input').value='Overlapping';
+await el('#chat-quick-form').onsubmit({preventDefault(){}});assert.equal(painted.length,2);
+assert.match(el('#chat-quick-status').textContent,/重叠/);el('#chat-quick-cancel').onclick();
+el('#annotations-list').children[0].onclick();el('#chat-quick-delete').onclick();assert.equal(painted.length,1);
+answer={status:'done',reply:'An explanation.',replacement:null,replacements:[{id:4,replacement:null}]};
+await el('#annotations-send').onclick();assert.equal(source,'😀 chosen gap chosen after');assert.equal(painted.length,0);
+// Dismissing a populated composer saves it locally; draft protection warns before leaving.
 source='before chosen after';selection={from:{line:0,ch:7},to:{line:0,ch:13}};
-el('#chat-quick-menu').onclick();el('#chat-quick-input').value='Retry me';
-answer={status:'error',error:'Offline'};
-await el('#chat-quick-form').onsubmit({preventDefault(){}});
-assert.equal(el('#chat-quick-status').textContent,'Offline');assert.equal(el('#chat-quick').open,true);
-assert.equal(el('#chat-quick-input').value,'Retry me');assert.equal(el('#chat-quick-send').disabled,false);
-assert.equal(source,'before chosen after');assert.equal(el('#chat-panel').hidden,true);
-answer={status:'done',reply:'An explanation.',replacement:null};
-await el('#chat-quick-form').onsubmit({preventDefault(){}});
-assert.equal(el('#chat-quick-status').textContent,'An explanation.');assert.equal(el('#chat-panel').hidden,true);
-assert.equal(source,'before chosen after');
-// A source edit during the request blocks the automatic replacement.
-answer={status:'done',reply:'Revised',replacement:'revised',segments:[['revised','color']]};
-el('#chat-quick-input').value='Change it';deferred=new Promise(resolve=>release=resolve);
-const staleAuto=el('#chat-quick-form').onsubmit({preventDefault(){}});
-source='before CHOSEN after';release({id:'stale-auto'});await staleAuto;deferred=null;
-assert.equal(source,'before CHOSEN after');assert.match(el('#chat-quick-status').textContent,/未覆盖修改/);
-assert.equal(el('#chat-quick-send').attributes['aria-busy'],'false');
-// Dismissing an in-flight popover cancels even if the job id arrives late.
-el('#chat-quick').hidePopover();source='before chosen after';el('#chat-quick-menu').onclick();
-el('#chat-quick-input').value='Cancel me';deferred=new Promise(resolve=>release=resolve);
-const cancelledAuto=el('#chat-quick-form').onsubmit({preventDefault(){}});
-el('#chat-quick').hidePopover();release({id:'cancelled-auto'});await cancelledAuto;deferred=null;
-assert(calls.some(call=>call.url==='/chat/cancel'&&call.body.id==='cancelled-auto'));
-assert.equal(source,'before chosen after');assert.equal(el('#chat-panel').hidden,true);
-assert.equal(el('#chat-quick-send').attributes['aria-busy'],'false');
+chat.openQuick({left:100,top:100});el('#chat-quick-input').value='Save on dismiss';el('#chat-quick').hidePopover();
+assert.equal(painted.length,1);assert.equal(painted[0].request,'Save on dismiss');
+let warned=false;windowEvents.beforeunload({preventDefault(){warned=true;}});assert(warned);
+await el('#chat-end').onclick();assert.equal(chat.hasAnnotations,true,'New chat preserves pending comments.');
+events.swapDoc();assert.equal(chat.hasAnnotations,false);
 selected=false;el('#chat-quick-menu').onclick();assert.equal(el('#chat-quick-send').disabled,true);
-await el('#chat-end').onclick();assert.equal(el('#chat-quick').open,false);assert.equal(el('#chat-quick-input').value,'');
+await el('#chat-end').onclick();assert.equal(el('#chat-quick').open,false);
 selected=true;chat.open();assert.equal(el('#chat-selection').textContent,'chosen');
 el('#chat-close').onclick();chat.openQuick({left:110,top:220});
 assert.equal(el('#chat-quick').style.left,'110px');assert.equal(el('#chat-quick').style.top,'742px');
@@ -188,7 +231,7 @@ const handle=el('#chat-quick-handle'), quick=el('#chat-quick');
 // Empty input collapses, typing grows only to 160 px, and drafts/internal controls keep it expanded.
 el('#chat-quick-input').value='';quick.events.focusout({relatedTarget:null});
 assert.equal(quick.dataset.expanded,'false');assert.equal(el('#chat-quick-form').style.height,'48px');
-el('#chat-quick-input').events.focus();assert.equal(quick.dataset.expanded,'true');
+el('#chat-quick-input').events.focus();assert.equal(quick.dataset.expanded,'true');assert.equal(el('#chat-quick-form').style.height,'116px');
 el('#chat-quick-input').scrollHeight=240;el('#chat-quick-input').value='A long\nquestion';el('#chat-quick-input').events.input();
 assert.equal(el('#chat-quick-input').style.height,'160px');assert.equal(el('#chat-quick-form').style.height,'208px');
 quick.events.focusout({relatedTarget:null});assert.equal(quick.dataset.expanded,'true');
@@ -230,7 +273,7 @@ assert.equal(quick.style.top,'390px');
 quick.hidePopover();quick.offsetWidth=320;quick.offsetHeight=46;
 console.log('PASS: selection-aware placement, captured pointer drag, bounds, keyboard, resize, cancellation and preserved draft/selection');
 console.log('PASS: adaptive composer height, collapse/draft state, supported effort cycling and expansion around selection');
-console.log('PASS: full chat, automatic quick apply, shared model/effort/color, spinner lifecycle, inline errors, stale-source protection and dismissal cancellation');
+console.log('PASS: full chat, queued comments, editing/deletion, batch send/apply, Unicode anchors, atomic stale protection, retry and cancellation');
 
 // A reloaded editor restores project questions and uses them after changing selections.
 source='before chosen after';selection={from:{line:0,ch:7},to:{line:0,ch:13}};doc={};selected=true;

@@ -122,6 +122,7 @@ with tempfile.TemporaryDirectory() as directory:
         code, body = request('/compile', {'source': paper, 'version': state()['version']})
         result = json.loads(body)
         assert code == 200 and result['ok'] and result['engine'] == 'pdflatex', body
+        assert result['citations'] == {'sample': '1'}
         build = Path(server.build.name)
         assert r'\bibitem{sample}' in (build / (other.stem + '.bbl')).read_text()
         assert 'undefined' not in (build / (other.stem + '.log')).read_text(errors='replace').lower()
