@@ -15808,6 +15808,10 @@ class PDFPageProxy {
   get userUnit() {
     return this._pageInfo.userUnit;
   }
+  // Local adapter: SyncTeX uses MediaBox even when the page is cropped.
+  get mediaBox() {
+    return this._pageInfo.mediaBox;
+  }
   get view() {
     return this._pageInfo.view;
   }
@@ -16012,14 +16016,16 @@ class PDFPageProxy {
   }
   streamTextContent({
     includeMarkedContent = false,
-    disableNormalization = false
+    disableNormalization = false,
+    disableCombineTextItems = false
   } = {}) {
     const TEXT_CONTENT_CHUNK_SIZE = 100;
     return this._transport.messageHandler.sendWithStream("GetTextContent", {
       pageId: this.#pagesMapper.getPageId(this._pageIndex + 1) - 1,
       pageIndex: this._pageIndex,
       includeMarkedContent: includeMarkedContent === true,
-      disableNormalization: disableNormalization === true
+      disableNormalization: disableNormalization === true,
+      disableCombineTextItems: disableCombineTextItems === true
     }, {
       highWaterMark: TEXT_CONTENT_CHUNK_SIZE,
       size(textContent) {

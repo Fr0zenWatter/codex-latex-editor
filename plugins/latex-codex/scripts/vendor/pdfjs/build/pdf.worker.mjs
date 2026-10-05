@@ -35772,6 +35772,7 @@ class PartialEvaluator {
     viewBox,
     lang = null,
     disableNormalization = false,
+    disableCombineTextItems = false,
     keepWhiteSpace = false,
     prevRefs = null,
     intersector = null
@@ -36202,6 +36203,9 @@ class PartialEvaluator {
             textState.translateTextMatrix(0, -charSpacing);
           }
         }
+        // Local adapter: history analysis needs exact glyph advances.
+        // Normal preview/text-layer extraction retains upstream combining.
+        if (disableCombineTextItems) flushTextContentItem();
       }
     }
     function appendEOL() {
@@ -36487,6 +36491,7 @@ class PartialEvaluator {
                 viewBox,
                 lang,
                 disableNormalization,
+                disableCombineTextItems,
                 keepWhiteSpace,
                 prevRefs: seenRefs
               }).then(function () {
@@ -59561,6 +59566,7 @@ class Page {
     task,
     includeMarkedContent,
     disableNormalization,
+    disableCombineTextItems = false,
     sink,
     intersector = null
   }) {
@@ -59576,6 +59582,7 @@ class Page {
       resources,
       includeMarkedContent,
       disableNormalization,
+      disableCombineTextItems,
       sink,
       viewBox: this.view,
       lang,
@@ -64586,13 +64593,14 @@ class WorkerMessageHandler {
       pageIndex
     }) {
       const page = await pdfManager.getPage(pageIndex);
-      const [rotate, ref, userUnit, view] = await Promise.all([pdfManager.ensure(page, "rotate"), pdfManager.ensure(page, "ref"), pdfManager.ensure(page, "userUnit"), pdfManager.ensure(page, "view")]);
+      const [rotate, ref, userUnit, view, mediaBox] = await Promise.all([pdfManager.ensure(page, "rotate"), pdfManager.ensure(page, "ref"), pdfManager.ensure(page, "userUnit"), pdfManager.ensure(page, "view"), pdfManager.ensure(page, "mediaBox")]);
       return {
         rotate,
         ref,
         refStr: ref?.toString() ?? null,
         userUnit,
-        view
+        view,
+        mediaBox
       };
     });
     handler.on("GetPageIndex", function ({
@@ -64999,7 +65007,8 @@ class WorkerMessageHandler {
       pageId,
       pageIndex,
       includeMarkedContent,
-      disableNormalization
+      disableNormalization,
+      disableCombineTextItems
     }, sink) {
       pdfManager.getPage(pageId).then(function (page) {
         const task = new WorkerTask("GetTextContent: page " + pageIndex);
@@ -65010,7 +65019,8 @@ class WorkerMessageHandler {
           task,
           sink,
           includeMarkedContent,
-          disableNormalization
+          disableNormalization,
+          disableCombineTextItems
         }).then(() => {
           if (start) {
             info(`${task.name}; time=${Date.now() - start}ms`);

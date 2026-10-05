@@ -63,7 +63,7 @@ with tempfile.TemporaryDirectory() as directory:
         revision = json.loads(body)['version']
 
 
-        def compile_tex(*args):
+        def compile_tex(*args, **kwargs):
             started.set()
             assert release.wait(5)
             return False, 'Test compilation result.', 'xelatex'
@@ -144,7 +144,7 @@ with tempfile.TemporaryDirectory() as directory:
             r'\bibcite{eq:regularity}{7}', r'\bibcite{custom}{\dangerous{data}}',
             r'\bibcite{author-year}{{Doe(2026)}{2026}{{Doe}}{{}}}',
         ]), encoding='utf-8')
-        with patch('editor.compiler', return_value=('xelatex', 'unused')), patch('editor.compile_tex', return_value=(True, 'ok', 'xelatex')), patch('editor.pdf_page_boxes', return_value=[[0, 0, 600, 800]]):
+        with patch('editor.compiler', return_value=('xelatex', 'unused')), patch('editor.compile_tex', return_value=(True, 'ok', 'xelatex')):
             revision = json.loads(request('/state')[1])['version']
             code, body = request('/compile', {'source': 'First edit.', 'version': revision})
             assert code == 200 and json.loads(body)['labels'] == {'eq:regularity': '3.13'}

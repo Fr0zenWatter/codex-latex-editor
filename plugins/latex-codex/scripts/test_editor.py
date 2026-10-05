@@ -1,5 +1,6 @@
 """Run: python test_editor.py (requires local XeLaTeX)."""
 import json
+import subprocess
 import hashlib
 from pathlib import Path
 import tempfile
@@ -126,7 +127,7 @@ with tempfile.TemporaryDirectory() as directory:
         build = Path(server.build.name)
         assert r'\bibitem{sample}' in (build / (other.stem + '.bbl')).read_text()
         assert 'undefined' not in (build / (other.stem + '.log')).read_text(errors='replace').lower()
-        assert len(server.page_boxes) == result['pages']
+        assert server.page_boxes == [], 'Geometry is supplied by PDF.js only when locating.'
         assert result['pdf_revision'] == hashlib.sha256(request('/pdf')[1]).hexdigest()
         code, body = request('/compile', {'source': paper, 'version': state()['version']})
         repeat = json.loads(body)
@@ -155,9 +156,19 @@ with tempfile.TemporaryDirectory() as directory:
         synced = '% !TeX program = pdflatex\n\\documentclass{article}\n\\begin{document}\nFirst target.\\par\nSecond target.\\par\n\\newpage\nThird target.\\par\n\\end{document}\n'
         code, body = request('/compile', {'source': synced, 'version': state()['version']})
         result = json.loads(body)
-        assert code == 200 and result['ok'] and result['sync'] and result['pages'] == 2, body
+        assert code == 200 and result['ok'] and result['sync'], body
+        def page_boxes():
+            reader = subprocess.run(['node', str(Path(__file__).with_name('pdf_analysis_test.mjs'))],
+                input=json.dumps({'url':base + '/pdf', 'text':False}), text=True, encoding='utf-8', capture_output=True, check=True)
+            return json.loads(reader.stdout)['boxes']
+        boxes = page_boxes()
+        assert len(boxes) == 2
         revision = result['version']
         pdf_revision = result['pdf_revision']
+        raw_request = request
+        def request(route, data=None, headers=None):
+            if route == '/synctex': data = {**data, 'boxes':boxes}
+            return raw_request(route, data, headers)
         for line, page in [(5, 1), (7, 2)]:
             code, body = request('/synctex', {'direction': 'forward', 'version': revision, 'pdf_revision': pdf_revision, 'line': line, 'column': 1})
             target = json.loads(body)
@@ -167,11 +178,17 @@ with tempfile.TemporaryDirectory() as directory:
                      'x': x1 + min((x2-x1)/2, 12), 'y': (y1+y2)/2}
             code, body = request('/synctex', point)
             assert code == 200 and json.loads(body)['line'] == line, body
+            code, body = request('/synctex', {'direction':'range', 'version':revision, 'pdf_revision':pdf_revision, 'first':line, 'last':line})
+            assert code == 200 and any(region['page'] == page for region in json.loads(body)['regions']), body
+            assert all(region['rect'][3]-region['rect'][1] <= 72 for region in json.loads(body)['regions']), 'Selection regions exclude whole-page containers.'
         for invalid in [{'direction': 'forward', 'line': 0},
                         {'direction': 'forward', 'line': 5, 'column': True},
                         {'direction': 'backward', 'page': 9, 'x': .2, 'y': .3},
                         {'direction': 'backward', 'page': 1, 'x': float('nan'), 'y': .3},
-                        {'direction': 'backward', 'page': 1, 'x': True, 'y': .3}]:
+                        {'direction': 'backward', 'page': 1, 'x': True, 'y': .3},
+                        {'direction': 'range', 'first':True, 'last':5},
+                        {'direction': 'range', 'first':5, 'last':3},
+                        {'direction': 'range', 'first':5, 'last':500}]:
             assert request('/synctex', {'version': revision, 'pdf_revision': pdf_revision, **invalid})[0] == 400
         assert request('/synctex', {'direction': 'forward', 'version': revision, 'pdf_revision': 'stale', 'line': 5})[0] == 409
         assert request('/synctex', {'direction': 'forward', 'version': 'stale', 'line': 5})[0] == 409
@@ -180,6 +197,8 @@ with tempfile.TemporaryDirectory() as directory:
         code, body = request('/compile', {'source': rotated, 'version': state()['version']})
         rotated_result = json.loads(body)
         assert code == 200 and rotated_result['ok'], body
+        boxes = page_boxes()
+        assert boxes[0][0:2] == [0,0] and boxes[0][3] > 780, 'Use MediaBox, not the cropped/rotated view.'
         mapping = {'version': rotated_result['version'], 'pdf_revision': rotated_result['pdf_revision']}
         code, body = request('/synctex', {**mapping, 'direction': 'forward', 'line': 5, 'column': 1})
         target = json.loads(body)
@@ -189,9 +208,10 @@ with tempfile.TemporaryDirectory() as directory:
         assert code == 200 and json.loads(body)['line'] == 5, body
         other.write_text(synced + '\n', encoding='utf-8')
         assert request('/synctex', {'direction': 'forward', 'version': revision, 'line': 5})[0] == 409
+        assert request('/synctex', {'direction':'range', 'version':revision, 'pdf_revision':pdf_revision, 'first':5, 'last':5})[0] == 409
         code, body = request('/compile', {'source': synced.replace('Second target.', r'\DefinitelyUndefinedCommand'), 'version': state()['version']})
         assert code == 200 and not json.loads(body)['ok']
-        assert json.loads(body)['diagnostic'] == {'line': 5, 'message': 'Undefined control sequence.'}
+        assert json.loads(body)['diagnostic'] == {'path':str(other), 'line': 5, 'message': 'Undefined control sequence.'}
         assert request('/synctex', {'direction': 'forward', 'version': state()['version'], 'line': 5})[0] == 409
         print('PASS: compile/save, previews, conflicts, picker, cached bibliography with dependency/citation invalidation, SyncTeX round trips and stale/invalid mapping rejection')
     finally:

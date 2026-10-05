@@ -1,0 +1,4 @@
+interface:
+  display_name: "LaTeX Codex"
+  short_description: "在浏览器侧边栏打开 LaTeX 文稿，使用本地 TeX 编译并预览 PDF"
+  default_prompt: "$latex-codex 打开 main.tex"

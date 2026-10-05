@@ -1,6 +1,7 @@
-"""Run: python -B scripts/test_history_pdf.py (local pdfLaTeX, SyncTeX and pdfinfo)."""
+"""Run: python -B scripts/test_history_pdf.py (local pdfLaTeX, SyncTeX and Node (test-only PDF.js runner))."""
 import base64
 import json
+import subprocess
 import os
 from pathlib import Path
 import tempfile
@@ -16,14 +17,24 @@ from editor import (make_server, snapshot, history_pdf_highlights, history_pdf_c
                     history_pdf_cache_file, prune_history_pdf_cache, compile_tex)
 from history import History
 
-old = {'words':[(1, [0, 0, 1, 1], 'x')]}
-new = {'pdf':Path('unused.pdf'), 'boxes':[[0, 0, 10, 10]]}
-changes = [{'after':[{'page':1,'rect':[0, 0, 10, 10]}]}]
-xml = b'<html><page><word xMin="1" yMin="2" xMax="3" yMax="4">\x10</word></page></html>'
-with patch('editor.subprocess.run', return_value=SimpleNamespace(returncode=0, stdout=xml)) as run:
-    history_pdf_highlights(old, new, changes)
-assert '-raw' in run.call_args.args[0]
-assert new['words'][0][2] == '\ue010' and changes[0]['after'][0]['highlights'] == [[1, 6, 3, 8]]
+def browser_analysis(url=None, path=None):
+    result = subprocess.run(['node', str(Path(__file__).with_name('pdf_analysis_test.mjs'))],
+                            input=json.dumps({'url':url, 'path':str(path) if path else None}),
+                            text=True, encoding='utf-8', capture_output=True)
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
+def pdf_changes(server, path, before, after):
+    data = history_pdf_changes(server, path, before, after)
+    if data.get('needs_analysis'):
+        analysis = {}
+        for side in ('before', 'after'):
+            key = data[side].split('?')[0].rsplit('/', 1)[-1]
+            analysis[side] = {'revision':data['revisions'][side],
+                              **browser_analysis(path=server.history_pdfs[key]['pdf'])}
+        data = history_pdf_changes(server, path, before, after, analysis=analysis)
+    return data
 
 def sentence_marks(before, after):
     old = {'words': [(1, [i, 10, i+1, 11], text) for i, text in enumerate(before.split())]}
@@ -36,6 +47,19 @@ assert sentence_marks('A very stable method. The next sentence stays.', 'A stabl
 assert sentence_marks('Remove this sentence. The next sentence stays.', 'The next sentence stays.') == []
 assert sentence_marks('See e.g. Eq. 2.1 for the old bound. Unchanged.', 'See e.g. Eq. 2.1 for the new bound. Unchanged.') == ['See', 'e.g.', 'Eq.', '2.1', 'for', 'the', 'new', 'bound.']
 assert sentence_marks('An old solution u. Use V. Unchanged.', 'An exact solution u. Use V. Unchanged.') == ['An', 'exact', 'solution', 'u.']
+assert sentence_marks('Old problem s.t. x = y. Unchanged.', 'New problem s.t. x = y. Unchanged.') == ['New', 'problem', 's.t.', 'x', '=', 'y.']
+
+# Wider context must not cut tall unchanged math at a crop boundary or mark it red.
+context_words = [(1, [10, 20, 20, 43], 'formula.'), (1, [10, 60, 20, 70], 'Old.'),
+                 (1, [10, 91, 20, 110], 'Next.')]
+old = {'words':context_words, 'boxes':[[0, 0, 100, 120]]}
+new = {'words':[context_words[0], (1, [10, 60, 20, 70], 'New.'), context_words[2]], 'boxes':old['boxes']}
+changes = [{'before':[{'page':1,'rect':[0, 55, 100, 75]}], 'after':[{'page':1,'rect':[0, 55, 100, 75]}]}]
+history_pdf_highlights(old, new, changes)
+for side in ('before', 'after'):
+    assert changes[0][side][0]['rect'][1] <= 20 and changes[0][side][0]['rect'][3] >= 110
+    assert 0 <= changes[0][side][0]['rect'][1] <= changes[0][side][0]['rect'][3] <= 120
+assert changes[0]['after'][0]['highlights'] == [[10, 60, 20, 70]]
 
 # A changed word's crop must include the rest of its sentence, including another page.
 old = {'words': [(1, [10, 40, 20, 50], 'An'), (1, [20, 10, 30, 20], 'old'), (2, [10, 70, 20, 80], 'method.')]}
@@ -66,13 +90,13 @@ with tempfile.TemporaryDirectory() as directory:
     server = make_server(path, main_thread='')
     try:
         with patch('editor.synctex_records', side_effect=AssertionError('History uses one SyncTeX index, not a process per line.')):
-            data = history_pdf_changes(server, path, before, after)
+            data = pdf_changes(server, path, before, after)
         assert len(data['changes']) == 1, 'Unchanged math must not split the edited paragraph into separate cards.'
         for side in ('before', 'after'):
             assert [region['page'] for region in data['changes'][0][side]] == [1, 2], (side, data)
         # An unchanged sentence on another page must not inflate a small edit.
         one_edit = before.replace('original iteration', 'updated iteration')
-        continued = history_pdf_changes(server, path, before, one_edit)
+        continued = pdf_changes(server, path, before, one_edit)
         assert len(continued['changes']) == 1
         for side in ('before', 'after'):
             assert [region['page'] for region in continued['changes'][0][side]] == [1]
@@ -80,14 +104,14 @@ with tempfile.TemporaryDirectory() as directory:
         bounded_before = before.replace('\\newpage\nwhere', '\\begin{quote}\n\\newpage\nwhere').replace(
             '\n\nAn unchanged paragraph.', '\n\\end{quote}\n\nAn unchanged paragraph.')
         bounded_after = bounded_before.replace('original iteration', 'updated iteration')
-        bounded = history_pdf_changes(server, path, bounded_before, bounded_after)
+        bounded = pdf_changes(server, path, bounded_before, bounded_after)
         assert len(bounded['changes']) == 1
         for side in ('before', 'after'):
             assert [region['page'] for region in bounded['changes'][0][side]] == [1], 'Do not scan the next environment as prose continuation.'
         # A paragraph boundary still separates independent edits.
         separate_before = before.replace('\\newpage\nwhere', '\\newpage\n\nwhere')
         separate_after = after.replace('\\newpage\nwhere', '\\newpage\n\nwhere')
-        separate = history_pdf_changes(server, path, separate_before, separate_after)
+        separate = pdf_changes(server, path, separate_before, separate_after)
         assert len(separate['changes']) == 2
     finally:
         server.server_close(); server.build.cleanup()
@@ -114,7 +138,12 @@ with tempfile.TemporaryDirectory() as directory:
         try:
             with direct.open(req, timeout=120) as response:
                 body = response.read()
-                return response.status, json.loads(body) if response.headers.get_content_type() == 'application/json' else body
+                parsed = json.loads(body) if response.headers.get_content_type() == 'application/json' else body
+                if route == '/history/pdf' and isinstance(parsed, dict) and parsed.get('needs_analysis'):
+                    analysis = {side:{'revision':parsed['revisions'][side], **browser_analysis(url=base+parsed[side])}
+                                for side in ('before','after')}
+                    return request(route, {**data, 'recompile':False, 'analysis':analysis})
+                return response.status, parsed
         except HTTPError as error:
             return error.code, json.load(error)
 
@@ -142,7 +171,7 @@ with tempfile.TemporaryDirectory() as directory:
         assert request('/pdf')[1] == b'%PDF-live-preview' and server.pdf_revision == 'live-preview'
         assert len(server.history_pdfs) == 2
         highlights = data['changes'][0]['after'][0]['highlights']
-        cached = server.history_pdfs[data['after'].rsplit('/', 1)[-1]]
+        cached = server.history_pdfs[data['after'].split('?')[0].rsplit('/', 1)[-1]]
         marked = [text for _, rect, text in cached.get('words', []) if rect in highlights]
         assert ' '.join(marked).replace('- ', '') == 'The improved method uses a stable iteration and preserves the equation.', marked
         with patch('editor.compile_tex', side_effect=AssertionError('Cached snapshots must not recompile')):

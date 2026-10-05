@@ -1,4 +1,4 @@
-"""python editor.py path/to/main.tex [--port 8765] -- local TeX, pdfinfo and bundled PDF.js."""
+"""python editor.py path/to/main.tex [--port 8765] -- local TeX and bundled PDF.js; no native PDF tools."""
 import argparse
 import base64
 import binascii
@@ -18,11 +18,9 @@ import tempfile
 import threading
 import time
 import unicodedata
-import xml.etree.ElementTree as ET
 import zipfile
 import zlib
-import tkinter as tk
-from tkinter import filedialog
+import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 from chat import ChatJob, chat_context, chat_models, main_chat_context
@@ -35,7 +33,7 @@ HISTORY_PDF_CACHE_DAYS = 30
 VENDOR = Path(__file__).with_name('vendor')
 ASSETS = {name: 'text/css' if name.endswith('.css') else 'text/javascript'
           for name in ('codemirror.js', 'codemirror.css', 'cobalt.css', 'dracula.css', 'monokai.css', 'nord.css', 'stex.js', 'vim.js', 'searchcursor.js', 'matchbrackets.js', 'comment.js', 'dialog.js', 'dialog.css', 'show-hint.js', 'show-hint.css', 'latex-hint.js', 'latex-hover.mjs', 'latex-chat.mjs', 'latex-history.mjs', 'latex-settings.mjs', 'latex-themes.mjs', 'latex-history.css')}
-ASSETS.update({'history-tabs.mjs':'text/javascript','history-tabs.css':'text/css','latex-native-annotations.mjs':'text/javascript'})
+ASSETS.update({'history-tabs.mjs':'text/javascript','history-tabs.css':'text/css','latex-native-annotations.mjs':'text/javascript','latex-pdf-analysis.mjs':'text/javascript'})
 ASSETS.update({name + '.css':'text/css' for name in ('eclipse', 'idea', 'neo', 'base16-light', 'solarized', 'material-darker', 'material-palenight', 'ayu-dark', 'gruvbox-dark')})
 ASSETS.update({file.relative_to(VENDOR).as_posix(): {
     '.mjs': 'text/javascript', '.css': 'text/css', '.wasm': 'application/wasm',
@@ -73,10 +71,11 @@ PAGE = r'''<!doctype html>
 header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 strong{font-size:17px}button,a,select{font:inherit}button,select{border:1px solid var(--border);border-radius:6px;padding:6px 12px;background:var(--bg);color:var(--text);cursor:pointer}button:hover,select:hover{border-color:var(--command)}button:disabled{opacity:.55;cursor:default}
 button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(--command)}a{color:var(--reference)}#status,#native-annotation-status{flex:1;color:var(--muted)}#app-toolbar{padding:4px 12px;gap:8px;min-height:36px}#app-toolbar button{padding:4px 9px}#app-toolbar #settings-menu-button{width:28px;padding:4px}
-main{position:relative;display:grid;grid-template-columns:minmax(0,var(--source-share,1fr)) 6px minmax(0,var(--pdf-share,1fr));flex:1;min-height:0;background:var(--border)}
+main{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 6px minmax(0,1fr);flex:1;min-height:0;background:var(--border)}
 .sync-rail{position:relative;background:var(--panel)}#splitter{position:absolute;inset:0;cursor:col-resize;touch-action:none;z-index:2}#splitter::before{content:'';position:absolute;inset:0 -3px}#splitter:hover,#splitter:focus-visible,main.resizing #splitter{background:var(--command)}main.resizing,main.resizing *{cursor:col-resize!important;user-select:none!important}#splitter:focus-visible{outline:2px solid var(--command)}#forward{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:3;padding:3px 0;width:22px;font-size:18px}
 main>section{min-width:0;min-height:0;display:flex;flex-direction:column;background:var(--bg)}label,.caption{padding:9px 14px;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #filename[hidden]{display:none}
+#source-files{display:flex;align-items:center;gap:8px;padding:5px 10px;min-width:0;font-size:12px;color:var(--muted)}#source-file{flex:1;min-width:0;padding:3px 6px;font-size:12px}#project-main{max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#project-dialog{width:min(600px,calc(100vw - 32px));border:1px solid var(--border);border-radius:12px;background:var(--panel);color:var(--text);padding:20px}#project-dialog::backdrop{background:#0006}#project-dialog label{display:block;padding:10px 0 4px;color:var(--text)}#project-dialog input{width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font:inherit}#project-dialog p{color:var(--muted);line-height:1.6}#project-error{color:#ff6262!important}
 #status,.native-annotation-feedback{animation:status-fade 4s ease forwards}
 @keyframes status-fade{0%,75%{opacity:1}100%{opacity:0}}
 @media(prefers-reduced-motion:reduce){#status,.native-annotation-feedback{animation-timing-function:step-end}}
@@ -99,7 +98,7 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 :is(#editor-menu,#pdf-menu){position:fixed;inset:auto;margin:0;padding:4px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);box-shadow:0 6px 20px #0005}:is(#editor-menu,#pdf-menu) button{display:flex;align-items:center;gap:24px;border:0;width:100%;text-align:left}:is(#editor-menu,#pdf-menu) button:hover{background:var(--border)}#editor-menu kbd{font:12px system-ui,sans-serif;color:var(--muted)}
 .CodeMirror span.cm-math{color:var(--math)}.CodeMirror span.cm-operator{color:var(--operator)}.CodeMirror span.cm-reference{color:var(--reference)}.CodeMirror span.cm-tag{color:var(--command)}.CodeMirror span.cm-atom{color:var(--environment)}.CodeMirror span.cm-environment{color:var(--environment-command)}.CodeMirror span.cm-number{color:var(--number)}.CodeMirror span.cm-comment,.CodeMirror .CodeMirror-linenumber{color:var(--muted)}
 #preview .page{box-sizing:content-box}.sync-highlight{position:absolute;z-index:5;pointer-events:none;background:rgba(255,244,168,.75);mix-blend-mode:multiply;border-radius:2px}details{padding:10px 16px;background:var(--panel)}#log{position:absolute;inset:0;margin:0;padding:16px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--panel);color:var(--text);font:13px/1.6 Consolas,monospace}
-@media(max-width:640px){main{grid-template-columns:1fr;overflow:auto}main>section{min-height:50vh}.sync-rail{min-height:24px}#splitter{display:none}#status{min-width:45%}}
+@media(max-width:640px){main{grid-template-columns:1fr!important;overflow:auto}main>section{min-height:50vh}.sync-rail{min-height:24px}#splitter{display:none}#status{min-width:45%}}
 
 #settings-menu .theme-setting{padding:8px}#settings-menu .theme-setting-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}#settings-menu .theme-setting-heading label{padding:0}#theme-customize{padding:3px;display:grid;place-items:center;border:0;background:transparent;color:var(--muted)}#theme-customize .toolbar-icon{width:15px;height:15px}
 #theme-dialog{width:min(680px,calc(100vw - 32px));max-height:calc(100vh - 48px);overflow:auto;border:1px solid var(--border);border-radius:18px;padding:22px;background:var(--panel);color:var(--text);box-shadow:0 24px 80px #0005}#theme-dialog::backdrop{background:#0006;backdrop-filter:blur(3px)}.theme-dialog-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}.theme-dialog-heading button{border:0;background:transparent;font-size:20px;padding:0 6px}.theme-help{color:var(--muted);font-size:13px;line-height:1.6}.theme-upload{display:flex;align-items:center;gap:12px;padding:12px;border:1px dashed var(--border);border-radius:10px;color:var(--text);white-space:normal}#theme-image{max-width:100%;min-width:0;font-size:12px}#theme-screenshot{display:block;max-width:100%;max-height:100px;object-fit:contain;margin:10px auto;border-radius:8px}#theme-screenshot[hidden]{display:none}.theme-generate-row{display:flex;align-items:center;gap:12px;margin:14px 0}#theme-status{font-size:12px;color:var(--muted)}#theme-generate{white-space:nowrap}.theme-name-label{display:block;padding:0 0 6px}#theme-name{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;font:inherit}.theme-palette-label{font-size:12px;color:var(--muted);margin:12px 0 8px}#theme-palette{display:flex;flex-wrap:wrap;gap:6px}#theme-palette button{display:flex;align-items:center;gap:6px;padding:4px 7px;font:11px Consolas,monospace}#theme-palette button[aria-pressed=true]{outline:2px solid var(--command);outline-offset:1px}.theme-palette-color{width:18px;height:18px;border:1px solid #8886;border-radius:4px}#theme-swatches{display:flex;flex-wrap:wrap;gap:18px;margin:12px 0}#theme-swatches label{display:flex;align-items:center;gap:6px;padding:0}#theme-swatches input{width:32px;height:28px;padding:0;border:0;background:transparent;cursor:pointer}#theme-sample{background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:12px;overflow:hidden;padding-bottom:16px}.theme-sample-bar{background:var(--panel);border-bottom:1px solid var(--border);padding:8px 14px;font-size:12px;color:var(--muted)}#theme-sample pre{padding:0 16px;white-space:pre-wrap;font:13px/1.7 Consolas,monospace}.theme-sample-capsule{margin:0 16px;max-width:320px;padding:8px 10px 8px 16px;border:1px solid var(--border);border-radius:999px;display:flex;align-items:center;justify-content:space-between;color:var(--muted);box-shadow:0 4px 16px #0001}.theme-sample-send{background:var(--quick-accent);color:var(--quick-foreground,var(--bg));border-radius:50%;width:28px;height:28px;display:grid;place-items:center;font-size:20px}.theme-dialog-actions{display:flex;justify-content:flex-end;margin-top:16px}.cm-s-custom .CodeMirror-selected{background:color-mix(in srgb,var(--command) 18%,var(--bg))}.cm-s-custom .CodeMirror-activeline-background{background:var(--panel)}.cm-s-custom .cm-keyword,.cm-s-custom .cm-def{color:var(--command)}.cm-s-custom .cm-string,.cm-s-custom .cm-variable-2{color:var(--math)}
@@ -109,8 +108,8 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 <style>
 #chat-panel{position:absolute;right:0;top:0;bottom:0;z-index:20;width:min(460px,48%);display:flex;flex-direction:column;background:var(--panel);border-left:1px solid var(--border);box-shadow:-8px 0 24px #0004}
 #chat-panel[hidden],#chat-panel [hidden]{display:none}#chat-panel .chat-bar{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border)}#chat-panel .chat-bar strong{flex:1;font-size:14px}#chat-panel button{font-size:12px;padding:5px 9px}
-#chat-panel #chat-color{width:25px;height:25px;padding:0;flex:none;border-radius:50%;border:2px solid var(--text);background:transparent}#chat-color[data-color=""]::after{content:'∅';font-size:18px}#chat-colors{position:fixed;inset:auto;margin:0;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);z-index:30}#chat-colors button{margin:3px;padding:5px 9px}#chat-colors button[aria-pressed=true]{outline:2px solid var(--command)}#chat-context{display:block;margin-top:6px;color:var(--muted)}
-#chat-panel details{padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px}#chat-panel pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0;font:12px/1.5 Consolas,monospace;max-height:140px;overflow:auto}
+#chat-context{display:block;margin-top:6px;color:var(--muted)}
+#settings-menu{max-height:calc(100dvh - 64px);overflow:auto}#chat-context-settings{margin-top:8px;padding:8px;border-top:1px solid var(--border);font-size:12px}#chat-context-settings summary{cursor:pointer;color:var(--text)}#chat-context-settings pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0;font:12px/1.5 Consolas,monospace;max-height:140px;overflow:auto}#chat-panel pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0;font:12px/1.5 Consolas,monospace;max-height:140px;overflow:auto}
 #chat-messages{flex:1;min-height:60px;overflow:auto;padding:12px}.chat-message{margin-bottom:14px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}.chat-message b{display:block;font-size:12px;color:var(--command);margin-bottom:4px}
 #chat-status{padding:6px 12px;font-size:12px;color:var(--muted)}#chat-proposal{padding:8px 12px;background:var(--bg);border-top:1px solid var(--border)}#chat-apply,#chat-send{background:#176f49;border-color:#329b72;color:white}
 #chat-form{padding:10px 12px;border-top:1px solid var(--border)}#chat-form label{display:block;padding:0 0 5px}#chat-input{display:block;width:100%;resize:vertical;min-height:70px;max-height:200px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;font:14px/1.5 system-ui}#chat-form .chat-actions{display:flex;align-items:center;gap:8px;margin-top:8px}#chat-form small{flex:1;color:var(--muted);font-size:11px}.CodeMirror .chat-selection{background:#88c0d030;outline:1px solid #88c0d080}
@@ -136,8 +135,9 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 <span id="native-annotation-status" hidden role="status" aria-live="polite"><span data-i18n="按 Esc 返回编辑">按 Esc 返回编辑</span><span class="native-annotation-feedback" data-i18n="已保存批注可在主对话统一发送。" style="margin-left:8px">已保存批注可在主对话统一发送。</span></span>
 <button id="annotations-toggle" hidden popovertarget="annotations-review" aria-expanded="false">批注 · 0</button><button id="annotations-stop" hidden data-i18n="停止">停止</button><button id="annotations-send" hidden disabled aria-busy="false" title="发送全部批注" data-i18n-title="发送全部批注">Send</button>
 <button id="history-open" class="icon-button" disabled><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2.6 7M3 4v7h7M12 7v5l3 2"/></svg><span data-i18n="历史">历史</span></button><button id="settings-menu-button" class="icon-button" popovertarget="settings-menu" aria-label="设置" data-i18n-aria-label="设置" title="设置" data-i18n-title="设置" aria-expanded="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3 1-2h4l1 2 2 1 2-.2 2 3-1 2v3l1 2-2 3-2-.2-2 1-1 3h-4l-1-3-2-1-2 .2-2-3 1-2V9L3 7l2-3 2 .2z" transform="translate(0 1) scale(1 .95)"/><circle cx="12" cy="11" r="3"/></svg></button></header>
-<div id="file-menu" class="toolbar-menu" popover="auto" aria-label="文件" data-i18n-aria-label="文件"><button id="open" data-i18n="打开文件">打开文件</button><button id="reload" data-i18n="重新读取文件">重新读取文件</button><a href="/pdf" download="document.pdf" data-i18n="下载 PDF">下载 PDF</a></div>
-<div id="settings-menu" class="toolbar-menu" popover="auto" aria-label="设置" data-i18n-aria-label="设置"><label for="language"><span data-i18n="语言">语言</span><select id="language" aria-label="语言" data-i18n-aria-label="语言"><option value="system" data-i18n="跟随系统">跟随系统</option><option value="zh-CN" data-i18n="简体中文">简体中文</option><option value="en">English</option></select></label><label for="editor-mode"><span data-i18n="编辑模式">编辑模式</span><select id="editor-mode" aria-label="编辑模式" data-i18n-aria-label="编辑模式"><option value="vim">Vim</option><option value="default" data-i18n="普通编辑">普通编辑</option></select></label><div class="theme-setting"><div class="theme-setting-heading"><label for="theme" data-i18n="配色">配色</label><button id="theme-customize" class="icon-button" aria-label="截图生成主题" data-i18n-aria-label="截图生成主题" title="截图生成主题" data-i18n-title="截图生成主题"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3 1-2h4l1 2 2 1 2-.2 2 3-1 2v3l1 2-2 3-2-.2-2 1-1 3h-4l-1-3-2-1-2 .2-2-3 1-2V9L3 7l2-3 2 .2z" transform="translate(0 1) scale(1 .95)"/><circle cx="12" cy="11" r="3"/></svg></button></div><select id="theme" aria-label="配色" data-i18n-aria-label="配色"><optgroup label="浅色" data-i18n-label="浅色"><option value="eclipse" data-i18n="Eclipse · 白底">Eclipse · 白底</option><option value="idea" data-i18n="IDEA · 白底">IDEA · 白底</option><option value="neo" data-i18n="Neo · 简洁白">Neo · 简洁白</option><option value="base16-light" data-i18n="Base16 · 浅灰">Base16 · 浅灰</option><option value="solarized-light" data-i18n="Solarized · 暖白">Solarized · 暖白</option></optgroup><optgroup label="深色" data-i18n-label="深色"><option value="cobalt" data-i18n="Cobalt · 深蓝">Cobalt · 深蓝</option><option value="dracula" data-i18n="Dracula · 紫灰">Dracula · 紫灰</option><option value="monokai" data-i18n="Monokai · 炭黑">Monokai · 炭黑</option><option value="nord" data-i18n="Nord · 冷灰">Nord · 冷灰</option><option value="material-darker" data-i18n="Material · 深灰">Material · 深灰</option><option value="material-palenight" data-i18n="Palenight · 蓝紫">Palenight · 蓝紫</option><option value="ayu-dark" data-i18n="Ayu · 深夜">Ayu · 深夜</option><option value="gruvbox-dark" data-i18n="Gruvbox · 暖黑">Gruvbox · 暖黑</option><option value="solarized-dark" data-i18n="Solarized · 深青">Solarized · 深青</option></optgroup></select></div><label for="revision-color"><span data-i18n="当前用户修订色">当前用户修订色</span><select id="revision-color" aria-label="当前用户修订色" data-i18n-aria-label="当前用户修订色"><option value="orange" data-i18n="橙色">橙色</option><option value="blue" data-i18n="蓝色">蓝色</option><option value="purple" data-i18n="紫色">紫色</option><option value="green" data-i18n="绿色">绿色</option><option value="red" data-i18n="红色">红色</option></select></label></div>
+<div id="file-menu" class="toolbar-menu" popover="auto" aria-label="文件" data-i18n-aria-label="文件"><button id="open" data-i18n="打开文件">打开文件</button><button id="project-open" data-i18n="项目设置">项目设置</button><button id="reload" data-i18n="重新读取文件">重新读取文件</button><a href="/pdf" download="document.pdf" data-i18n="下载 PDF">下载 PDF</a></div>
+<dialog id="project-dialog" aria-labelledby="project-title"><h3 id="project-title" data-i18n="项目设置">项目设置</h3><form id="project-form"><label for="project-root" data-i18n="项目根目录">项目根目录</label><input id="project-root" required><label for="project-entry" data-i18n="主编译文件">主编译文件</label><input id="project-entry" required placeholder="main.tex"><p data-i18n="选择包含主文件和附录的文件夹。主编译文件可填写相对路径；切换源码始终编译此文件。">选择包含主文件和附录的文件夹。主编译文件可填写相对路径；切换源码始终编译此文件。</p><p id="project-error" role="alert"></p><div class="history-dialog-actions"><button id="project-cancel" type="button" data-i18n="取消">取消</button><button id="project-apply" type="submit" data-i18n="应用">应用</button></div></form></dialog>
+<div id="settings-menu" class="toolbar-menu" popover="auto" aria-label="设置" data-i18n-aria-label="设置"><label for="language"><span data-i18n="语言">语言</span><select id="language" aria-label="语言" data-i18n-aria-label="语言"><option value="system" data-i18n="跟随系统">跟随系统</option><option value="zh-CN" data-i18n="简体中文">简体中文</option><option value="en">English</option></select></label><label for="editor-mode"><span data-i18n="编辑模式">编辑模式</span><select id="editor-mode" aria-label="编辑模式" data-i18n-aria-label="编辑模式"><option value="vim">Vim</option><option value="default" data-i18n="普通编辑">普通编辑</option></select></label><div class="theme-setting"><div class="theme-setting-heading"><label for="theme" data-i18n="配色">配色</label><button id="theme-customize" class="icon-button" aria-label="截图生成主题" data-i18n-aria-label="截图生成主题" title="截图生成主题" data-i18n-title="截图生成主题"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3 1-2h4l1 2 2 1 2-.2 2 3-1 2v3l1 2-2 3-2-.2-2 1-1 3h-4l-1-3-2-1-2 .2-2-3 1-2V9L3 7l2-3 2 .2z" transform="translate(0 1) scale(1 .95)"/><circle cx="12" cy="11" r="3"/></svg></button></div><select id="theme" aria-label="配色" data-i18n-aria-label="配色"><optgroup label="浅色" data-i18n-label="浅色"><option value="eclipse" data-i18n="Eclipse · 白底">Eclipse · 白底</option><option value="idea" data-i18n="IDEA · 白底">IDEA · 白底</option><option value="neo" data-i18n="Neo · 简洁白">Neo · 简洁白</option><option value="base16-light" data-i18n="Base16 · 浅灰">Base16 · 浅灰</option><option value="solarized-light" data-i18n="Solarized · 暖白">Solarized · 暖白</option></optgroup><optgroup label="深色" data-i18n-label="深色"><option value="cobalt" data-i18n="Cobalt · 深蓝">Cobalt · 深蓝</option><option value="dracula" data-i18n="Dracula · 紫灰">Dracula · 紫灰</option><option value="monokai" data-i18n="Monokai · 炭黑">Monokai · 炭黑</option><option value="nord" data-i18n="Nord · 冷灰">Nord · 冷灰</option><option value="material-darker" data-i18n="Material · 深灰">Material · 深灰</option><option value="material-palenight" data-i18n="Palenight · 蓝紫">Palenight · 蓝紫</option><option value="ayu-dark" data-i18n="Ayu · 深夜">Ayu · 深夜</option><option value="gruvbox-dark" data-i18n="Gruvbox · 暖黑">Gruvbox · 暖黑</option><option value="solarized-dark" data-i18n="Solarized · 深青">Solarized · 深青</option></optgroup></select></div><label for="chat-color"><span data-i18n="修改标记颜色">修改标记颜色</span><select id="chat-color" aria-label="修改标记颜色" data-i18n-aria-label="修改标记颜色"><option value="" data-i18n="无">无</option><option value="blue" data-i18n="蓝色">蓝色</option><option value="red" data-i18n="红色">红色</option><option value="teal" data-i18n="青色">青色</option><option value="magenta" data-i18n="洋红">洋红</option><option value="orange" data-i18n="橙色">橙色</option><option value="violet" data-i18n="紫色">紫色</option></select></label><label for="revision-color"><span data-i18n="当前用户修订色">当前用户修订色</span><select id="revision-color" aria-label="当前用户修订色" data-i18n-aria-label="当前用户修订色"><option value="orange" data-i18n="橙色">橙色</option><option value="blue" data-i18n="蓝色">蓝色</option><option value="purple" data-i18n="紫色">紫色</option><option value="green" data-i18n="绿色">绿色</option><option value="red" data-i18n="红色">红色</option></select></label><button id="chat-view" aria-controls="chat-panel" data-i18n="查看对话">查看对话</button><details id="chat-context-settings"><summary data-i18n="上下文记录">上下文记录</summary><pre id="chat-selection"></pre><button id="chat-use-selection" data-i18n="使用当前选区">使用当前选区</button><small id="chat-context" data-i18n="携带论文全文；正在读取主对话…">携带论文全文；正在读取主对话…</small></details></div>
 <dialog id="theme-dialog" aria-labelledby="theme-dialog-title">
 <div class="theme-dialog-heading"><strong id="theme-dialog-title" data-i18n="截图生成主题">截图生成主题</strong><button id="theme-close" aria-label="关闭" data-i18n-aria-label="关闭">×</button></div>
 <a href="https://21st.dev/community/themes" target="_blank" rel="noopener noreferrer">21st.dev / Community Themes ↗</a>
@@ -153,26 +153,24 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 <span style="color:var(--environment-command)">\end</span>{<span style="color:var(--environment)">equation</span>}
 <span style="color:var(--command)">\cite</span>{<span style="color:var(--reference)">example2026</span>}</pre><div class="theme-sample-capsule"><span data-i18n="询问 Codex…">询问 Codex…</span><span class="theme-sample-send" aria-hidden="true">↑</span></div></div>
 </div><div class="theme-dialog-actions"><button id="theme-save" disabled data-i18n="保存并使用">保存并使用</button></div></dialog>
-<main><section><label id="filename" hidden for="source" data-i18n="LaTeX 源码">LaTeX 源码</label><textarea id="source" spellcheck="false" disabled aria-label="LaTeX 源码" data-i18n-aria-label="LaTeX 源码"></textarea></section>
+<main><section><div id="source-files"><select id="source-file" disabled aria-label="项目源码" data-i18n-aria-label="项目源码"></select><span id="project-main"></span></div><label id="filename" hidden for="source" data-i18n="LaTeX 源码">LaTeX 源码</label><textarea id="source" spellcheck="false" disabled aria-label="LaTeX 源码" data-i18n-aria-label="LaTeX 源码"></textarea></section>
 <div class="sync-rail"><div id="splitter" role="separator" tabindex="0" aria-label="调整 LaTeX 和 PDF 宽度" data-i18n-aria-label="调整 LaTeX 和 PDF 宽度" aria-orientation="vertical" aria-valuemin="15" aria-valuemax="85" aria-valuenow="50" title="拖动调整宽度 · 双击恢复各半" data-i18n-title="拖动调整宽度 · 双击恢复各半"></div><button id="forward" disabled aria-label="定位光标到 PDF" data-i18n-aria-label="定位光标到 PDF" title="跳到光标对应的 PDF 位置" data-i18n-title="跳到光标对应的 PDF 位置">→</button></div>
 <section><div class="pdf-toolbar"><div class="compile-group"><button id="compile" aria-busy="false" disabled><span class="compile-idle" data-i18n="保存并编译">保存并编译</span><span class="compile-busy" data-i18n="正在编译…">正在编译…</span></button><button id="compile-menu-button" popovertarget="compile-menu" aria-label="编译选项" data-i18n-aria-label="编译选项" title="编译选项" data-i18n-title="编译选项" aria-expanded="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></button></div><div id="compile-menu" class="toolbar-menu" popover="auto" aria-label="编译选项" data-i18n-aria-label="编译选项"><label for="auto-compile"><span data-i18n="自动编译">自动编译</span><input id="auto-compile" type="checkbox" checked aria-label="自动编译" data-i18n-aria-label="自动编译"></label></div><button id="log-toggle" aria-label="编译日志" data-i18n-aria-label="编译日志" title="编译日志" data-i18n-title="编译日志" aria-pressed="false" aria-controls="log"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 2H5v20h14V7zM14 2v6h5M8 12h8M8 16h8"/></svg></button><span id="pan-hint" role="status" hidden data-i18n="按住空格拖动 PDF">按住空格拖动 PDF</span><button id="pan-mode" aria-pressed="true" title="切换拖动页面与选择文字" data-i18n-title="切换拖动页面与选择文字" ><svg class="toolbar-icon pan-hand-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 11V7a2 2 0 0 0-4 0v3M14 10V5a2 2 0 0 0-4 0v6M10 10.5V7a2 2 0 0 0-4 0v5l-1-1a2 2 0 0 0-3 2l4 6a6 6 0 0 0 5 3h3a6 6 0 0 0 6-6v-3a2 2 0 0 0-4 0v1"/></svg><svg class="toolbar-icon pan-select-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m4 3 15 10-7 1-4 7Z"/></svg><span id="pan-label" data-i18n="拖动">拖动</span></button><button id="zoom-out" aria-label="缩小 PDF" data-i18n-aria-label="缩小 PDF" title="缩小 PDF" data-i18n-title="缩小 PDF">−</button><button id="zoom-fit" aria-label="适合宽度" data-i18n-aria-label="适合宽度" title="恢复适合宽度" data-i18n-title="恢复适合宽度">100%</button><button id="zoom-in" aria-label="放大 PDF" data-i18n-aria-label="放大 PDF" title="放大 PDF" data-i18n-title="放大 PDF">+</button></div><div class="preview-shell"><div id="preview" class="hand-tool" role="region" aria-label="编译后的 PDF" data-i18n-aria-label="编译后的 PDF" tabindex="0"><div id="pdf-viewer" class="pdfViewer"></div></div><pre id="log" hidden tabindex="0" role="region" aria-label="编译日志" data-i18n-aria-label="编译日志"></pre></div></section></main>
 <aside id="chat-panel" role="dialog" aria-label="项目侧边聊天" data-i18n-aria-label="项目侧边聊天" hidden>
-<div class="chat-bar"><strong data-i18n="Codex · 项目对话">Codex · 项目对话</strong><button id="chat-color" data-color="" aria-label="修改标记颜色：无" data-i18n-aria-label="修改标记颜色：无" title="修改标记颜色：无" data-i18n-title="修改标记颜色：无" popovertarget="chat-colors"></button><button id="chat-end" data-i18n="新对话">新对话</button><button id="chat-close" aria-label="收起项目对话" data-i18n-aria-label="收起项目对话">×</button></div>
-<details><summary data-i18n="当前选区与上下文">当前选区与上下文</summary><pre id="chat-selection"></pre><button id="chat-use-selection" data-i18n="使用当前选区">使用当前选区</button><small id="chat-context" data-i18n="携带论文全文；正在读取主对话…">携带论文全文；正在读取主对话…</small></details>
+<div class="chat-bar"><strong data-i18n="Codex · 项目对话">Codex · 项目对话</strong><button id="chat-end" data-i18n="新对话">新对话</button><button id="chat-close" aria-label="收起项目对话" data-i18n-aria-label="收起项目对话">×</button></div>
 <div id="chat-messages" role="log" aria-label="对话记录" data-i18n-aria-label="对话记录" aria-live="polite"></div>
 <div id="chat-proposal" hidden><strong data-i18n="选区修改建议">选区修改建议</strong><pre id="chat-replacement"></pre><button id="chat-apply" data-i18n="应用到选区">应用到选区</button></div>
 <div id="chat-status" role="status"></div>
 <form id="chat-form"><div id="chat-settings"><label for="chat-model"><span data-i18n="模型">模型</span><select id="chat-model"><option value="" data-i18n="跟随 Codex 默认">跟随 Codex 默认</option></select></label><label for="chat-effort"><span data-i18n="思考等级">思考等级</span><select id="chat-effort" disabled><option value="" data-i18n="跟随默认">跟随默认</option></select></label></div><small id="chat-model-status" role="status"></small><label for="chat-input" data-i18n="修改要求或问题">修改要求或问题</label><textarea id="chat-input" placeholder="例如：润色这段文字，保留公式和引用" data-i18n-placeholder="例如：润色这段文字，保留公式和引用"></textarea><div class="chat-actions"><small data-i18n="项目记忆自动保存 · Ctrl+Enter 发送">项目记忆自动保存 · Ctrl+Enter 发送</small><button id="chat-stop" type="button" hidden data-i18n="停止">停止</button><button id="chat-send" type="submit" data-i18n="发送">发送</button></div></form>
 </aside>
-<div id="chat-colors" popover="auto" aria-label="修改标记颜色" data-i18n-aria-label="修改标记颜色"></div>
 <div id="annotations-review" popover="auto" aria-label="待发送批注" data-i18n-aria-label="待发送批注"><p id="annotations-empty" data-i18n="选中 PDF 文字，写下要求，再点顶部 Send。">选中 PDF 文字，写下要求，再点顶部 Send。</p><div id="annotations-list"></div><div id="annotations-status" role="status" aria-live="polite"></div></div>
 <div id="chat-quick" popover="auto" role="dialog" aria-label="PDF 批注" data-i18n-aria-label="PDF 批注">
 <button id="chat-quick-handle" type="button" aria-label="拖动批注框" data-i18n-aria-label="拖动批注框" aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown"></button>
 <form id="chat-quick-form"><textarea id="chat-quick-input" aria-label="批注要求" data-i18n-aria-label="批注要求" placeholder="写下这处的修改要求…" data-i18n-placeholder="写下这处的修改要求…" rows="1"></textarea>
 <div id="chat-quick-toolbar"><button id="chat-quick-brain" type="button" popovertarget="chat-quick-settings" aria-label="选择模型和思考等级" data-i18n-aria-label="选择模型和思考等级" aria-expanded="false" title="选择模型和思考等级" data-i18n-title="选择模型和思考等级"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 18V5a3 3 0 0 0-5.8-1A4 4 0 0 0 3 10a4 4 0 0 0 .5 7A4 4 0 0 0 12 18Zm0 0V5a3 3 0 0 1 5.8-1A4 4 0 0 1 21 10a4 4 0 0 1-.5 7A4 4 0 0 1 12 18M8 8c-2 0-3-1-3-2m3 8c-2 0-3 1-3 3m11-9c2 0 3-1 3-2m-3 8c2 0 3 1 3 3"/></svg><span id="chat-quick-model-name"></span></button><button id="chat-quick-effort" type="button" aria-label="思考等级"><span class="quick-effort-bars" aria-hidden="true"><i></i><i></i><i></i></span><span id="chat-quick-effort-name"></span></button><button id="chat-quick-delete" type="button" hidden aria-label="删除批注" data-i18n-aria-label="删除批注" title="删除批注" data-i18n-title="删除批注"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></svg></button><button id="chat-quick-cancel" type="button" aria-label="取消" data-i18n-aria-label="取消" title="取消" data-i18n-title="取消"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div><button id="chat-quick-send" type="submit" aria-label="添加批注" data-i18n-aria-label="添加批注" title="添加批注 · Ctrl+Enter"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 18V6M6.5 11.5 12 6l5.5 5.5"/></svg></button></form>
 <div id="chat-quick-status" role="status"></div><div id="chat-quick-settings" popover="auto" role="group" aria-label="模型和思考等级" data-i18n-aria-label="模型和思考等级"><div class="quick-settings-columns"><div id="chat-quick-models" role="group" aria-label="模型" data-i18n-aria-label="模型"></div><div id="chat-quick-efforts" role="group" aria-label="思考等级" data-i18n-aria-label="思考等级" hidden></div></div><div id="chat-quick-model-status" role="status"></div></div></div>
-<div id="editor-menu" popover="auto" role="menu" aria-label="源码操作" data-i18n-aria-label="源码操作"><button id="toggle-comment" role="menuitem" aria-keyshortcuts="Alt+/ Control+/ Meta+/"><span data-i18n="注释 / 取消注释">注释 / 取消注释</span><kbd>Alt+/</kbd></button><button id="chat-menu" role="menuitem" data-i18n="在侧边聊天中提问">在侧边聊天中提问</button><button id="chat-quick-menu" role="menuitem" data-i18n="添加批注">添加批注</button></div>
-<div id="pdf-menu" popover="auto" role="menu" aria-label="PDF 选区操作" data-i18n-aria-label="PDF 选区操作"><button id="pdf-chat-menu" role="menuitem" data-i18n="在侧边聊天中提问">在侧边聊天中提问</button><button id="pdf-chat-quick-menu" role="menuitem" data-i18n="添加批注">添加批注</button></div>
+<div id="editor-menu" popover="auto" role="menu" aria-label="源码操作" data-i18n-aria-label="源码操作"><button id="toggle-comment" role="menuitem" aria-keyshortcuts="Alt+/ Control+/ Meta+/"><span data-i18n="注释 / 取消注释">注释 / 取消注释</span><kbd>Alt+/</kbd></button><button id="chat-quick-menu" role="menuitem" data-i18n="添加批注">添加批注</button></div>
+<div id="pdf-menu" popover="auto" role="menu" aria-label="PDF 选区操作" data-i18n-aria-label="PDF 选区操作"><button id="pdf-chat-quick-menu" role="menuitem" data-i18n="添加批注">添加批注</button></div>
 <dialog id="history-dialog" aria-labelledby="history-title"><header><strong id="history-title" data-i18n="版本历史">版本历史</strong><span id="history-file"></span><button id="history-refresh" data-i18n="刷新">刷新</button><button id="history-close" aria-label="关闭历史" data-i18n-aria-label="关闭历史">×</button></header><div id="history-status" role="status" aria-live="polite" hidden></div>
 <div class="history-body"><section class="history-content"><div class="history-toolbar"><div id="history-tabs"><button id="history-diff" aria-pressed="true" data-i18n="改动对比">改动对比</button><button id="history-pdf" aria-pressed="false" data-i18n="PDF 改动">PDF 改动</button><button id="history-source" aria-pressed="false" data-i18n="此版本源码">此版本源码</button></div><label for="history-target" data-i18n="对比">对比</label><select id="history-target"><option value="previous" data-i18n="与上一版比较">与上一版比较</option><option value="current" data-i18n="当前编辑内容">当前编辑内容</option></select><button id="history-recompile" hidden data-i18n="重新编译">重新编译</button></div><div id="history-panes" class="history-code-shell" role="tabpanel" aria-labelledby="history-diff"><div id="history-code" tabindex="0" aria-label="历史源码与差异" data-i18n-aria-label="历史源码与差异"></div><div id="history-pdf-view" hidden tabindex="0" aria-label="改动附近的 PDF 对比" data-i18n-aria-label="改动附近的 PDF 对比"></div><button id="history-next" hidden><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16m-6-6 6 6 6-6"/></svg><span id="history-next-label"></span></button></div></section><aside id="history-sidebar" class="history-sidebar" aria-label="按时间排列的版本" data-i18n-aria-label="按时间排列的版本"><div class="history-sidebar-head"><button id="history-sidebar-toggle" aria-label="展开改动记录" data-i18n-aria-label="展开改动记录" aria-expanded="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span data-i18n="改动记录">改动记录</span></button><button id="history-sidebar-pin" aria-label="固定记录栏" title="固定记录栏" data-i18n-aria-label="固定记录栏" data-i18n-title="固定记录栏" aria-pressed="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 9V3H8v6l-3 4v2h14v-2zM12 15v7"/></svg></button></div><div class="history-activity"><small id="history-summary-status" role="status"></small><div id="history-list"></div><button id="history-more" hidden data-i18n="加载更早版本">加载更早版本</button></div></aside></div>
 <div id="history-actions" popover="auto" role="menu" aria-label="历史记录操作" data-i18n-aria-label="历史记录操作"><button id="history-rename" role="menuitem" data-i18n="重命名">重命名</button><button id="history-restore" role="menuitem" disabled data-i18n="恢复此版本">恢复此版本</button></div>
@@ -183,6 +181,7 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 <script src="/vendor/comment.js"></script>
 <script type="module">
 import * as pdfjsLib from '/vendor/pdfjs/build/pdf.mjs';
+import {pdfPageBoxes} from '/vendor/latex-pdf-analysis.mjs';
 import {EventBus, PDFViewer, PDFLinkService} from '/vendor/pdfjs/web/pdf_viewer.mjs';
 import katex from '/vendor/katex/katex.mjs';
 import {attachMathHover,findMathRanges} from '/vendor/latex-hover.mjs';
@@ -231,29 +230,37 @@ pdfEvents.on('pagerendered',()=>selectionChat.refreshAnnotations());
 const historyDialog=document.querySelector('#history-dialog');
 attachHistory(editor,request,()=>({path:document.querySelector('#filename').title,source:editor.getValue(),version}),restoreHistory);
 const layout=document.querySelector('main'),splitter=document.querySelector('#splitter');
-let splitRatio=.5,splitDrag=null;
+let splitRatio=.5,splitDrag=null,splitFrame=0;
 function setSplitRatio(value){
   splitRatio=Math.max(.15,Math.min(.85,value));
-  layout.style.setProperty('--source-share',splitRatio+'fr');
-  layout.style.setProperty('--pdf-share',(1-splitRatio)+'fr');
+  layout.style.gridTemplateColumns=`minmax(0,${splitRatio}fr) 6px minmax(0,${1-splitRatio}fr)`;
   splitter.setAttribute('aria-valuenow',String(Math.round(splitRatio*100)));
-  editor.refresh();
+  if(!splitDrag)editor.refresh();
 }
 function saveSplitRatio(){try{localStorage.setItem('latex-codex-split',String(splitRatio));}catch(e){}}
 try{const saved=Number.parseFloat(localStorage.getItem('latex-codex-split'));if(Number.isFinite(saved))setSplitRatio(saved);}catch(e){}
 splitter.onpointerdown=e=>{
   if(e.button!==0||layout.clientWidth<=640)return;
-  e.preventDefault();splitDrag={x:e.clientX,ratio:splitRatio};
+  e.preventDefault();splitDrag={x:e.clientX,ratio:splitRatio,next:splitRatio,width:layout.clientWidth-6,position:previewPosition()};
   splitter.setPointerCapture(e.pointerId);layout.classList.add('resizing');
 };
 splitter.onpointermove=e=>{
   if(!splitDrag)return;
   if(!(e.buttons&1)){splitter.onpointerup(e);return;}
-  setSplitRatio(splitDrag.ratio+(e.clientX-splitDrag.x)/(layout.clientWidth-6));
+  splitDrag.next=splitDrag.ratio+(e.clientX-splitDrag.x)/splitDrag.width;
+  if(!splitFrame)splitFrame=requestAnimationFrame(()=>{
+    splitFrame=0;
+    if(splitDrag)setSplitRatio(splitDrag.next);
+  });
 };
 splitter.onpointerup=splitter.onpointercancel=splitter.onlostpointercapture=e=>{
   if(!splitDrag)return;
+  if(splitFrame){cancelAnimationFrame(splitFrame);splitFrame=0;}
+  setSplitRatio(splitDrag.next);
+  const position=splitDrag.position;
   splitDrag=null;layout.classList.remove('resizing');saveSplitRatio();
+  editor.refresh();
+  resizePdfPreview(position);
   if(splitter.hasPointerCapture(e.pointerId))splitter.releasePointerCapture(e.pointerId);
 };
 splitter.ondblclick=()=>{setSplitRatio(.5);saveSplitRatio();};
@@ -305,8 +312,7 @@ function restorePreviewPosition(position){
   preview.scrollLeft=position.x*preview.scrollWidth;
   pdfViewer.update();
 }
-function setPdfZoom(value){
-  const position=previewPosition();
+function setPdfZoom(value,position=previewPosition()){
   pdfZoom=Math.max(75,Math.min(250,value));
   if(pdfViewer.pagesCount){pdfViewer.currentScaleValue='page-width';pdfViewer.currentScale*=pdfZoom/100;restorePreviewPosition(position);}
   preview.querySelectorAll('.sync-highlight').forEach(mark=>mark.remove());
@@ -315,7 +321,12 @@ function setPdfZoom(value){
   document.querySelector('#zoom-in').disabled=pdfZoom===250;
 }
 let previewWidth=0;
-new ResizeObserver(()=>{if(preview.clientWidth!==previewWidth){previewWidth=preview.clientWidth;setPdfZoom(pdfZoom);}}).observe(preview);
+function resizePdfPreview(position){
+  if(splitDrag||preview.clientWidth===previewWidth)return;
+  previewWidth=preview.clientWidth;
+  setPdfZoom(pdfZoom,position);
+}
+new ResizeObserver(()=>resizePdfPreview()).observe(preview);
 document.querySelector('#zoom-out').onclick=()=>setPdfZoom(pdfZoom-25);
 document.querySelector('#zoom-in').onclick=()=>setPdfZoom(pdfZoom+25);
 document.querySelector('#zoom-fit').onclick=()=>setPdfZoom(100);
@@ -341,7 +352,8 @@ function setEditorMode(){
   try{localStorage.setItem('latex-codex-editor-mode',editorMode.value);}catch(e){}
 }
 editorMode.onchange=setEditorMode;setEditorMode();
-let version='',saved='',busy=false,loading=false,timer,conflict=false,pdfVersion='',syncBusy=false,pendingForward=false,compiledLabels={},compiledCitations={};
+let version='',saved='',busy=false,loading=false,timer,conflict=false,pdfVersion='',syncBusy=false,pendingForward=false,compiledLabels={},compiledCitations={},projectRoot='',mainFile='',projectVersion='';
+const sourceFile=document.querySelector('#source-file'),projectDialog=document.querySelector('#project-dialog');
 const autoCompile=document.querySelector('#auto-compile');
 autoCompile.checked=true;
 try{autoCompile.checked=localStorage.getItem('latex-codex-auto-compile')!=='off';}catch(e){}
@@ -359,13 +371,14 @@ let errorLine=null;
 function showCompileError(error){
   if(errorLine){editor.removeLineClass(errorLine,'background','compile-error-line');editor.removeLineClass(errorLine,'gutter','compile-error-gutter');errorLine=null;}
   if(!error||!Number.isInteger(error.line)||error.line<1||error.line>editor.lineCount())return;
+  if(error.path&&error.path!==document.querySelector('#filename').title){setText(status,'编译失败 · {name} 第 {line} 行：{message}',{...error,name:error.path.split(/[\\/]/).pop()});return;}
   const cursor={line:error.line-1,ch:0};
   errorLine=editor.addLineClass(cursor.line,'background','compile-error-line');
   editor.addLineClass(errorLine,'gutter','compile-error-gutter');
   editor.setCursor(cursor);editor.focus();editor.scrollIntoView(cursor,editor.getScrollInfo().clientHeight/2);
   setText(status,'编译失败 · 第 {line} 行：{message}',error);
 }
-function updateSyncControls(){forwardButton.disabled=busy||syncBusy||editor.getOption('readOnly');compileButton.disabled=forwardButton.disabled;openButton.disabled=busy||syncBusy;document.querySelector('#history-open').disabled=!!forwardButton.disabled;}
+function updateSyncControls(){forwardButton.disabled=busy||syncBusy||editor.getOption('readOnly');compileButton.disabled=forwardButton.disabled;openButton.disabled=busy||syncBusy;sourceFile.disabled=!!forwardButton.disabled;document.querySelector('#project-open').disabled=!!forwardButton.disabled;document.querySelector('#history-open').disabled=!!forwardButton.disabled;}
 async function request(url,options){
   const retry=!options||!options.method||options.method==='GET'||(url==='/chat'&&options.method==='POST'&&/^[0-9a-f]{32}$/.test(JSON.parse(options.body).request_id));
   for(let attempt=0;;attempt++){
@@ -376,16 +389,45 @@ async function request(url,options){
       if(retry&&attempt<2){await new Promise(resolve=>setTimeout(resolve,300*2**attempt));continue;}
       throw new Error(t('本地编辑器连接中断，请稍后重试。'));
     }
-    if(!r.ok){const e=new Error(data.error||t('请求失败'));e.conflict=r.status===409;throw e;}return data;
+    if(!r.ok){const e=new Error(data.error||t('请求失败'));e.conflict=r.status===409;e.status=r.status;throw e;}return data;
   }
 }
-function display(data){
+function display(data,preservePdf=false){
   showCompileError(null);showCompileLog(false);
-  editor.setOption('keyMap','default');editor.swapDoc(new CodeMirror.Doc(data.source,editor.getOption('mode')));editor.setOption('keyMap',editorMode.value);
-  saved=data.source;version=data.version;pdfVersion='';compiledLabels={};compiledCitations={};editor.setOption('readOnly',false);conflict=false;updateSyncControls();
+  const text=data.source.replace(/\r\n/g,'\n');
+  editor.setOption('keyMap','default');editor.swapDoc(new CodeMirror.Doc(text,editor.getOption('mode')));editor.setOption('keyMap',editorMode.value);
+  saved=text;version=data.version;pdfVersion=preservePdf&&data.sync&&data.pdf_revision===pdfBuild?version:'';compiledLabels=pdfVersion?data.labels||{}:{};compiledCitations=pdfVersion?data.citations||{}:{};editor.setOption('readOnly',false);conflict=false;updateSyncControls();
   const label=document.querySelector('#filename');label.dataset.name=data.name;label.title=data.path;updateCompileCaption();
-  document.querySelector('a[download]').download=data.name.replace(/\.tex$/i,'.pdf');
+  projectRoot=data.project_root||'';mainFile=data.main_file||data.path;projectVersion=data.project_version||'';
+  sourceFile.replaceChildren(...(data.files||[{path:data.path,name:data.name}]).map(file=>{const option=document.createElement('option');option.value=file.path;option.textContent=file.name;return option;}));sourceFile.value=data.path;
+  const caption=document.querySelector('#project-main');setText(caption,'主文件：{name}',{name:mainFile.split(/[\\/]/).pop()});caption.title=projectRoot;
+  document.querySelector('a[download]').download=mainFile.split(/[\\/]/).pop().replace(/\.tex$/i,'.pdf');
 }
+async function switchSource(path,initialize=true){
+  if(path===document.querySelector('#filename').title)return true;
+  if(busy||conflict||selectionChat.busy||selectionChat.hasAnnotations){setText(status,'请先保存修改、处理冲突，并发送或删除批注，再切换源码。');sourceFile.value=document.querySelector('#filename').title;return false;}
+  if(editor.getValue()!==saved)await compile(false);
+  if(conflict||editor.getValue()!==saved)return false;
+  clearTimeout(timer);busy=true;editor.setOption('readOnly','nocursor');updateSyncControls();
+  try{const data=await request('/source',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,version})});display(data,true);return true;}
+  catch(e){setText(status,'打开失败：{message}',{message:e.message});sourceFile.value=document.querySelector('#filename').title;return false;}
+  finally{busy=false;editor.setOption('readOnly',false);updateSyncControls();if(initialize&&!pdfVersion&&!conflict)await compile();}
+}
+sourceFile.onchange=()=>switchSource(sourceFile.value);
+document.querySelector('#project-open').onclick=()=>{document.querySelector('#file-menu').hidePopover();document.querySelector('#project-root').value=projectRoot;document.querySelector('#project-entry').value=mainFile;document.querySelector('#project-error').textContent='';projectDialog.showModal();};
+document.querySelector('#project-cancel').onclick=()=>projectDialog.close();
+document.querySelector('#project-form').onsubmit=async event=>{
+  event.preventDefault();const error=document.querySelector('#project-error');
+  if(busy||syncBusy||conflict||selectionChat.busy||selectionChat.hasAnnotations){setText(error,'请先保存修改、处理冲突，并发送或删除批注，再切换源码。');return;}
+  if(editor.getValue()!==saved)await compile(false);
+  if(conflict||editor.getValue()!==saved)return;
+  clearTimeout(timer);busy=true;editor.setOption('readOnly','nocursor');updateSyncControls();document.querySelector('#project-apply').disabled=true;
+  try{const data=await request('/project',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project_root:document.querySelector('#project-root').value,main_file:document.querySelector('#project-entry').value,version})});display(data);projectDialog.close();await clearPreview();}
+  catch(e){error.textContent=e.message;}
+  finally{busy=false;editor.setOption('readOnly',false);updateSyncControls();document.querySelector('#project-apply').disabled=false;}
+  if(!projectDialog.open)await compile();
+};
+async function clearPreview(){pdfViewer.setDocument(null);pdfLinks.setDocument(null);if(pdfTask)await pdfTask.destroy();pdfTask=null;pdfBuild='';log.textContent='';}
 async function openFile(){
   if(busy||syncBusy)return;
   if((editor.getValue()!==saved||selectionChat.hasAnnotations)&&!confirm(t(selectionChat.hasAnnotations?'打开其他文件会放弃未发送批注和未保存修改。继续？':'打开其他文件会放弃尚未保存的修改。继续？')))return;
@@ -394,10 +436,10 @@ async function openFile(){
   try{
     const data=await request('/open',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     if(data.cancelled)setText(status,'已取消打开');
-    else{display(data);pdfViewer.setDocument(null);pdfLinks.setDocument(null);if(pdfTask)await pdfTask.destroy();pdfTask=null;pdfBuild='';log.textContent='';opened=true;}
+    else{const sameProject=data.project_root===projectRoot&&data.main_file===mainFile;display(data,sameProject);if(!sameProject)await clearPreview();opened=true;}
   }catch(e){setText(status,'打开失败：{message}',{message:e.message});}
   finally{busy=false;editor.setOption('readOnly',false);updateSyncControls();}
-  if(opened)await compile();
+  if(opened&&!pdfVersion)await compile();
   else if(editor.getValue()!==saved&&!conflict)scheduleSave();
 }
 async function compile(compilePdf=true){
@@ -406,7 +448,7 @@ async function compile(compilePdf=true){
   busy=true;compileButton.setAttribute('aria-busy',String(compilePdf));updateSyncControls();const text=editor.getValue(),changed=text!==saved;setText(status,compilePdf?'正在保存并编译…':'正在保存…');
   try{
     const data=await request(compilePdf?'/compile':'/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:text,version})});
-    version=data.version;saved=text;
+    version=data.version;saved=text;if(data.project_version)projectVersion=data.project_version;
     if(!compilePdf){
       if(pdfVersion!==version){pdfVersion='';compiledLabels={};compiledCitations={};}
       setText(status,'已保存 · 自动编译已关闭');return;
@@ -414,7 +456,10 @@ async function compile(compilePdf=true){
     pdfVersion='';compiledLabels={};compiledCitations={};log.textContent=data.log;
     if(!data.ok)showCompileLog(true);
     setText(status,data.ok?'已保存 · 编译成功':'已保存 · 编译失败，请查看日志');
-    showCompileError(!data.ok&&editor.getValue()===text?data.diagnostic:null);
+    if(!data.ok&&data.diagnostic?.path&&data.diagnostic.path!==document.querySelector('#filename').title&&editor.getValue()===text&&!selectionChat.busy&&!selectionChat.hasAnnotations){
+      const target=await request('/source',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:data.diagnostic.path,version})});display(target);showCompileLog(true);
+    }
+    showCompileError(!data.ok&&(editor.getValue()===text||data.diagnostic?.path===document.querySelector('#filename').title)?data.diagnostic:null);
     if(data.ok){
       try{await refreshPreview(data);pdfVersion=data.sync?data.version:'';compiledLabels=data.labels||{};compiledCitations=data.citations||{};}
       catch(e){setText(status,'已保存 · 编译成功，PDF 预览加载失败');log.textContent+='\n'+e.message;showCompileLog(true);}
@@ -468,12 +513,22 @@ async function load(force=false){
   try{
     const data=await request('/state');
     if(busy||syncBusy||historyDialog.open)return;
-    if(!force&&version&&data.version===version)return;
+    if(!force&&version&&data.version===version){
+      if(data.project_version&&data.project_version!==projectVersion){projectVersion=data.project_version;pdfVersion='';compiledLabels={};compiledCitations={};if(autoCompile.checked)await compile();else setText(status,'项目文件已变化，请重新编译后定位。');}
+      return;
+    }
     if(!force&&version&&(editor.getValue()!==saved||selectionChat.hasAnnotations)){conflict=true;setText(status,'文件已被外部修改；保留了编辑框内容，请先处理冲突');return;}
     const firstLoad=!version;display(data);
     await compile(firstLoad||force||autoCompile.checked);
   }catch(e){setText(status,'读取失败：{message}',{message:e.message});}
   finally{loading=false;}
+}
+async function syncRequest(data){
+  const pdf=pdfViewer.pdfDocument;
+  if(!pdf||pdfBuild!==data.pdf_revision)throw new Error(t('PDF 或源码已变化，请重新选择 PDF 文字。'));
+  const boxes=await pdfPageBoxes(pdf);
+  if(pdfViewer.pdfDocument!==pdf||pdfBuild!==data.pdf_revision)throw new Error(t('PDF 或源码已变化，请重新选择 PDF 文字。'));
+  return request('/synctex',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...data,boxes})});
 }
 async function synchronize(direction,position,quiet=false){
   if(syncBusy)return;
@@ -485,17 +540,35 @@ async function synchronize(direction,position,quiet=false){
     if(!pdfVersion||pdfVersion!==version||editor.getValue()!==saved)throw new Error(t('请先成功编译当前修改，再定位。'));
     if(direction==='selection'&&(position.version!==version||position.pdf_revision!==pdfBuild||position.source!==saved))throw new Error(t('PDF 或源码已变化，请重新选择 PDF 文字。'));
     if(direction==='forward'&&!quiet)showCompileLog(false);
-    const revision=version,build=pdfBuild;
+    let revision=version;const build=pdfBuild;
     if(direction==='forward'){const cursor=editor.getCursor();position={line:cursor.line+1,column:cursor.ch+1};}
-    const locate=point=>request('/synctex',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({direction:direction==='selection'?'backward':direction,version:revision,pdf_revision:build,...point})});
-    const data=direction==='selection'?await Promise.all(position.points.map(locate)):await locate(position);
+    const locate=point=>syncRequest({direction:direction==='selection'?'backward':direction,version:revision,pdf_revision:build,...point});
+    const results=direction==='selection'?await Promise.allSettled(position.points.map(locate)):null;
+    const data=results?results.filter(result=>result.status==='fulfilled').map(result=>result.value):await locate(position);
     if(busy||version!==revision||pdfBuild!==build||editor.getValue()!==saved)throw new Error(t('PDF 或源码已变化，请重新选择 PDF 文字。'));
+    if(direction!=='forward'){
+      const paths=[...new Set((direction==='selection'?data:[data]).map(point=>point.path||document.querySelector('#filename').title))];
+      if(paths.length>1)throw new Error(t('选区跨越多个源码文件，请分别选择。'));
+      if(paths[0]!==document.querySelector('#filename').title){if(!await switchSource(paths[0],false))return;revision=version;}
+      if(!pdfVersion||pdfVersion!==version||pdfBuild!==build)throw new Error(t('PDF 或源码已变化，请重新选择 PDF 文字。'));
+    }
     if(direction==='selection'){
       if(selectionChat.busy)throw new Error(t('Codex 正在回复，请稍后发送。'));
-      const range=sourcePdfTextRange(saved,data.map(point=>point.line),position.text,compiledLabels,compiledCitations);
+      const fatal=results.find(result=>result.status==='rejected'&&result.reason.status!==400);
+      if(fatal)throw fatal.reason;
+      if(!data.length)throw results.find(result=>result.status==='rejected').reason;
+      const locations=data.map(point=>point.line);
+      let range;
+      try{range=sourcePdfTextRange(saved,locations,position.text,compiledLabels,compiledCitations);}
+      catch(error){
+        range=await sourcePdfMathRange(saved,locations,position,compiledLabels,compiledCitations,
+          (first,last)=>syncRequest({direction:'range',version:revision,pdf_revision:build,first,last}));
+        if(!range)throw error;
+      }
+      if(busy||version!==revision||pdfBuild!==build||editor.getValue()!==saved)throw new Error(t('PDF 或源码已变化，请重新选择 PDF 文字。'));
       if(editor.getOption('keyMap').startsWith('vim'))CodeMirror.Vim.handleKey(editor,'<Esc>');
       editor.setSelection(range.from,range.to);editor.scrollIntoView(range,40);
-      setText(status,range.approximate?'已匹配相似 LaTeX 选区 · 第 {from}–{to} 行':'已精确选中对应 LaTeX 文字 · 第 {from}–{to} 行',{from:range.from.line+1,to:range.to.line+1});
+      setText(status,range.mathBlock?'已按 PDF 位置选中正文及完整公式 · 第 {from}–{to} 行':range.approximate?'已匹配相似 LaTeX 选区 · 第 {from}–{to} 行':'已精确选中对应 LaTeX 文字 · 第 {from}–{to} 行',{from:range.from.line+1,to:range.to.line+1});
       return true;
     }else if(direction==='forward'){
       const page=await pdfViewer.pdfDocument.getPage(data.page);
@@ -578,7 +651,7 @@ function sourcePdfTextRange(source,locations,text,labels={},citations={}){
       for(let i=0;i<value.length;i++)offsets.push([start+from,start+to]);
     };
     let skip=0;const citationSpans=[];
-    const visibleTokens=/\\(?:textbf|textit|textrm|textsf|texttt|textnormal|emph|underline)\{([^{}]*)\}|\\(?:label|[A-Za-z]*ref|[A-Za-z]*cite[A-Za-z]*|url|href|includegraphics|input|include|bibliography|bibliographystyle)(?:\*|\[[^\]]*\])*(?:\{[^{}]*\})+|\\(?:[A-Za-z@]+|.)|%[^\n]*|[^]/gu;
+    const visibleTokens=/\\(?:textbf|textit|textrm|textsf|texttt|textnormal|emph|underline)\{([^{}]*)\}|\\(?:color)(?:\[[^\]]*\])?\{[^{}]*\}|\\(?:textbf|textit|textrm|textsf|texttt|textnormal|emph|underline)\{|\\textcolor(?:\[[^\]]*\])?\{[^{}]*\}\{|\\(?:label|[A-Za-z]*ref|[A-Za-z]*cite[A-Za-z]*|url|href|includegraphics|input|include|bibliography|bibliographystyle)(?:\*|\[[^\]]*\])*(?:\{[^{}]*\})+|\\(?:[A-Za-z@]+|.)|%[^\n]*|[^]/gu;
     for(const token of snippet.matchAll(visibleTokens)){
       if(token.index<skip)continue;
       const formula=formulas.get(token.index);
@@ -586,7 +659,7 @@ function sourcePdfTextRange(source,locations,text,labels={},citations={}){
         const rendered=document.createElement('div');
         try{
           const tex=formula.tex.replace(/\\(begin|end)\s*\{(equation|align|alignat|gather)\}/g,'\\$1{$2*}');
-          katex.render(tex,rendered,{output:'mathml',displayMode:formula.display,throwOnError:true,trust:false,strict:'ignore',maxExpand:1000,maxSize:20,macros:{'\\label':{numArgs:1,tokens:[]}}});
+          katex.render(tex,rendered,{output:'mathml',displayMode:formula.display,throwOnError:true,trust:false,strict:'ignore',maxExpand:1000,maxSize:20,macros:{'\\label':{numArgs:1,tokens:[]},'\\bm':'\\boldsymbol{#1}'}});
           rendered.querySelectorAll('annotation').forEach(node=>node.remove());
           const key=formula.tex.match(/\\label\{([^{}]+)\}/)?.[1],number=Object.hasOwn(labels,key)?labels[key]:'';
           append((number?'('+number+')':'')+rendered.textContent,formula.from,formula.to);
@@ -599,7 +672,9 @@ function sourcePdfTextRange(source,locations,text,labels={},citations={}){
         const citation=token[0].match(/^\\(cite|citep)\*?\{([^{}]+)\}$/);
         const keys=citation?.[2].split(',').map(key=>key.trim());
         const cited=keys?.every(key=>Object.hasOwn(citations,key))?'['+keys.map(key=>citations[key]).join(',')+']':null;
-        const value=cited??(number!==null?(reference[1]==='eqref'?'('+number+')':number):token[1]??(/^[\\%]/.test(token[0])?'\0':token[0]));
+        const invisible=/^(?:[{}]|\\(?:color|textcolor|textbf|textit|textrm|textsf|texttt|textnormal|emph|underline|bfseries|itshape|rmfamily|sffamily|ttfamily|normalfont)\b)/.test(token[0]);
+        const escaped=token[0].match(/^\\([%&#_{}$])$/);
+        const value=cited??(number!==null?(reference[1]==='eqref'?'('+number+')':number):token[1]??(invisible?'':escaped?.[1]??(/^[\\%]/.test(token[0])?'\0':token[0])));
         const begin=haystack.length;
         append(value,token.index,token.index+token[0].length);
         if(citation)citationSpans.push([begin,haystack.length]);
@@ -653,7 +728,21 @@ function sourcePdfTextRange(source,locations,text,labels={},citations={}){
     const prefix=source.slice(0,index),line=prefix.split('\n').length-1;
     return {line,ch:index-prefix.lastIndexOf('\n')-1};
   };
-  const from=offsets[found][0],to=offsets[found+length-1][1];
+  let from=offsets[found][0],to=offsets[found+length-1][1];
+  // A selection crossing a formatting group must include its paired delimiter.
+  const stack=[],groups=[];
+  for(const token of source.matchAll(/\\.|%[^\n]*|[{}]/g)){
+    if(token[0]==='{')stack.push(token.index);
+    else if(token[0]==='}'&&stack.length)groups.push([stack.pop(),token.index+1]);
+  }
+  for(const [open,close] of groups){
+    if((open>=from&&open<to&&close>to)||(open<from&&close>from&&close<=to)){
+      const prefix=source.slice(0,open),command=prefix.match(/\\(?:textbf|textit|textrm|textsf|texttt|textnormal|emph|underline|textcolor(?:\[[^\]]*\])?\{[^{}]*\})$/);
+      // Do not expand arguments of unknown commands into unrelated source.
+      if(!command&&/\\[A-Za-z@]+(?:\[[^\]]*\])?$/.test(prefix))fail();
+      from=Math.min(from,open-(command?.[0].length||0));to=Math.max(to,close);approximate=true;
+    }
+  }
   let braces=0;
   for(const token of source.slice(from,to).matchAll(/\\.|%[^\n]*|[{}]/g)){
     if(token[0]==='{')braces++;
@@ -661,6 +750,60 @@ function sourcePdfTextRange(source,locations,text,labels={},citations={}){
   }
   if(braces)fail();
   return approximate?{from:position(from),to:position(to),approximate:true}:{from:position(from),to:position(to)};
+}
+async function sourcePdfMathRange(source,locations,selection,labels,citations,regionsForLines){
+  // PDF math reading order is not TeX order. Verify its compiled position instead.
+  if(!selection.fragments?.length||selection.fragments.length>10000)return null;
+  const lineStarts=[0];for(let i=0;i<source.length;i++)if(source[i]==='\n')lineStarts.push(i+1);
+  const lineAt=index=>{let line=0;while(line+1<lineStarts.length&&lineStarts[line+1]<=index)line++;return line;};
+  const position=index=>({line:lineAt(index),ch:index-lineStarts[lineAt(index)]});
+  const offset=pos=>lineStarts[pos.line]+pos.ch;
+  const low=Math.min(...locations)-2,high=Math.max(...locations);
+  const formulas=findMathRanges(source).filter(range=>{
+    const first=lineAt(range.from),last=lineAt(range.to);
+    // Shared source lines cannot distinguish formula boxes from adjacent prose reliably.
+    const suffix=source.slice(range.to,lineStarts[last+1]??source.length).replace(/%[^\n]*/g,'').trim();
+    const prefix=source.slice(lineStarts[first],range.from).trim();
+    return range.display&&first<=high&&last>=low&&!suffix&&(first!==last||!prefix);
+  });
+  if(!formulas.length||formulas.length>8)return null;
+  await Promise.all(formulas.map(async range=>{
+    // A begin line can be tagged to the preceding prose by TeX's paragraph builder.
+    const first=lineAt(range.from)+1,last=lineAt(range.to)+1;
+    const result=await regionsForLines(first<last?first+1:first,last);
+    range.regions=result.regions;
+  }));
+  const runs=[];
+  for(const fragment of selection.fragments){
+    if(!fragment.text.trim())continue;
+    const [x1,y1,x2,y2]=fragment.rect,x=(x1+x2)/2,y=(y1+y2)/2;
+    const matches=formulas.filter(range=>range.regions?.some(region=>{
+      const [left,bottom,right,top]=region.rect;
+      const overlap=Math.min(Math.max(y1,y2),top+2)-Math.max(Math.min(y1,y2),bottom-2);
+      // PDF text-layer boxes can extend above tall sums/integrals; their centre may miss the row.
+      return fragment.page===region.page&&x>=left-2&&x<=right+2&&
+        ((y>=bottom-2&&y<=top+2)||overlap>=Math.abs(y2-y1)*.25);
+    }));
+    if(matches.length>1)return null;
+    const formula=matches[0]||null,last=runs.at(-1);
+    if(last&&last.formula===formula)last.text.push(fragment.text);
+    else runs.push({formula,text:[fragment.text]});
+  }
+  if(!runs.some(run=>run.formula))return null;
+  const intervals=[];
+  for(const run of runs){
+    if(run.formula){intervals.push([run.formula.from,run.formula.to]);continue;}
+    try{
+      const context=[Math.max(1,Math.min(...locations)-1),Math.min(lineStarts.length,Math.max(...locations)+1)];
+      const range=sourcePdfTextRange(source,context,run.text.join('\n'),labels,citations);
+      intervals.push([offset(range.from),offset(range.to)]);
+    }catch(error){return null;}
+  }
+  // Every selected piece must map in order, with no unselected prose between them.
+  for(let i=1;i<intervals.length;i++){
+    if(intervals[i][0]<intervals[i-1][1]||source.slice(intervals[i-1][1],intervals[i][0]).replace(/%[^\n]*|\\label\{[^{}]*\}|\s/g,''))return null;
+  }
+  return {from:position(intervals[0][0]),to:position(intervals.at(-1)[1]),approximate:true,mathBlock:true};
 }
 function pdfPoint(element,left,top){
   const page=Number(element.dataset.pageNumber),view=pdfViewer.getPageView(page-1),box=element.getBoundingClientRect();
@@ -696,7 +839,7 @@ function selectedPdfPoints(){
   const range=selection.getRangeAt(0);
   if(!preview.contains(range.startContainer)||!preview.contains(range.endContainer))return null;
   let first,last;
-  const spans=Array.from(preview.querySelectorAll('.textLayer span')),margins=pdfMarginNumbers(spans),parts=[],rectangles=[];
+  const spans=Array.from(preview.querySelectorAll('.textLayer span')),margins=pdfMarginNumbers(spans),parts=[],rectangles=[],fragments=[],anchors=[];
   // Use clipped glyph rectangles in DOM order, including reverse drags and selections across pages.
   for(const span of spans){
     if(margins.has(span))continue;
@@ -716,9 +859,15 @@ function selectedPdfPoints(){
       const first=pdfPoint(page,rect.left,rect.top),last=pdfPoint(page,rect.right,rect.bottom);
       rectangles.push({page:first.page,rect:[first.x,first.y,last.x,last.y]});
     }
+    const rect=rectangles.at(-1);fragments.push({...rect,text:part.toString()});
+    anchors.push(point(rects[0]));
     first??=point(rects[0]);last=point(rects.at(-1));
   }
-  return first?{points:[first,last],rectangles,text:margins.size?parts.join(''):selection.toString()}:null;
+  const points=[first,last];
+  if(anchors.length>2)for(const index of [Math.floor(anchors.length/3),Math.floor(anchors.length*2/3)]){
+    const anchor=anchors[index];if(!points.some(point=>point.page===anchor.page&&point.x===anchor.x&&point.y===anchor.y))points.push(anchor);
+  }
+  return first?{points,rectangles,fragments,text:margins.size?parts.join(''):selection.toString()}:null;
 }
 function paintPdfAnnotations(items,edit){
   preview.querySelectorAll('.pdf-comment-highlight,.pdf-comment-pin').forEach(mark=>mark.remove());
@@ -752,7 +901,7 @@ async function locatePdfAnnotation(item){
   const build=pdfBuild,revision=version,doc=editor.getDoc();
   try{
     // ponytail: after reflow SyncTeX anchors the first source line; exact glyph highlights return on a new PDF selection.
-    const point=await request('/synctex',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({direction:'forward',version:revision,pdf_revision:build,line:pos.from.line+1,column:pos.from.ch+1})});
+    const point=await syncRequest({direction:'forward',version:revision,pdf_revision:build,line:pos.from.line+1,column:pos.from.ch+1});
     if(doc!==editor.getDoc()||version!==revision||pdfBuild!==build||editor.getValue()!==saved)return;
     item.pdf={pdf_revision:build,rectangles:[{page:point.page,rect:point.rect}]};
     selectionChat.refreshAnnotations();
@@ -771,18 +920,17 @@ preview.oncontextmenu=event=>{
   pdfMenu.showPopover();
   pdfMenu.style.left=Math.max(8,Math.min(box.left,window.innerWidth-pdfMenu.offsetWidth-8))+'px';
   pdfMenu.style.top=Math.max(8,Math.min(box.bottom,window.innerHeight-pdfMenu.offsetHeight-8))+'px';
-  document.querySelector('#pdf-chat-menu').focus();
+  document.querySelector('#pdf-chat-quick-menu').focus();
 };
-async function askPdfSelection(quick,selection=pdfSelection,anchor=pdfMenu.getBoundingClientRect()){
+async function askPdfSelection(selection=pdfSelection,anchor=pdfMenu.getBoundingClientRect()){
   pdfMenu.hidePopover();
   if(!selection)return;
   if(busy||syncBusy){setText(status,'正在编译或定位，请稍后重试。');return;}
   if(selectionChat.busy){setText(status,'Codex 正在回复，请稍后发送。');return;}
   setText(status,'正在精确匹配选中的 LaTeX 文字…');
-  if(await synchronize('selection',selection))quick?selectionChat.openQuick({left:anchor.left,top:anchor.top,selectionTop:selection.selectionTop,selectionBottom:selection.selectionBottom,pdf:{pdf_revision:selection.pdf_revision,rectangles:selection.rectangles}}):selectionChat.open();
+  if(await synchronize('selection',selection))selectionChat.openQuick({left:anchor.left,top:anchor.top,selectionTop:selection.selectionTop,selectionBottom:selection.selectionBottom,pdf:{pdf_revision:selection.pdf_revision,rectangles:selection.rectangles}});
 }
-document.querySelector('#pdf-chat-menu').onclick=()=>askPdfSelection(false);
-document.querySelector('#pdf-chat-quick-menu').onclick=()=>askPdfSelection(true);
+document.querySelector('#pdf-chat-quick-menu').onclick=()=>askPdfSelection();
 preview.addEventListener('scroll',()=>pdfMenu.hidePopover());
 let pdfPan=null,pdfDragged=false,spacePan=false,spaceLocked=false;
 function endSpacePan(){
@@ -846,8 +994,58 @@ class FileConflict(ValueError):
     pass
 
 
+def project_source(root, filename):
+    if not isinstance(filename, str) or not filename:
+        raise ValueError('请选择项目中的 .tex 文件。')
+    target = (root / filename).resolve()
+    if not target.is_relative_to(root) or not target.is_file() or target.suffix.lower() != '.tex':
+        raise ValueError('源码必须位于项目根目录内；请在项目设置中选择包含主文件和附录的文件夹。')
+    return target
+
+
+def project_files(root):
+    files = []
+    for folder, directories, names in os.walk(root):
+        directories[:] = sorted(name for name in directories if not name.startswith('.') and name not in ('node_modules', '__pycache__'))
+        for name in sorted(names):
+            if name.lower().endswith('.tex'):
+                file = (Path(folder) / name).resolve()
+                if file.is_relative_to(root):
+                    files.append(file)
+                    if len(files) > 2000:
+                        raise ValueError('项目中超过 2000 个 TeX 文件，请选择更具体的项目根目录。')
+    return sorted(set(files))
+
+
+def project_dependencies(root, main_file, build):
+    files = set(project_files(root))
+    recorder = Path(build) / (main_file.stem + '.fls')
+    if recorder.is_file():
+        directory = root
+        for line in recorder.read_text(encoding='utf-8', errors='replace').splitlines():
+            if line.startswith('PWD '):
+                directory = Path(line[4:])
+            elif line.startswith('INPUT '):
+                file = (directory / line[6:].strip('"')).resolve()
+                if file.is_relative_to(root) and not file.is_relative_to(Path(build)) and '.latex-codex' not in file.parts:
+                    files.add(file)
+    return files
+
+
+def project_digest(files):
+    digest = hashlib.sha256()
+    for file in sorted(files):
+        digest.update(str(file).encode())
+        digest.update(b'\0')
+        digest.update(file.read_bytes() if file.is_file() else b'<missing>')
+    return digest.hexdigest()
+
+
 def save_source(path, source, version, history, kind='save', draft=None):
     before = snapshot(path)
+    # CodeMirror uses LF internally; merely opening a CRLF child must not rewrite it.
+    if '\r\n' in before['source'] and '\r\n' not in source:
+        source = source.replace('\n', '\r\n')
     history.record(before['source'])
     if version != before['version']:
         raise FileConflict('文件已被外部修改，请先重新读取。')
@@ -870,23 +1068,48 @@ def save_source(path, source, version, history, kind='save', draft=None):
 
 
 def choose_file(path):
-    root = tk.Tk()
-    root.withdraw()
-    root.attributes('-topmost', True)
+    if sys.platform == 'darwin':
+        script = ('on run argv\ntry\n'
+                  'set chosen to choose file with prompt "打开 LaTeX 文件" default location (POSIX file (item 1 of argv))\n'
+                  'return POSIX path of chosen\non error number -128\nreturn ""\nend try\nend run')
+        result = subprocess.run(['osascript', '-e', script, str(path.parent)], capture_output=True)
+        if result.returncode:
+            raise OSError('无法打开系统文件选择器：' + result.stderr.decode('utf-8', errors='replace'))
+        return result.stdout.decode('utf-8').strip()
     try:
-        return filedialog.askopenfilename(parent=root, title='打开 LaTeX 文件', initialdir=str(path.parent), filetypes=[('LaTeX 文件', '*.tex')])
-    finally:
-        root.destroy()
+        import tkinter as tk
+        from tkinter import filedialog
+    except ImportError as error:
+        raise OSError('此 Python 未包含 tkinter；可用启动命令直接指定另一个 .tex 文件。') from error
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes('-topmost', True)
+        try:
+            return filedialog.askopenfilename(parent=root, title='打开 LaTeX 文件', initialdir=str(path.parent), filetypes=[('LaTeX 文件', '*.tex')])
+        finally:
+            root.destroy()
+    except tk.TclError as error:
+        raise OSError('无法打开系统文件选择器：' + str(error)) from error
+
+
+def tex_tool(name):
+    executable = shutil.which(name)
+    if not executable and sys.platform == 'darwin':
+        candidate = Path('/Library/TeX/texbin') / name
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            executable = str(candidate)
+    return executable
 
 
 def compiler(source):
     match = re.search(r'^\s*%\s*!TeX\s+program\s*=\s*(\S+)', '\n'.join(source.splitlines()[:20]), re.I | re.M)
-    name = match[1].lower() if match else 'xelatex'
+    name = match[1].lower() if match else 'xelatex' if tex_tool('xelatex') else 'pdflatex'
     if name not in ('pdflatex', 'xelatex'):
         raise ValueError('Supported TeX programs: pdflatex, xelatex.')
-    executable = shutil.which(name)
+    executable = tex_tool(name)
     if not executable:
-        raise FileNotFoundError(f'{name} is not on PATH.')
+        raise FileNotFoundError(f'未找到本地 {name}。请检查已有 TeX 安装及 PATH；macOS 支持 /Library/TeX/texbin。')
     return name, executable
 
 
@@ -908,7 +1131,7 @@ def bibliography_signature(path, build, env):
             filename = name if name.endswith(suffix) else name + suffix
             dependency = path.parent / filename
             if not dependency.is_file():
-                finder = shutil.which('kpsewhich')
+                finder = tex_tool('kpsewhich')
                 if not finder:
                     return None  # Unknown dependencies: safely rerun BibTeX.
                 result = subprocess.run([finder, filename], cwd=path.parent, env=env, capture_output=True, timeout=10)
@@ -921,16 +1144,23 @@ def bibliography_signature(path, build, env):
     return digest.hexdigest()
 
 
-def compile_tex(path, build, source, entry=None):
+def compile_tex(path, build, source, entry=None, project_root=None, directory=None):
+    root = project_root or path.parent
+    directory = directory or path.parent
     name, engine = compiler(source)
     flags = engine_flags(engine)
-    command = [engine, *flags, '-no-shell-escape', '-synctex=1', '-interaction=nonstopmode', '-halt-on-error', '-file-line-error', '-output-directory=' + str(build), str(entry or path)]
+    command = [engine, *flags, '-no-shell-escape', '-synctex=1', '-recorder', '-interaction=nonstopmode', '-halt-on-error', '-file-line-error', '-output-directory=' + str(build), str(entry or path)]
+    # \include writes auxiliary files in the same relative subdirectories.
+    for file in project_files(root):
+        (Path(build) / file.parent.relative_to(root)).mkdir(parents=True, exist_ok=True)
+        if file.is_relative_to(path.parent):
+            (Path(build) / file.parent.relative_to(path.parent)).mkdir(parents=True, exist_ok=True)
     logs = []
     tex_env = os.environ.copy()
     # MiKTeX otherwise reads stale source-side .aux/.out before the current build.
-    tex_env['TEXINPUTS'] = str(build) + os.pathsep + str(path.parent) + os.pathsep + tex_env.get('TEXINPUTS', '')
+    tex_env['TEXINPUTS'] = os.pathsep.join((str(build), str(directory), str(path.parent), str(root), tex_env.get('TEXINPUTS', '')))
 
-    def run(argv, cwd=path.parent, env=tex_env):
+    def run(argv, cwd=directory, env=tex_env):
         result = subprocess.run(argv, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=45)
         logs.append(result.stdout.decode('utf-8', errors='replace'))
         return result.returncode == 0
@@ -938,12 +1168,12 @@ def compile_tex(path, build, source, entry=None):
     ok = run(command)
     aux = Path(build) / (path.stem + '.aux')
     if ok and aux.exists() and '\\bibdata{' in aux.read_text(encoding='utf-8', errors='replace'):
-        bibtex = shutil.which('bibtex')
+        bibtex = tex_tool('bibtex')
         if not bibtex:
             raise FileNotFoundError('BibTeX is not on PATH.')
         env = os.environ.copy()
         for key in ('BIBINPUTS', 'BSTINPUTS'):
-            env[key] = str(path.parent) + os.pathsep + env.get(key, '')
+            env[key] = str(path.parent) + os.pathsep + str(root) + os.pathsep + env.get(key, '')
         signature = bibliography_signature(path, build, env)
         cached = Path(build) / '.bib-inputs.sha256'
         if signature is None or not aux.with_suffix('.bbl').is_file() or not cached.is_file() or cached.read_text() != signature:
@@ -957,9 +1187,9 @@ def compile_tex(path, build, source, entry=None):
     return ok, '\n'.join(logs), name
 
 
-def compile_diagnostic(log, path):
-    # ponytail: locate errors in the open file only; included-file navigation needs a project editor.
-    names = (str(path), path.as_posix(), path.name, './' + path.name)
+def compile_diagnostic(log, path, root=None):
+    relative = Path(os.path.relpath(path, root)).as_posix() if root else path.name
+    names = (str(path), path.as_posix(), relative, './' + relative)
     # TeX can wrap both the filename and the line number at its print-width limit.
     filename = '|'.join(r'(?:\r?\n)?'.join(re.escape(char) for char in name) for name in names)
     match = re.search(r'^(?:' + filename + r')(?:\r?\n)?:(?:\r?\n)?(\d[\d\r\n]*):\s*([^\r\n]+)', log, re.M)
@@ -968,22 +1198,36 @@ def compile_diagnostic(log, path):
     return None
 
 
+def compiled_aux_text(aux, seen=None):
+    seen = set() if seen is None else seen
+    aux = aux.resolve()
+    if aux in seen or not aux.is_file():
+        return ''
+    seen.add(aux)
+    text = aux.read_text(encoding='utf-8', errors='replace')
+    for filename in re.findall(r'\\@input\{([^{}]+)\}', text):
+        child = (aux.parent / filename).resolve()
+        if child.is_relative_to(aux.parent):
+            text += '\n' + compiled_aux_text(child, seen)
+    return text
+
+
 def compiled_labels(aux):
     if not aux.is_file():
         return {}
     # ponytail: plain label values cover numbered refs; macro-rich labels need TeX expansion.
-    return dict(re.findall(r'\\newlabel\{([^{}]+)\}\{\{([^{}\\]*)\}', aux.read_text(encoding='utf-8', errors='replace')))
+    return dict(re.findall(r'\\newlabel\{([^{}]+)\}\{\{([^{}\\]*)\}', compiled_aux_text(aux)))
 
 
 def compiled_citations(aux):
     if not aux.is_file():
         return {}
     # Plain BibTeX and numeric natbib labels; never evaluate macros from the auxiliary file.
-    return dict(re.findall(r'\\bibcite\{([^{}]+)\}\{\{?([0-9]+)\}', aux.read_text(encoding='utf-8', errors='replace')))
+    return dict(re.findall(r'\\bibcite\{([^{}]+)\}\{\{?([0-9]+)\}', compiled_aux_text(aux)))
 
 
 def synctex_records(arguments, directory):
-    executable = shutil.which('synctex')
+    executable = tex_tool('synctex')
     if not executable:
         raise FileNotFoundError('未找到本机 synctex 命令。')
     env = os.environ.copy()
@@ -1004,18 +1248,34 @@ def synctex_records(arguments, directory):
     return records
 
 
-def pdf_page_boxes(pdf):
-    # Metadata only: page images are rendered in the browser by PDF.js.
-    result = subprocess.run(['pdfinfo', '-f', '1', '-l', '2147483647', '-box', str(pdf)],
-                            capture_output=True, timeout=10)
-    text = result.stdout.decode('utf-8', errors='replace')
-    boxes = [list(map(float, row.split())) for row in re.findall(r'^Page\s+\d+\s+MediaBox:\s*([^\r\n]+)', text, re.M)]
-    count = re.search(r'^Pages:\s*(\d+)', text, re.M)
-    if result.returncode or not count or not boxes or len(boxes) != int(count[1]) or any(
-        len(box) != 4 or not all(math.isfinite(n) for n in box) or box[2] <= box[0] or box[3] <= box[1] for box in boxes
-    ):
-        raise ValueError('Unable to read PDF page dimensions: ' + result.stderr.decode('utf-8', errors='replace'))
+def validate_pdf_boxes(boxes):
+    if not isinstance(boxes, list) or not 1 <= len(boxes) <= 10000:
+        raise ValueError('PDF 页尺寸无效。')
+    for box in boxes:
+        if (not isinstance(box, list) or len(box) != 4 or
+                any(type(n) not in (int, float) or not math.isfinite(n) or abs(n) > 1e7 for n in box) or
+                box[2] <= box[0] or box[3] <= box[1]):
+            raise ValueError('PDF 页尺寸无效。')
     return boxes
+
+
+def accept_pdf_analysis(snapshot, data):
+    if not isinstance(data, dict) or data.get('revision') != snapshot['revision']:
+        raise ValueError('历史 PDF 已变化，请重新打开对比。')
+    boxes = validate_pdf_boxes(data.get('boxes'))
+    words = data.get('words')
+    if not isinstance(words, list) or len(words) > 500000:
+        raise ValueError('PDF 文字位置无效。')
+    checked = []
+    for word in words:
+        if (not isinstance(word, list) or len(word) != 3 or type(word[0]) is not int or
+                not 1 <= word[0] <= len(boxes) or not isinstance(word[2], str) or len(word[2]) > 10000):
+            raise ValueError('PDF 文字位置无效。')
+        rect = validate_pdf_boxes([word[1]])[0]
+        checked.append((word[0], rect, unicodedata.normalize('NFKC', word[2])))
+    # Commit only a completely validated analysis of this exact compiled PDF.
+    snapshot['boxes'], snapshot['words'] = boxes, checked
+    snapshot.pop('gutter_filtered', None)
 
 
 def forward_pdf_points(records, boxes):
@@ -1030,15 +1290,17 @@ def forward_pdf_points(records, boxes):
                 yield {'page': page, 'rect': [left+x, top-bottom, left+x+width, top-bottom+height]}
 
 
-def locate(path, build, boxes, data):
-    pdf = str(Path(build) / (path.stem + '.pdf'))
+def locate(path, build, boxes, data, main_file=None, project_root=None):
+    main_file = main_file or path
+    root = project_root or main_file.parent
+    pdf = str(Path(build) / (main_file.stem + '.pdf'))
     if data.get('direction') == 'forward':
         line, column = data.get('line'), data.get('column', 1)
         if type(line) is not int or not 1 <= line <= len(snapshot(path)['source'].splitlines()):
             raise ValueError('源码行号无效。')
         if type(column) is not int or not 1 <= column <= 1_000_000:
             raise ValueError('源码列号无效。')
-        records = synctex_records(['view', '-i', f'{line}:{column}:{path}', '-o', pdf], path.parent)
+        records = synctex_records(['view', '-i', f'{line}:{column}:{path}', '-o', pdf], main_file.parent)
         for point in forward_pdf_points(records, boxes):
             return point
         raise ValueError('这个位置没有对应的 PDF 内容，请将光标放到正文或公式中。')
@@ -1050,20 +1312,32 @@ def locate(path, build, boxes, data):
     left, bottom, right, top = boxes[page - 1]
     if not all(type(n) in (int, float) and math.isfinite(n) for n in (x, y)) or not (left <= x <= right and bottom <= y <= top):
         raise ValueError('PDF 坐标无效。')
-    records = synctex_records(['edit', '-o', f'{page}:{x-left}:{top-y}:{pdf}'], path.parent)
+    records = synctex_records(['edit', '-o', f'{page}:{x-left}:{top-y}:{pdf}'], main_file.parent)
     for record in records:
         if 'Input' in record and 'Line' in record:
-            target = (path.parent / record['Input']).resolve()
-            if target == path:
-                return {'line': max(1, int(record['Line'])), 'column': max(1, int(record.get('Column', '1')))}
+            target = project_source(root, str((main_file.parent / record['Input']).resolve()))
+            return {'path': str(target), 'line': max(1, int(record['Line'])), 'column': max(1, int(record.get('Column', '1')))}
     if any('Input' in record for record in records):
         raise ValueError('该处来自其他文件：' + Path(next(r['Input'] for r in records if 'Input' in r)).name)
     raise ValueError('该处没有对应源码，请双击 PDF 正文或公式。')
 
 
-def history_pdf_cache_file(path, before, after):
-    key = hashlib.sha256(json.dumps([str(path), before, after, 'changed-sentence-images-v6'], ensure_ascii=False).encode()).hexdigest()
-    return path.parent / '.latex-codex' / 'pdf-diff-cache' / (key + '.zip')
+def history_pdf_context(server, path):
+    main_file = getattr(server, 'main_file', path)
+    if main_file == path:
+        return ''
+    root = server.project_root
+    files = project_files(root) + list(getattr(server, 'dependencies', set()))
+    return str(main_file) + '\0' + project_digest(set(files) - {path})
+
+
+def history_snapshot_key(server, path, source):
+    return hashlib.sha256(str(path).encode() + b'\0' + source.encode() + history_pdf_context(server, path).encode()).hexdigest()
+
+
+def history_pdf_cache_file(path, before, after, root=None, context=''):
+    key = hashlib.sha256((json.dumps([str(path), before, after, 'changed-sentence-images-v8-pdfjs'], ensure_ascii=False) + context).encode()).hexdigest()
+    return (root or path.parent) / '.latex-codex' / 'pdf-diff-cache' / (key + '.zip')
 
 
 def prune_history_pdf_cache(folder):
@@ -1155,20 +1429,30 @@ def save_history_pdf_images(cache, changes):
 
 
 def history_pdf_snapshot(server, path, source):
-    key = hashlib.sha256(str(path).encode() + b'\0' + source.encode()).hexdigest()
+    key = history_snapshot_key(server, path, source)
     cached = server.history_pdfs.pop(key, None)
     if cached:
         server.history_pdfs[key] = cached
         return key, cached
     directory = tempfile.TemporaryDirectory(prefix='latex-history-pdf-')
     try:
-        entry = Path(directory.name) / path.name
+        root = getattr(server, 'project_root', path.parent)
+        main_file = getattr(server, 'main_file', path)
+        overlay = Path(directory.name) / 'source'
+        entry = overlay / path.relative_to(root)
+        entry.parent.mkdir(parents=True, exist_ok=True)
         entry.write_bytes(source.encode('utf-8'))
-        ok, log, _ = compile_tex(path, directory.name, source, entry=entry)
-        pdf = entry.with_suffix('.pdf')
+        main_entry = overlay / main_file.relative_to(root)
+        main_source = source if main_file == path else snapshot(main_file)['source']
+        if main_file != path:
+            main_entry.parent.mkdir(parents=True, exist_ok=True)
+            main_entry.write_text(main_source, encoding='utf-8')
+        ok, log, _ = compile_tex(main_file, directory.name, main_source, entry=main_entry, project_root=root, directory=main_entry.parent)
+        pdf = Path(directory.name) / (main_file.stem + '.pdf')
         if not ok or not pdf.is_file():
             raise ValueError('历史版本编译失败：' + log[-1800:])
-        cached = {'directory': directory, 'entry': entry, 'pdf': pdf, 'boxes': pdf_page_boxes(pdf)}
+        cached = {'directory': directory, 'entry': entry, 'pdf': pdf, 'synctex':pdf.with_suffix('.tex'), 'root':main_entry.parent,
+                  'revision': hashlib.sha256(pdf.read_bytes()).hexdigest()}
         server.history_pdfs[key] = cached
         # ponytail: four compiled snapshots stay in memory/disk until eviction or server exit.
         while len(server.history_pdfs) > 4:
@@ -1183,15 +1467,17 @@ def history_pdf_line_index(snapshot):
     if 'line_index' in snapshot:
         return snapshot['line_index']
     entry = snapshot['entry']
-    compressed, plain = entry.with_suffix('.synctex.gz'), entry.with_suffix('.synctex')
+    sync = snapshot.get('synctex', entry)
+    compressed, plain = sync.with_suffix('.synctex.gz'), sync.with_suffix('.synctex')
     try:
         text = (gzip.decompress(compressed.read_bytes()) if compressed.is_file() else plain.read_bytes()).decode('utf-8', errors='replace')
         header, content = text.split('Content:', 1)
         values = dict(re.findall(r'^(Magnification|Unit|X Offset|Y Offset):(-?\d+)$', header, re.M))
         unit = int(values['Unit']) * int(values['Magnification']) / 1000 / 65781.76
         offsets = [int(values[name]) * unit for name in ('X Offset', 'Y Offset')]
-        tag = next(int(number) for number, filename in re.findall(r'^Input:(\d+):(.+)$', header, re.M)
-                   if Path(filename).resolve() == entry.resolve())
+        # Inputs first read after a shipped page (notably \include) occur in Content.
+        tag = next(int(number) for number, filename in re.findall(r'^Input:(\d+):(.+)$', text, re.M)
+                   if (snapshot.get('root', entry.parent) / filename).resolve() == entry.resolve())
     except (OSError, ValueError, KeyError, StopIteration, EOFError):
         snapshot['line_index'] = None
         return None  # Unrecognized SyncTeX formats retain the CLI fallback.
@@ -1224,6 +1510,11 @@ def history_pdf_line_index(snapshot):
             continue
         rect = rect or next((box for box in reversed(stack) if box is not None), None)
         if rect is None: continue
+        if snapshot.get('individual_boxes'):
+            # Selection needs actual rows, not an envelope containing page headers and gaps.
+            if rect[3]-rect[1] <= 72:
+                index.setdefault(line, {}).setdefault(page, set()).add(tuple(rect))
+            continue
         regions = index.setdefault(line, {})
         old = regions.get(page)
         regions[page] = rect if old is None else [min(old[0],rect[0]), min(old[1],rect[1]), max(old[2],rect[2]), max(old[3],rect[3])]
@@ -1259,19 +1550,19 @@ def history_pdf_regions(snapshot, first, last):
     return result
 
 
-def history_pdf_changes(server, path, before, after, recompile=False, cancelled=None):
+def history_pdf_changes(server, path, before, after, recompile=False, analysis=None, cancelled=None):
     def check_cancelled():
         if cancelled and cancelled():
             raise InterruptedError('历史对比已取消。')
     check_cancelled()
-    cache = history_pdf_cache_file(path, before, after)
+    cache = history_pdf_cache_file(path, before, after, getattr(server, 'project_root', None), history_pdf_context(server, path))
     if not recompile:
         images = read_history_pdf_images(cache)
         if images is not None:
             return images
     else:
         for source in (before, after):
-            key = hashlib.sha256(str(path).encode() + b'\0' + source.encode()).hexdigest()
+            key = history_snapshot_key(server, path, source)
             cached = server.history_pdfs.pop(key, None)
             if cached: cached['directory'].cleanup()
     if before == after:
@@ -1280,6 +1571,15 @@ def history_pdf_changes(server, path, before, after, recompile=False, cancelled=
     check_cancelled()
     new_key, new = history_pdf_snapshot(server, path, after)
     check_cancelled()
+    if analysis is not None:
+        if not isinstance(analysis, dict):
+            raise ValueError('PDF 分析无效。')
+        for side, snapshot in (('before', old), ('after', new)):
+            accept_pdf_analysis(snapshot, analysis.get(side))
+    urls = {'before': '/history/pdf/' + old_key + '?v=' + old['revision'],
+            'after': '/history/pdf/' + new_key + '?v=' + new['revision']}
+    if any('words' not in snapshot for snapshot in (old, new)):
+        return {**urls, 'needs_analysis': True, 'revisions': {'before': old['revision'], 'after': new['revision']}}
     changes = []
     old_lines, new_lines = before.splitlines(), after.splitlines()
     matcher = difflib.SequenceMatcher(None, old_lines, new_lines, autojunk=len(old_lines)*len(new_lines)>4_000_000)
@@ -1311,37 +1611,15 @@ def history_pdf_changes(server, path, before, after, recompile=False, cancelled=
                         'after': history_pdf_regions(new, c, d)})
     history_pdf_highlights(old, new, changes)
     check_cancelled()
-    return {'before': '/history/pdf/' + old_key, 'after': '/history/pdf/' + new_key, 'changes': changes}
+    return {**urls, 'changes': changes}
 
 
 def history_pdf_highlights(old, new, changes):
     def words(snapshot):
-        if 'words' not in snapshot:
-            # Reuse the installed Poppler tools; no rasterization or source markup.
-            sibling = Path(shutil.which('pdfinfo')).with_name('pdftotext' + ('.exe' if os.name == 'nt' else ''))
-            executable = str(sibling) if sibling.is_file() else shutil.which('pdftotext')
-            if not executable:
-                raise ValueError('PDF 改动标红需要 Poppler 的 pdftotext。')
-            # TeX emits body text in reading order; Poppler's layout sort can move math and gutters.
-            result = subprocess.run([executable, '-bbox', '-raw', '-enc', 'UTF-8', str(snapshot['pdf']), '-'],
-                                    capture_output=True, timeout=10)
-            if result.returncode:
-                raise ValueError('无法读取历史 PDF 的文字位置。')
-            # Some TeX math fonts use control codes that Poppler emits as invalid XML text.
-            xml = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', lambda match: chr(0xe000 + ord(match[0])),
-                         result.stdout.decode('utf-8', errors='replace'))
-            try:
-                pages = ET.fromstring(xml).findall('.//{*}page')
-            except ET.ParseError as error:
-                raise ValueError('无法解析历史 PDF 的文字位置。') from error
-            snapshot['words'] = []
-            for number, page in enumerate(pages, 1):
-                left, _, _, top = snapshot['boxes'][number - 1]
-                page_words = []
-                for word in page.findall('.//{*}word'):
-                    rect = [left + float(word.get('xMin')), top - float(word.get('yMax')),
-                            left + float(word.get('xMax')), top - float(word.get('yMin'))]
-                    page_words.append((number, rect, unicodedata.normalize('NFKC', word.text or '')))
+        if not snapshot.get('gutter_filtered'):
+            filtered = []
+            for number in range(1, len(snapshot.get('boxes', [])) + 1):
+                page_words = [word for word in snapshot['words'] if word[0] == number]
                 # Same gutter rule as PDF selection: consecutive smaller numbers beside prose.
                 numbers = [i for i, (_, _, text) in enumerate(page_words) if re.fullmatch(r'\d+', text)]
                 bodies = [rect for _, rect, text in page_words if re.search(r'[A-Za-z]{4}', text)]
@@ -1359,7 +1637,10 @@ def history_pdf_highlights(old, new, changes):
                     values = {int(page_words[j][2]) for j in rows}
                     if sum(int(page_words[j][2])+1 in values for j in rows) >= 2:
                         margins.update(column)
-                snapshot['words'].extend(word for i, word in enumerate(page_words) if i not in margins)
+                filtered.extend(word for i, word in enumerate(page_words) if i not in margins)
+            if snapshot.get('boxes'):
+                snapshot['words'] = filtered
+                snapshot['gutter_filtered'] = True
         return snapshot['words']
 
     def tokens(items):
@@ -1380,7 +1661,7 @@ def history_pdf_highlights(old, new, changes):
     def sentences(items):
         result, current = [], []
         # ponytail: lexical sentence boundaries; common academic abbreviations are kept together.
-        abbreviation = r'(?:e\.g|i\.e|cf|vs|Fig|Figs|Eq|Eqs|Sec|Secs|Ref|Refs|Dr|Prof|Mr|Mrs|Ms|al)\.'
+        abbreviation = r'(?:e\.g|i\.e|s\.t|cf|vs|Fig|Figs|Eq|Eqs|Sec|Secs|Ref|Refs|Dr|Prof|Mr|Mrs|Ms|al)\.'
         for text, parts in items:
             current.append((text, parts))
             ending = text.rstrip('\"\u201d\u2019\x27)]}')
@@ -1419,27 +1700,68 @@ def history_pdf_highlights(old, new, changes):
                 for page, rect, _ in crop_words[index][side]:
                     left, bottom, right, top = snapshot['boxes'][page - 1]
                     region = regions.setdefault(page, {'page':page, 'rect':[left, top, right, bottom]})
-                    region['rect'][1] = max(bottom, min(region['rect'][1], rect[1] - 6))
-                    region['rect'][3] = min(top, max(region['rect'][3], rect[3] + 6))
+                    region['rect'][1] = min(region['rect'][1], rect[1])
+                    region['rect'][3] = max(region['rect'][3], rect[3])
                     if side == 'after': region.setdefault('highlights', []).append(rect)
                 change[side] = list(regions.values())
             # Formatting-only changes retain their direct source-line fallback.
+            for region in change.get(side, []):
+                left, bottom, right, top = snapshot['boxes'][region['page'] - 1]
+                # Keep roughly two surrounding lines, including full math glyphs
+                # at either edge. Context stays unmarked and on the same page.
+                padding = 24 if crop_words[index][side] else 12  # Fallback seeds already have 12 pt.
+                low, high = region['rect'][1] - padding, region['rect'][3] + padding
+                nearby = [rect for page, rect, _ in words(snapshot)
+                          if page == region['page'] and rect[3] > low and rect[1] < high]
+                if nearby:
+                    low = min(low, min(rect[1] for rect in nearby) - 3)
+                    high = max(high, max(rect[3] for rect in nearby) + 3)
+                region['rect'] = [left, max(bottom, low), right, min(top, high)]
             change.get(side, []).sort(key=lambda region: region['page'])
 
 
-def make_server(path, port=0, main_thread=None):
+def make_server(path, port=0, main_thread=None, project_root=None):
     main_thread = main_thread if main_thread is not None else os.environ.get('CODEX_THREAD_ID')
     path = Path(path).resolve(strict=True)
     if not path.is_file() or path.suffix.lower() != '.tex':
         raise ValueError('Choose an existing UTF-8 .tex file.')
-    compiler(snapshot(path)['source'])
-    if not shutil.which('pdfinfo'):
-        raise RuntimeError('pdfinfo is not on PATH. Use Poppler from the Codex bundled workspace runtime.')
-    history = History(path)
+    root = Path(project_root).resolve(strict=True) if project_root else path.parent
+    if not root.is_dir():
+        raise ValueError('项目根目录必须是文件夹。')
+    path = project_source(root, str(path))
+    main_file = path
+    compiler(snapshot(main_file)['source'])
+    history = History(path, root)
     history.record(snapshot(path)['source'], 'open')
     build = tempfile.TemporaryDirectory(prefix='latex-codex-')
     state_lock = threading.Lock()
     history_pdf_lock = threading.Lock()
+
+    def project_state():
+        state = snapshot(path)
+        files = project_files(root)
+        dependencies = project_dependencies(root, main_file, server.build.name) | server.dependencies
+        fingerprint = project_digest(dependencies)
+        synced = bool(server.sync_version) and fingerprint == server.project_version
+        return {**state, 'project_root': str(root), 'main_file': str(main_file),
+                'files': [{'path': str(file), 'name': file.relative_to(root).as_posix()} for file in files],
+                'project_version': fingerprint, 'sync': synced,
+                'pdf_revision': server.pdf_revision, 'labels': server.labels if synced else {},
+                'citations': server.citations if synced else {}}
+
+    def switch_source(candidate):
+        nonlocal path, history
+        state = snapshot(candidate)
+        new_history = History(candidate, root)
+        new_history.record(state['source'], 'open')
+        if server.history_summary:
+            server.history_summary.cancel()
+            server.history_summary = None
+        path, history = candidate, new_history
+        server.selection_sync = None
+        if server.sync_version:
+            server.sync_version = state['version']
+        return project_state()
 
     class Handler(BaseHTTPRequestHandler):
         timeout = 10
@@ -1489,7 +1811,7 @@ def make_server(path, port=0, main_thread=None):
                 self.reply(200, (VENDOR / route[8:]).read_bytes(), ASSETS[route[8:]] + '; charset=utf-8')
             elif route == '/state':
                 try:
-                    state = snapshot(path)
+                    state = project_state()
                     history.record(state['source'])
                     self.reply(200, state)
                 except (OSError, UnicodeError, sqlite3.Error) as error:
@@ -1540,7 +1862,7 @@ def make_server(path, port=0, main_thread=None):
             elif re.fullmatch(r'/history/images/[0-9a-f]{64}/\d+-(before|after)-\d+\.png', route):
                 key, name = route.split('/')[-2:]
                 try:
-                    cache = path.parent / '.latex-codex' / 'pdf-diff-cache' / (key + '.zip')
+                    cache = root / '.latex-codex' / 'pdf-diff-cache' / (key + '.zip')
                     with zipfile.ZipFile(cache) as archive:
                         item = archive.getinfo(name)
                         if item.file_size > 24 * 1024 * 1024: raise ValueError('Preview too large.')
@@ -1550,7 +1872,11 @@ def make_server(path, port=0, main_thread=None):
                 except (OSError, ValueError, KeyError, RuntimeError, zipfile.BadZipFile, zlib.error):
                     self.reply(404, {'error': '历史对比图缓存已失效，请重新生成。'})
             elif route.startswith('/history/pdf/') and route[13:] in self.server.history_pdfs:
-                self.reply(200, self.server.history_pdfs[route[13:]]['pdf'].read_bytes(), 'application/pdf')
+                compiled = self.server.history_pdfs[route[13:]]
+                if parse_qs(parsed.query).get('v', [compiled['revision']])[0] != compiled['revision']:
+                    self.reply(409, {'error': '历史 PDF 已变化，请重新打开对比。'})
+                else:
+                    self.reply(200, compiled['pdf'].read_bytes(), 'application/pdf')
             elif route == '/pdf' and self.server.pdf:
                 requested = parse_qs(parsed.query).get('v', [self.server.pdf_revision])[0]
                 if requested != self.server.pdf_revision:
@@ -1581,21 +1907,50 @@ def make_server(path, port=0, main_thread=None):
                     self.reply(500, {'error': str(error)})
 
         def post(self):
-            nonlocal path, history
+            nonlocal path, history, root, main_file
             if not self.local():
                 return
-            if self.path not in ('/compile', '/save', '/open', '/synctex', '/chat', '/chat/cancel', '/chat/new', '/history/diff', '/history/label', '/history/restore', '/history/pdf', '/history/pdf-cancel', '/history/pdf-cache', '/history/summaries', '/history/summaries/cancel'):
+            if self.path not in ('/compile', '/save', '/open', '/source', '/project', '/synctex', '/chat', '/chat/cancel', '/chat/new', '/history/diff', '/history/label', '/history/restore', '/history/pdf', '/history/pdf-cancel', '/history/pdf-cache', '/history/summaries', '/history/summaries/cancel'):
                 self.reply(404, {'error': 'Not found.'})
                 return
             try:
                 size = int(self.headers.get('Content-Length', '0'))
-                limit = 32 * 1024 * 1024 if self.path == '/history/pdf-cache' else 1_000_000
+                limit = 32 * 1024 * 1024 if self.path in ('/history/pdf-cache', '/history/pdf') else 1_000_000
                 if self.headers.get('Content-Type') != 'application/json' or not 0 < size <= limit:
                     raise ValueError('JSON request exceeds the size limit.')
                 payload = self.rfile.read(size)
                 data = json.loads(payload)
                 if not isinstance(data, dict):
                     raise ValueError('Expected a JSON object.')
+                if self.path in ('/source', '/project'):
+                    if data.get('version') != snapshot(path)['version']:
+                        raise FileConflict('文件已被外部修改，请先重新读取。')
+                    if self.server.chat and self.server.chat.result['status'] == 'running':
+                        raise FileConflict('请先停止当前回复，再切换文件或项目。')
+                    if self.path == '/source':
+                        self.reply(200, switch_source(project_source(root, data.get('path'))))
+                        return
+                    folder = data.get('project_root')
+                    if not isinstance(folder, str) or not folder:
+                        raise ValueError('请输入项目根目录。')
+                    candidate_root = Path(folder).expanduser().resolve(strict=True)
+                    if not candidate_root.is_dir():
+                        raise ValueError('项目根目录必须是文件夹。')
+                    candidate = project_source(candidate_root, data.get('main_file'))
+                    compiler(snapshot(candidate)['source'])
+                    project_files(candidate_root)
+                    new_history = History(candidate, candidate_root)
+                    new_build = tempfile.TemporaryDirectory(prefix='latex-codex-')
+                    self.server.build.cleanup()
+                    self.server.build = new_build
+                    root, main_file = candidate_root, candidate
+                    self.server.project_root, self.server.main_file = root, main_file
+                    self.server.pdf, self.server.pdf_revision = b'', ''
+                    self.server.page_boxes, self.server.sync_version = [], ''
+                    self.server.dependencies, self.server.project_version = set(), ''
+                    self.server.labels, self.server.citations = {}, {}
+                    self.reply(200, switch_source(candidate))
+                    return
                 if self.path.startswith('/history/'):
                     if self.path == '/history/pdf-cancel':
                         job = self.server.history_pdf_request
@@ -1640,9 +1995,9 @@ def make_server(path, port=0, main_thread=None):
                             if previous: previous[1].set()
                             cancellation = threading.Event()
                             self.server.history_pdf_request = request_id, cancellation
-                            return path, old, target, data.get('recompile') is True, cancellation
+                            return path, old, target, data.get('recompile') is True, data.get('analysis'), cancellation
                         if self.path == '/history/pdf-cache':
-                            self.reply(200, {'cache_error': save_history_pdf_images(history_pdf_cache_file(path, old, target), data.get('images'))})
+                            self.reply(200, {'cache_error': save_history_pdf_images(history_pdf_cache_file(path, old, target, root, history_pdf_context(self.server, path)), data.get('images'))})
                             return
                         self.reply(200, {**revision, 'diff': difference(old, target), 'changes': word_changes(old, target),
                                          'same': old == target, 'first': baseline is None})
@@ -1703,10 +2058,31 @@ def make_server(path, port=0, main_thread=None):
                     self.reply(200, {'id': self.server.chat.id})
                     return
                 if self.path == '/synctex':
-                    if not self.server.sync_version or data.get('version') != self.server.sync_version or data.get('pdf_revision') != self.server.pdf_revision or snapshot(path)['version'] != self.server.sync_version:
+                    if not project_state()['sync'] or data.get('version') != self.server.sync_version or data.get('pdf_revision') != self.server.pdf_revision or snapshot(path)['version'] != self.server.sync_version:
                         self.reply(409, {'error': '源码与 PDF 版本不同，请先成功编译后再定位。'})
                         return
-                    self.reply(200, locate(path, self.server.build.name, self.server.page_boxes, data))
+                    boxes = validate_pdf_boxes(data.get('boxes'))
+                    if boxes != self.server.page_boxes:
+                        self.server.page_boxes = boxes
+                        self.server.selection_sync = None
+                    if data.get('direction') == 'range':
+                        first, last = data.get('first'), data.get('last')
+                        if (type(first) is not int or type(last) is not int or not
+                                1 <= first <= last <= len(snapshot(path)['source'].splitlines()) or last-first > 400):
+                            raise ValueError('源码范围无效。')
+                        if self.server.selection_sync is None:
+                            self.server.selection_sync = {'entry':path,
+                                'synctex':Path(self.server.build.name) / main_file.name, 'boxes':self.server.page_boxes,
+                                'root':main_file.parent,
+                                'individual_boxes':True}
+                        index = history_pdf_line_index(self.server.selection_sync) or {}
+                        regions = set()
+                        for line in range(first, last+1):
+                            for page, boxes in index.get(line, {}).items():
+                                regions.update((page,rect) for rect in boxes)
+                        self.reply(200, {'regions':[{'page':page,'rect':rect} for page,rect in sorted(regions)]})
+                    else:
+                        self.reply(200, locate(path, self.server.build.name, self.server.page_boxes, data, main_file, root))
                     return
                 if self.path == '/open':
                     selected = choose_file(path)
@@ -1717,6 +2093,10 @@ def make_server(path, port=0, main_thread=None):
                     if not candidate.is_file() or candidate.suffix.lower() != '.tex':
                         raise ValueError('Choose an existing UTF-8 .tex file.')
                     state = snapshot(candidate)
+                    if candidate.is_relative_to(root) and (candidate == main_file or not re.search(r'\\documentclass\b', state['source'])):
+                        self.reply(200, switch_source(candidate))
+                        return
+                    compiler(state['source'])
                     new_history = History(candidate)
                     new_history.record(state['source'], 'open')
                     new_build = tempfile.TemporaryDirectory(prefix='latex-codex-')
@@ -1726,10 +2106,15 @@ def make_server(path, port=0, main_thread=None):
                         self.server.history_summary.cancel()
                         self.server.history_summary = None
                     path = candidate
+                    main_file, root = candidate, candidate.parent
+                    self.server.main_file, self.server.project_root = main_file, root
                     history = new_history
                     self.server.pdf, self.server.pdf_revision = b'', ''
                     self.server.page_boxes, self.server.sync_version = [], ''
-                    self.reply(200, state)
+                    self.server.dependencies, self.server.project_version = set(), ''
+                    self.server.labels, self.server.citations = {}, {}
+                    self.server.selection_sync = None
+                    self.reply(200, project_state())
                     return
                 if not isinstance(data.get('source'), str) or not isinstance(data.get('version'), str):
                     raise ValueError('Expected source and version strings.')
@@ -1739,30 +2124,45 @@ def make_server(path, port=0, main_thread=None):
                         self.server.sync_version = ''
                     self.reply(200, state)
                     return
-                engine_name, _ = compiler(data['source'])
+                main_source = data['source'] if path == main_file else snapshot(main_file)['source']
+                engine_name, _ = compiler(main_source)
                 version = save_source(path, data['source'], data['version'], history)['version']
                 self.server.sync_version = ''
+                self.server.selection_sync = None
+                dependencies = project_dependencies(root, main_file, self.server.build.name) | self.server.dependencies
+                fingerprint = project_digest(dependencies)
+                pdf = Path(self.server.build.name) / (main_file.stem + '.pdf')
                 try:
-                    ok, log, engine_name = compile_tex(path, self.server.build.name, data['source'])
-                    pdf = Path(self.server.build.name) / (path.stem + '.pdf')
+                    ok, log, engine_name = compile_tex(main_file, self.server.build.name, main_source, project_root=root)
+                    pdf = Path(self.server.build.name) / (main_file.stem + '.pdf')
                     ok = ok and pdf.is_file()
                     if ok:
-                        boxes = pdf_page_boxes(pdf)
                         self.server.pdf = pdf.read_bytes()
                         self.server.pdf_revision = hashlib.sha256(self.server.pdf).hexdigest()
-                        self.server.page_boxes = boxes
-                        if pdf.with_suffix('.synctex.gz').exists() or pdf.with_suffix('.synctex').exists():
+                        self.server.page_boxes = []
+                        self.server.dependencies = project_dependencies(root, main_file, self.server.build.name)
+                        self.server.project_version = project_digest(self.server.dependencies)
+                        if fingerprint == project_digest(dependencies) and (pdf.with_suffix('.synctex.gz').exists() or pdf.with_suffix('.synctex').exists()):
                             self.server.sync_version = version
                 except subprocess.TimeoutExpired:
                     ok, log = False, 'Compilation timed out after 45 seconds. Source saved; previous preview retained.'
-                self.reply(200, {'ok': ok, 'log': log[-24000:], 'diagnostic': None if ok else compile_diagnostic(log, path), 'version': version, 'pages': len(self.server.page_boxes), 'pdf_revision': self.server.pdf_revision, 'engine': engine_name, 'sync': bool(self.server.sync_version), 'labels': compiled_labels(pdf.with_suffix('.aux')) if ok else {}, 'citations': compiled_citations(pdf.with_suffix('.aux')) if ok else {}})
+                diagnostic = None
+                if not ok:
+                    for file in [path, *[file for file in project_files(root) if file != path]]:
+                        diagnostic = compile_diagnostic(log, file, main_file.parent)
+                        if diagnostic:
+                            diagnostic['path'] = str(file)
+                            break
+                self.server.labels = compiled_labels(pdf.with_suffix('.aux')) if ok else {}
+                self.server.citations = compiled_citations(pdf.with_suffix('.aux')) if ok else {}
+                self.reply(200, {'ok': ok, 'log': log[-24000:], 'diagnostic': diagnostic, 'version': version, 'project_version': self.server.project_version, 'pdf_revision': self.server.pdf_revision, 'engine': engine_name, 'sync': bool(self.server.sync_version), 'labels': self.server.labels, 'citations': self.server.citations})
             except subprocess.TimeoutExpired:
                 self.reply(500, {'error': '历史版本编译或定位超时，请重试。' if self.path == '/history/pdf' else '定位超时，请重试。'})
             except FileConflict as error:
                 self.reply(409, {'error': str(error)})
             except (ValueError, UnicodeError) as error:
                 self.reply(400, {'error': str(error)})
-            except (OSError, tk.TclError, sqlite3.Error) as error:
+            except (OSError, sqlite3.Error) as error:
                 self.reply(500, {'error': str(error)})
 
     # Browser preconnects must not monopolize accept(); serialize document operations, not idle sockets.
@@ -1775,7 +2175,11 @@ def make_server(path, port=0, main_thread=None):
     server.pdf_revision = ''
     server.page_boxes = []
     server.sync_version = ''
+    server.selection_sync = None
     server.build = build
+    server.main_file, server.project_root = main_file, root
+    server.dependencies, server.project_version = set(), ''
+    server.labels, server.citations = {}, {}
     return server
 
 
@@ -1783,9 +2187,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('file', type=Path)
     parser.add_argument('--port', type=int, default=0)
+    parser.add_argument('--project-root', type=Path, help='Project folder containing the main file and included sources')
     args = parser.parse_args()
     try:
-        server = make_server(args.file, args.port)
+        server = make_server(args.file, args.port, project_root=args.project_root)
     except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired, sqlite3.Error) as error:
         parser.exit(1, str(error) + '\n')
     print(f'http://127.0.0.1:{server.server_port}/', flush=True)

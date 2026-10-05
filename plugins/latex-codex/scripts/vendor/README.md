@@ -32,6 +32,12 @@ The archive was verified against the npm registry's SHA-512 integrity value.
 Included: build/pdf.mjs, build/pdf.worker.mjs, web/pdf_viewer.{mjs,css},
 web/images, cmaps, standard_fonts, wasm, iccs, LICENSE and package.json.
 The API, worker, viewer and supporting resources must be updated together.
+Local API/worker adapters expose page MediaBox (SyncTeX must not use CropBox)
+and opt-in `disableCombineTextItems` glyph extraction for exact text advances.
+Default preview/text-layer behavior remains upstream. Preserve these adapters
+and run the PDF history/SyncTeX tests when updating. `latex-pdf-analysis.mjs`
+assembles glyphs into words and reads metadata in the browser, replacing native
+Poppler tools. Node is used only by the maintenance test runner, not at runtime.
 
 KaTeX 0.18.9 (MIT), from https://registry.npmjs.org/katex/-/katex-0.18.9.tgz,
 is bundled under katex/ for instant source formula previews. The archive was

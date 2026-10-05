@@ -1,4 +1,5 @@
 import {t} from './latex-settings.mjs';
+import {analyzePdf} from './latex-pdf-analysis.mjs';
 
 export function pdfChangeCard(index) {
   const block = document.createElement('article'); block.className = 'history-pdf-change';
@@ -120,10 +121,9 @@ export function attachHistory(editor, request, getState, restore) {
     $('recompile').disabled = true;
     pdf.textContent = t('正在读取历史对比图，缺失时编译生成…');
     try {
-      const data = await post('pdf', {...selection, recompile, request_id:pending.id}, {signal:pending.controller.signal});
+      let data = await post('pdf', {...selection, recompile, request_id:pending.id}, {signal:pending.controller.signal});
       if (ticket !== pdfSerial || mode !== 'pdf' || !dialog.open) return;
-      pdf.replaceChildren();
-      if (!data.changes.length) { pdf.textContent = t('两个版本没有需要预览的改动。'); return; }
+      if (!data.needs_analysis && !data.changes.length) { pdf.textContent = t('两个版本没有需要预览的改动。'); return; }
       const documents = {};
       if (!data.images) {
         const pdfjs = await import('./pdfjs/build/pdf.mjs');
@@ -133,7 +133,23 @@ export function attachHistory(editor, request, getState, restore) {
           documents[side] = await task.promise;
           if (ticket !== pdfSerial) return;
         }
+        if (data.needs_analysis) {
+          const analysis = {};
+          const check = () => {
+            if (ticket !== pdfSerial || pending.controller.signal.aborted) throw new DOMException('Canceled','AbortError');
+          };
+          for (const side of ['before','after']) {
+            analysis[side] = {revision:data.revisions[side], ...await analyzePdf(documents[side],check)};
+          }
+          check();
+          // Reuse these exact compiled snapshots; never recompile between extraction and matching.
+          data = await post('pdf', {...selection, analysis, request_id:pending.id}, {signal:pending.controller.signal});
+          if (ticket !== pdfSerial || mode !== 'pdf' || !dialog.open) return;
+          if (data.needs_analysis) throw new Error(t('历史 PDF 已变化，请重新打开对比。'));
+        }
       }
+      pdf.replaceChildren();
+      if (!data.changes.length) { pdf.textContent = t('两个版本没有需要预览的改动。'); return; }
       const images = [];
       for (const [index, change] of data.changes.entries()) {
         if (ticket !== pdfSerial) return;

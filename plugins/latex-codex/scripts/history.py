@@ -22,9 +22,10 @@ VISIBLE_REVISIONS = """WITH checkpoints AS (
 
 
 class History:
-    def __init__(self, path):
-        self.file = path.name
-        self.database = path.parent / '.latex-codex' / 'history.sqlite3'
+    def __init__(self, path, project_root=None):
+        root = project_root or path.parent
+        self.file = path.relative_to(root).as_posix()
+        self.database = root / '.latex-codex' / 'history.sqlite3'
         self.database.parent.mkdir(exist_ok=True)
         with closing(self.connect()) as db, db:
             db.execute('''CREATE TABLE IF NOT EXISTS revisions (

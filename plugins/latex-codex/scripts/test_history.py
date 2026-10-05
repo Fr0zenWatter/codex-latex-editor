@@ -172,7 +172,7 @@ with tempfile.TemporaryDirectory() as directory:
         assert request('/history?path=' + quote(str(path)) + '&before=bad')[0] == 400
         assert request('/history?path=' + quote(str(other)))[0] == 409
 
-        before = state()
+        before = snapshot(path)
         with patch.object(history, 'record', side_effect=sqlite3.OperationalError('disk full')):
             try:
                 save_source(path, 'must not save', before['version'], history)

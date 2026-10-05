@@ -8,6 +8,7 @@ const elements = new Map();
 function element(id) {
   if (!elements.has(id)) elements.set(id, {
     children: [], append(child) { child.parent=this; this.children.push(child); },
+    replaceChildren(...children) { this.children=[]; children.forEach(child=>this.append(child)); },
     querySelector() { return this.children[0]; }, querySelectorAll() { return []; },
     get lastElementChild() { return this.children.at(-1); },
     remove() { this.parent.children.splice(this.parent.children.indexOf(this), 1); },
@@ -30,13 +31,14 @@ let vimEscapes=0;
 let selected=false,commentCalls=0,cursorChanges=0;
 const chatOpened=[];
 const editor = {
+  refreshes:0,
   state:{},closeHint(){this.closedHint=true;},showHint(config){this.hint=config;},swapDoc(doc){this.doc=doc;},
   lastLine:()=>99,lineCount:()=>100,addLineClass(line,where,name){this.marks??=new Set();this.marks.add(where+':'+name);return {line};},
   removeLineClass(line,where,name){this.marks.delete(where+':'+name);},
   scrollIntoView(cursor,margin){this.jump={...cursor,margin};},
   on(name,fn) {editorEvents[name]=fn;}, setOption(key, value) { options[key] = value; },
   toggleComment(){commentCalls++;},somethingSelected:()=>selected,
-  coordsChar:()=>({line:3,ch:2}),setCursor(cursor){cursorChanges++;this.cursor=cursor;},focus(){},refresh(){},
+  coordsChar:()=>({line:3,ch:2}),setCursor(cursor){cursorChanges++;this.cursor=cursor;},focus(){},refresh(){this.refreshes=(this.refreshes||0)+1;},
   setSelection(from,to){this.selection={from,to};},
   getOption: key => options[key], getCursor: () => ({line: 88, ch: 8}),
   charCoords: () => ({left:80,bottom:900}), getScrollInfo: () => ({clientHeight: 600}),
@@ -44,20 +46,25 @@ const editor = {
 };
 const views = [element('page1'),element('page2')].map(div=>({div,viewport:{width:500,height:700,convertToPdfPoint:(x,y)=>[x,700-y],convertToViewportPoint:(x,y)=>[x,700-y]},setPdfPage(page){this.pdfPage=page;}}));
 const viewer = {
+  fitChanges:0,
   currentPageNumber:1,pagesCount:2,currentScale:1,pdfDocument:null,
   getPageView(index){return views[index];},update(){},
-  set currentScaleValue(value){assert.equal(value,'page-width');this.currentScale=1;},
+  set currentScaleValue(value){assert.equal(value,'page-width');this.fitChanges=(this.fitChanges||0)+1;this.currentScale=1;},
   setDocument(pdf){this.pdfDocument=pdf;this.pagesCount=pdf?.numPages||0;this.currentScale=1;this.firstPagePromise=Promise.resolve();},
 };
 const pdf = {numPages:2,getPage:async()=>({})};
 let destroyed=0,downloads=0;
 const windowHandlers={},uiTimers=new Map();let uiTimerId=0;
+const animationFrames=new Map(),resizeObservers=[];let animationFrameId=0;
+function flushAnimationFrames(){const callbacks=[...animationFrames.values()];animationFrames.clear();callbacks.forEach(fn=>fn());}
 const context = vm.createContext({
   t:key=>key, setText:(element,key,values={})=>{element.textContent=key.replace(/\{(\w+)\}/g,(match,name)=>values[name]??match);},initSettings(){}, initScreenshotThemes(){}, applyCustomTheme(){return false;},
   attachMathHover(){},attachNativeAnnotations(){},attachSelectionChat(){return {open(){chatOpened.push('full');},openQuick(anchor){chatOpened.push(anchor);},refreshAnnotations(){},busy:false};},attachHistory(){},mountHistoryTabs(){},katex:{},
+  pdfPageBoxes:async()=>[[0,0,600,800],[0,0,600,800]],
   pdfjsLib:{GlobalWorkerOptions:{},getDocument:()=>({promise:Promise.resolve(pdf),async destroy(){destroyed++;}})},
   EventBus:class{on(){}},PDFLinkService:class{setViewer(){} setDocument(){}},PDFViewer:function(){return viewer;},
-  ResizeObserver:class{observe(){}},MutationObserver:class{observe(){}},Uint8Array,
+  ResizeObserver:class{constructor(callback){this.callback=callback;}observe(target){resizeObservers.push({target,callback:this.callback});}},MutationObserver:class{observe(){}},Uint8Array,
+  requestAnimationFrame(fn){animationFrames.set(++animationFrameId,fn);return animationFrameId;},cancelAnimationFrame(id){animationFrames.delete(id);},
   document: {querySelector: element, createElement: () => element(Symbol()), documentElement: {dataset: {}}},
   CodeMirror: {Doc:class{constructor(source,mode){this.source=source;this.mode=mode;}},hint:{latex:()=>({list:['\\begin']})},fromTextArea: (_,configuration) => {Object.assign(options,configuration);return editor;}, commands: {}, Vim: {
     handleKey(cm,key){assert.equal(key,'<Esc>');vimEscapes++;},
@@ -94,17 +101,32 @@ modeSelect.value='default';modeSelect.onchange();assert.equal(stored.get('latex-
 assert.equal(options.showCursorWhenSelecting,true);
 modeSelect.value='vim';modeSelect.onchange();assert.equal(options.keyMap,'vim');
 const splitter=element('#splitter');element('main').clientWidth=1006;
+const sourceShare=()=>Number(element('main').style.gridTemplateColumns.match(/minmax\(0,([\d.]+)fr\)/)[1]);
+const resizePreview=resizeObservers.find(item=>item.target===element('#preview')).callback;
+resizePreview();
+const dragRefreshes=editor.refreshes||0,dragFits=viewer.fitChanges||0;
 const resizePointer={pointerId:2,button:0,buttons:1,clientX:500,preventDefault(){}};
 splitter.onpointerdown(resizePointer);splitter.onpointermove({...resizePointer,clientX:700});
-assert.equal(element('main').style['--source-share'],'0.7fr');
-splitter.onpointermove({...resizePointer,clientX:2000});assert.equal(element('main').style['--source-share'],'0.85fr');
+splitter.onpointermove({...resizePointer,clientX:720});
+assert.equal(animationFrames.size,1,'Coalesce pointer moves into one animation frame.');
+flushAnimationFrames();assert.equal(sourceShare(),0.72);
+assert.equal(editor.refreshes,dragRefreshes,'Do not remeasure source lines while dragging.');
+element('#preview').clientWidth=360;resizePreview();
+assert.equal(viewer.fitChanges,dragFits,'Do not rerender the PDF on intermediate pane widths.');
+splitter.onpointermove({...resizePointer,clientX:2000});
 splitter.onpointerup(resizePointer);splitter.onpointermove({...resizePointer,clientX:0});
-assert.equal(element('main').style['--source-share'],'0.85fr');assert.equal(splitter.captured,null);
-splitter.ondblclick();assert.equal(element('main').style['--source-share'],'0.5fr');
-splitter.onkeydown({key:'ArrowLeft',preventDefault(){}});assert.equal(element('main').style['--source-share'],'0.48fr');
-splitter.onkeydown({key:'Home',preventDefault(){}});assert.equal(element('main').style['--source-share'],'0.5fr');
+assert.equal(sourceShare(),0.85);assert.equal(splitter.captured,null);
+assert.equal(animationFrames.size,0,'Flush the final pointer position and cancel queued frames on release.');
+assert.equal(editor.refreshes,dragRefreshes+1);
+assert.equal(viewer.fitChanges,dragFits+1);
+resizePreview();assert.equal(viewer.fitChanges,dragFits+1,'The final ResizeObserver notification must not render twice.');
+assert.equal(stored.get('latex-codex-split'),'0.85');
+element('#preview').clientWidth=400;resizePreview();
+splitter.ondblclick();assert.equal(sourceShare(),0.5);
+splitter.onkeydown({key:'ArrowLeft',preventDefault(){}});assert.equal(sourceShare(),0.48);
+splitter.onkeydown({key:'Home',preventDefault(){}});assert.equal(sourceShare(),0.5);
 splitter.onpointerdown(resizePointer);splitter.onpointercancel(resizePointer);
-splitter.onpointermove({...resizePointer,clientX:700});assert.equal(element('main').style['--source-share'],'0.5fr');
+splitter.onpointermove({...resizePointer,clientX:700});assert.equal(sourceShare(),0.5);
 options.readOnly=false;
 options.extraKeys['Alt-/'](editor);assert.equal(commentCalls,1);
 assert.equal(options.extraKeys['Alt-/'],options.extraKeys['Ctrl-/']);
@@ -374,7 +396,10 @@ context.fetch=async()=>{downloads++;return{ok:true,arrayBuffer:async()=>new Arra
   assert.equal(matched('A $\\mathbf{x}=\\mathbf{y}$ relation.','x=y'),'$\\mathbf{x}=\\mathbf{y}$');
   assert.throws(()=>matched('We use $x$ in this estimate. We use $x$ in this estimate.','We use x ◆ in this estimate.'),/唯一匹配/);
   assert.throws(()=>matched('We use $x$ in this estimate.','We completely changed the argument.'),/唯一匹配/);
-  assert.throws(()=>matched('{On the matrix} level','On the matrix level'),/唯一匹配/);
+  assert.equal(matched('{On the matrix} level','On the matrix level'),'{On the matrix} level','Invisible grouping braces must not defeat a prose match.');
+  assert.equal(matched(String.raw`Before. {\color{red}Finite} element methods. After.`, 'Finite element methods.'),String.raw`{\color{red}Finite} element methods.`);
+  assert.equal(matched(String.raw`Before. \textbf{A \emph{nested} phrase} follows. After.`, 'A nested phrase follows.'),String.raw`\textbf{A \emph{nested} phrase} follows.`);
+  assert.equal(matched(String.raw`Before. \textcolor{blue}{A nested $x$ phrase} follows. After.`, 'A nested x phrase follows.'),String.raw`\textcolor{blue}{A nested $x$ phrase} follows.`);
   assert.throws(()=>exact('Text.',[1,1],''),/唯一匹配/);
   assert.throws(()=>exact('See \\ref{sec1}.',[1,1],'1'),/唯一匹配/);
   const cipSource="For this problem, $A$ is represented by the CIP-$\\mathcal{P}_{k+1}$ stiffness matrix $\\mathbf{A}=\\mathbf{A}_{\\rm IP}=\\mathbf{D}_{\\rm IP}-\\mathbf{L}_{\\rm IP}-\\mathbf{L}_{\\rm IP}^\\top$. By $\\mathbf{S}_{\\rm IP,a}=\\mathbf{D}_{\\rm IP}^{-1}$ and $\\bar{\\mathbf{S}}_{\\rm IP,m}=(\\mathbf{D}_{\\rm IP}-\\mathbf{L}_{\\rm IP}^\\top)^{-1}\\mathbf{D}_{\\rm IP}(\\mathbf{D}_{\\rm IP}-\\mathbf{L}_{\\rm IP})^{-1}$ we denote the Jacobi and symmetrized GS iterators for $\\mathbf{A}_{\\rm IP}$, respectively. Define the CIP energy norm \n\\begin{equation*}\n\\|v\\|_{2,h}=\\Big(\\sum_{T\\in\\mathcal{T}_h}\\|\\nabla^2 v\\|_{L^2(T)}^2+\\sum_{E\\in\\mathcal{E}_h}\\gamma h_E^{-1}\\|\\llbracket \\partial_nv\\rrbracket\\|_{L^2(E)}^2\\Big)^\\frac{1}{2}.  \n\\end{equation*}";
@@ -406,6 +431,32 @@ context.fetch=async()=>{downloads++;return{ok:true,arrayBuffer:async()=>new Arra
   assert.deepEqual(exact(edgeSource,[1,3],'lastword.\n'+citationPdf+'\nN'),{from:{line:0,ch:6},to:{line:2,ch:1},approximate:true},'Keep an accidentally selected previous word and next initial within the precise mapped range.');
   assert.throws(()=>exact(String.raw`\cite{unknown}`,[1,1],'[9]'),/唯一匹配/,'Citation-only selections need compiled numbers.');
   assert.throws(()=>exact(citationSentence+' '+citationSentence,[1,1],citationPdf,{},compiledCites),/唯一匹配/,'Repeated citation sentences must remain ambiguous.');
+  const estimatorSource=String.raw`Earlier prose.
+Therefore, the estimator is given below
+\begin{align*}
+\eta^2&=\sum_{F\not\subset\Gamma_{\rm PEC}\cup\Gamma_{\rm ABC}}k_0^2h_F\big\|\llbracket\varepsilon_r\bm{E}_h\cdot\bm{n}\rrbracket\big\|_{L^2(F)}^2\\
+&+\sum_{T\in\mathcal{T}_h}h_T^2\big\|\nabla\times(\mu_r^{-1}\nabla\times\bm{E}_h)-k_0^2\varepsilon_r\bm{E}_h\big\|^2_{L^2(T)}.
+\end{align*}
+Adding the IBC part, we finally obtain
+\begin{align*}
+\eta^2&=\sum_{F\subset\Gamma_{\rm IBC}}\custom{\bm{E}_h}.
+\end{align*}
+Following prose.`;
+  const fragment=(text,page,y)=>({text,page,rect:[10,y,100,y+10]});
+  const estimatorSelection={fragments:[fragment('Therefore, the estimator is given below',1,200),fragment('η2 = X F̸ ⊂ΓPEC∪ΓABC k20 hF Jεr Eh · nK',1,170),fragment('+ X T ∈Th h2T ∇ × (μ−1r ∇ × Eh) − k20 εr Eh 2L2(T).',2,170)]};
+  const mappedRegions=async(first,last)=>{
+    assert(first<=last);
+    return {regions:first===4?[{page:1,rect:[0,150,120,185]},{page:2,rect:[0,150,120,185]}]:[{page:2,rect:[0,60,120,100]}]};
+  };
+  const mathMatch=(locations,selection,regions=mappedRegions)=>context.sourcePdfMathRange(estimatorSource,locations,selection,{}, {},regions);
+  assert.deepEqual(JSON.parse(JSON.stringify(await mathMatch([3,6],estimatorSelection))),{from:{line:1,ch:0},to:{line:5,ch:12},approximate:true,mathBlock:true},'Use compiled rows for reordered custom-macro math across pages, retaining its prose anchor.');
+  assert.deepEqual(JSON.parse(JSON.stringify(await mathMatch([3,6],{fragments:[estimatorSelection.fragments[0],{text:'X',page:1,rect:[10,180,100,200]},...estimatorSelection.fragments.slice(1)]}))),{from:{line:1,ch:0},to:{line:5,ch:12},approximate:true,mathBlock:true},'A tall sum glyph overlapping the formula row must not be rejected just because its text-layer centre lies above it.');
+  assert.deepEqual(JSON.parse(JSON.stringify(await mathMatch([6,6],{fragments:estimatorSelection.fragments.slice(1)}))),{from:{line:2,ch:0},to:{line:5,ch:12},approximate:true,mathBlock:true},'Formula-only PDF selections expand to their complete source environment.');
+  assert.equal(await mathMatch([3,6],{fragments:[fragment('Unrelated prose',1,200),...estimatorSelection.fragments.slice(1)]}),null,'Geometry must not bypass mismatched prose.');
+  assert.equal(await mathMatch([3,6],{fragments:[fragment('η2',3,170)]}),null,'A source line alone cannot justify a formula on a different PDF page.');
+  assert.equal(await mathMatch([3,10],estimatorSelection,async()=>({regions:[{page:1,rect:[0,150,120,185]},{page:2,rect:[0,150,120,185]}]})),null,'Overlapping formula candidates remain ambiguous.');
+  assert.equal(await mathMatch([3,10],{fragments:[...estimatorSelection.fragments,fragment('η2',2,80)]}),null,'Never silently skip unselected prose between two formula blocks.');
+  assert.equal(await context.sourcePdfMathRange(String.raw`Prose \[\custom{x}\] after.`,[1],{fragments:[fragment('Prose',1,170)]},{},{},mappedRegions),null,'Shared-line geometry cannot turn a prose-only selection into a formula selection.');
   source=paragraphs;
   vm.runInContext("panMode=false;busy=false;syncBusy=false;conflict=false;version=pdfVersion='v';saved=paragraphs;pdfBuild='second'",context);
   const gutterPage={};
@@ -433,7 +484,7 @@ context.fetch=async()=>{downloads++;return{ok:true,arrayBuffer:async()=>new Arra
     [...elements.values()].filter(node=>['pdf-comment-highlight','pdf-comment-pin'].includes(node.className)&&node.parent?.children.includes(node));
   const pdfClick={...contextClick,prevented:false};
   preview.oncontextmenu(pdfClick);
-  assert(pdfClick.prevented,JSON.stringify(vm.runInContext('({panMode,readOnly:editor.getOption("readOnly"),points:selectedPdfPoints()})',context)));assert(element('#pdf-menu').open);assert(element('#pdf-chat-menu').focused);
+  assert(pdfClick.prevented,JSON.stringify(vm.runInContext('({panMode,readOnly:editor.getOption("readOnly"),points:selectedPdfPoints()})',context)));assert(element('#pdf-menu').open);assert(element('#pdf-chat-quick-menu').focused);
   const points=JSON.parse(JSON.stringify(vm.runInContext('pdfSelection.points',context)));
   assert.deepEqual(points,[{page:1,x:60,y:660},{page:2,x:90,y:640}]);
   element('#pdf-menu').hidePopover();pdfSelected=false;preview.oncontextmenu(pdfClick);
@@ -445,9 +496,18 @@ context.fetch=async()=>{downloads++;return{ok:true,arrayBuffer:async()=>new Arra
     assert.equal(body.direction,'backward');assert.equal(body.version,'v');assert.equal(body.pdf_revision,'second');lookups++;
     return {ok:true,json:async()=>({line:body.page===1?4:5,column:1})};
   };
-  preview.oncontextmenu(pdfClick);await element('#pdf-chat-menu').onclick();
-  assert.equal(chatOpened.at(-1),'full');assert.deepEqual(JSON.parse(JSON.stringify(editor.selection)),{from:{line:3,ch:6},to:{line:4,ch:15}});
+  preview.oncontextmenu(pdfClick);await element('#pdf-chat-quick-menu').onclick();
+  assert.equal(chatOpened.at(-1).left,120);assert.deepEqual(JSON.parse(JSON.stringify(editor.selection)),{from:{line:3,ch:6},to:{line:4,ch:15}});
   assert.equal(lookups,2);
+  const goodLookup=context.fetch;
+  context.fetch=async(url,options)=>JSON.parse(options.body).page===2?{ok:false,status:400,json:async()=>({error:'该处没有对应源码'})}:goodLookup(url,options);
+  preview.oncontextmenu(pdfClick);await element('#pdf-chat-quick-menu').onclick();
+  assert.deepEqual(JSON.parse(JSON.stringify(editor.selection)),{from:{line:3,ch:6},to:{line:4,ch:15}},'One failed endpoint must not discard a unique text match at the other anchor.');
+  const openedBeforeStale=chatOpened.length;
+  context.fetch=async(url,options)=>JSON.parse(options.body).page===2?{ok:false,status:409,json:async()=>({error:'源码与 PDF 版本不同'})}:goodLookup(url,options);
+  preview.oncontextmenu(pdfClick);await element('#pdf-chat-quick-menu').onclick();
+  assert.equal(chatOpened.length,openedBeforeStale,'Partial coordinate success must not bypass stale-version rejection.');
+  context.fetch=goodLookup;
   options.keyMap='default';const normalEscapes=vimEscapes;
   await realSynchronize('backward',points[0]);assert.equal(vimEscapes,normalEscapes,'PDF jumps must not enter Vim in standard mode.');
   preview.oncontextmenu(pdfClick);await element('#pdf-chat-quick-menu').onclick();
@@ -494,22 +554,24 @@ context.fetch=async()=>{downloads++;return{ok:true,arrayBuffer:async()=>new Arra
   context.fetch=beforeAnchorFetch;
   const opened=chatOpened.length,selectedRange=editor.selection;
   pdfText='no matching source';preview.oncontextmenu(pdfClick);
-  await element('#pdf-chat-menu').onclick();assert.equal(chatOpened.length,opened);assert.equal(editor.selection,selectedRange);
+  await element('#pdf-chat-quick-menu').onclick();assert.equal(chatOpened.length,opened);assert.equal(editor.selection,selectedRange);
   assert.match(element('#status').textContent,/唯一匹配/);pdfText='paragraph\ncontinues here.';
   const mapped=lookups;
   preview.oncontextmenu(pdfClick);source+=' changed';
-  await element('#pdf-chat-menu').onclick();assert.equal(chatOpened.length,opened);assert.equal(lookups,mapped);
+  await element('#pdf-chat-quick-menu').onclick();assert.equal(chatOpened.length,opened);assert.equal(lookups,mapped);
   source=paragraphs;preview.oncontextmenu(pdfClick);vm.runInContext("pdfBuild='third'",context);
-  await element('#pdf-chat-menu').onclick();assert.equal(chatOpened.length,opened);assert.equal(lookups,mapped);
+  await element('#pdf-chat-quick-menu').onclick();assert.equal(chatOpened.length,opened);assert.equal(lookups,mapped);
   vm.runInContext("pdfBuild='second'",context);preview.oncontextmenu(pdfClick);
   const pendingLookups=[];
   context.fetch=()=>new Promise(resolve=>pendingLookups.push(resolve));
-  const locating=element('#pdf-chat-menu').onclick();source+=' changed during lookup';
+  const locating=element('#pdf-chat-quick-menu').onclick();
+  await new Promise(resolve=>setImmediate(resolve));
+  source+=' changed during lookup';
   pendingLookups.forEach(resolve=>resolve({ok:true,json:async()=>({line:4,column:1})}));
   await locating;assert.equal(chatOpened.length,opened);assert.equal(editor.selection,selectedRange);
   source=paragraphs;preview.oncontextmenu(pdfClick);
   context.fetch=async()=>({ok:false,status:400,json:async()=>({error:'该处来自其他文件：included.tex'})});
-  await element('#pdf-chat-menu').onclick();assert.equal(chatOpened.length,opened);
+  await element('#pdf-chat-quick-menu').onclick();assert.equal(chatOpened.length,opened);
   assert.match(element('#status').textContent,/included.tex/);
   assert.equal(editor.selection,selectedRange,'Mapping failures preserve the source selection.');
   context.setTimeout=fn=>{fn();return 0;};
@@ -543,6 +605,39 @@ context.fetch=async()=>{downloads++;return{ok:true,arrayBuffer:async()=>new Arra
   context.fetch=async()=>{polls++;return {ok:true,json:async()=>({version:'poll-version'})};};
   await vm.runInContext('load()',context);
   assert.equal(polls,2,'Polling resumes after the previous request completes.');
+  vm.runInContext("display({source:'Line one\\r\\nLine two',version:'crlf-v',name:'main.tex',path:'/project/main.tex'})",context);
+  assert.equal(editor.doc.source,'Line one\nLine two');assert.equal(vm.runInContext('saved',context),editor.doc.source,'Loaded CRLF files must not appear dirty in the LF editor.');
+  source='Main source';editor.swapDoc=doc=>{editor.doc=doc;source=doc.source;};
+  vm.runInContext("busy=false;syncBusy=false;conflict=false;loading=false;display({source:'Main source',version:'main-v',name:'main.tex',path:'/project/main.tex',project_root:'/project',main_file:'/project/main.tex',project_version:'project-v'});pdfVersion=version;pdfBuild='second'",context);
+  const childState={source:'Appendix paragraph.',version:'appendix-v',name:'body.tex',path:'/project/appendices/body.tex',project_root:'/project',main_file:'/project/main.tex',project_version:'project-v',sync:true,pdf_revision:'second',labels:{eq:'7'},citations:{paper:'9'},files:[{path:'/project/main.tex',name:'main.tex'},{path:'/project/appendices/body.tex',name:'appendices/body.tex'}]};
+  const oldPreview=viewer.pdfDocument;let sourceSwitches=0;
+  context.fetch=async(url,options)=>{
+    if(url==='/synctex')return {ok:true,json:async()=>({path:childState.path,line:1,column:1})};
+    assert.equal(url,'/source');assert.equal(JSON.parse(options.body).version,'main-v');sourceSwitches++;
+    return {ok:true,json:async()=>childState};
+  };
+  await vm.runInContext("synchronize('backward',{page:1,x:10,y:10})",context);
+  assert.equal(sourceSwitches,1);assert.equal(element('#filename').title,childState.path);
+  assert.equal(vm.runInContext('mainFile',context),'/project/main.tex');
+  assert.equal(vm.runInContext('pdfVersion',context),'appendix-v');assert.equal(viewer.pdfDocument,oldPreview,'Inverse source switches preserve the compiled main PDF.');
+  assert.equal(vm.runInContext('compiledLabels.eq',context),'7');assert.equal(element('a[download]').download,'main.pdf');
+  assert.equal(editor.cursor.line,0);
+  vm.runInContext('selectionChat.hasAnnotations=true',context);
+  assert.equal(await vm.runInContext("switchSource('/project/main.tex')",context),false);
+  assert.equal(sourceSwitches,1,'Pending comments must never be silently discarded by navigation.');
+  vm.runInContext('selectionChat.hasAnnotations=false',context);
+  context.setTimeout=fn=>{uiTimers.set(++uiTimerId,fn);return uiTimerId;};
+  source='Unsaved appendix edit';const routes=[];
+  context.fetch=async(url,options)=>{
+    routes.push(url);
+    if(url==='/save'){assert.equal(JSON.parse(options.body).source,source);return {ok:true,json:async()=>({version:'edited-v'})};}
+    assert.equal(url,'/source');assert.equal(JSON.parse(options.body).version,'edited-v');
+    return {ok:true,json:async()=>({...childState,source:'Main source',version:'main-v2',name:'main.tex',path:'/project/main.tex',sync:false})};
+  };
+  assert.equal(await vm.runInContext("switchSource('/project/main.tex',false)",context),true);
+  assert.deepEqual(routes,['/save','/source'],'Navigation saves the active child before switching.');
+  assert.equal(vm.runInContext('pdfVersion',context),'','Unsynced child edits disable old PDF synchronization.');
+  console.log('PASS: inverse source switching, fixed main download, shared metadata, pending-comment protection and save-before-switch');
   console.log('PASS: slow state polling stays single-flight and resumes after completion');
   console.log('PASS: transient connection recovery, safe Send retry and no duplicate saves');
   console.log('PASS: exact PDF text ranges, whitespace, ligatures, line hyphenation, ambiguity rejection, both Codex entries and stale mapping protection');

@@ -148,28 +148,14 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     } catch(e) { $('chat-model-status').textContent = e.message; }
     finally { modelsLoading = false; renderQuickSettings(); }
   }
-  const colors = [['','无','transparent'],['blue','蓝色','#3979ff'],['red','红色','#f45454'],['teal','青色','#009999'],['magenta','洋红','#eb46eb'],['orange','橙色','#ff9800'],['violet','紫色','#a66bdf']];
-  const colorButton = $('chat-color'), palette = $('chat-colors');
+  const colorSelect = $('chat-color');
   function renderProposal() {
     if (proposal) $('chat-replacement').textContent = colorReplacement(proposal.replacement, color, proposal.segments) || t('（删除选区）');
   }
-  const colorOptions = colors.map(([value, label, swatch]) => {
-    const button = document.createElement('button'); button.type = 'button'; button.textContent = t(label);
-    button.setAttribute('aria-pressed', String(value === color));
-    button.onclick = () => {
-      color = value; colorButton.dataset.color = color; colorButton.style.background = swatch;
-      colorButton.title = t('修改标记颜色：') + t(label); colorButton.setAttribute('aria-label', colorButton.title);
-      colorOptions.forEach(([option, optionValue]) => option.setAttribute('aria-pressed', String(optionValue === color)));
-      renderProposal(); palette.hidePopover();
-    };
-    palette.append(button); return [button, value];
-  });
-  palette.addEventListener('beforetoggle', event => {
-    if (event.newState !== 'open') return;
-    const box = colorButton.getBoundingClientRect();
-    palette.style.left = Math.max(8, Math.min(box.left, window.innerWidth - 290)) + 'px';
-    palette.style.top = box.bottom + 6 + 'px'; palette.style.maxWidth = '280px';
-  });
+  colorSelect.onchange = () => {
+    color = colorSelect.value;
+    renderProposal();
+  };
   async function refreshContext() {
     try {
       const context = await request('/chat/context');
@@ -324,6 +310,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     loadModels();
     input.focus();
   }
+  $('chat-view').onclick = () => { $('settings-menu').hidePopover(); showPanel(); };
   function open() {
     showPanel();
     const previous = range(), from = editor.getCursor('from'), to = editor.getCursor('to');
@@ -347,7 +334,6 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     memoryEpoch++;memoryRevision=null;memoryLoading=null;history = []; marker?.clear(); marker = null; clearProposal();
     messages.replaceChildren(); input.value = ''; $('chat-selection').textContent = ''; panel.hidden = true; notice('');
   }
-  $('chat-menu').onclick = () => { $('editor-menu').hidePopover(); open(); };
   quick.addEventListener('beforetoggle', event => {
     if (event.newState === 'closed') {
       if (quickDrag) quickHandle.onpointercancel({pointerId:quickDrag.id});
@@ -413,13 +399,14 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     event.preventDefault();
     return saveAnnotation();
   };
-  $('chat-close').onclick = () => { palette.hidePopover(); panel.hidden = true; editor.focus(); };
+  $('chat-close').onclick = () => { panel.hidden = true; editor.focus(); };
   $('chat-end').onclick = async()=>{
     await stop();
     try{await request('/chat/new',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:$('filename').title})});reset(true);}
     catch(e){notice(e.message);}
   };
-  $('chat-use-selection').onclick = () => { useSelection(); input.focus(); };
+  $('chat-context-settings').addEventListener('toggle', event => { if (event.target.open) refreshContext(); });
+  $('chat-use-selection').onclick = useSelection;
   $('chat-stop').onclick = () => { stop(); notice(t('已停止，可继续提问。')); };
   panel.addEventListener('keydown', event => {
     if (event.key === 'Escape') { event.preventDefault(); panel.hidden = true; editor.focus(); }
@@ -530,9 +517,6 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     const effort = effortSelect.value;
     updateEfforts(); effortSelect.value = effort; renderQuickSettings(); renderProposal();
     modelSelect.options[0].textContent = t('跟随 Codex 默认');
-    colorOptions.forEach(([button], index) => { button.textContent = t(colors[index][1]); });
-    colorButton.title = t('修改标记颜色：') + t(colors.find(([value]) => value === color)[1]);
-    colorButton.setAttribute('aria-label', colorButton.title);
     quickInput.placeholder = quickOriginal ? t('写下这处的修改要求…') : t('请先选中一段 LaTeX 源码');
     labelQuickAction();
     refreshAnnotations();

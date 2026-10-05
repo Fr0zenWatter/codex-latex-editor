@@ -9,7 +9,7 @@
   "interface": {
     "displayName": "LaTeX Codex",
     "shortDescription": "Edit LaTeX and preview a locally compiled PDF.",
-    "longDescription": "A small local editor with automatic local TeX compilation and a bundled PDF.js viewer in the Codex browser side panel. Supports pdfLaTeX/XeLaTeX directives, BibTeX and SyncTeX. Requires Python 3, an existing TeX installation, and Poppler pdfinfo for page metadata. Pages render on demand in the browser.",
+    "longDescription": "A small local editor with automatic local TeX compilation and a bundled PDF.js viewer in the Codex browser side panel. Supports pdfLaTeX/XeLaTeX directives, BibTeX and SyncTeX. Requires Python 3.10+ and an existing TeX installation; no Poppler or Node installation is needed. PDF.js reads page metadata and text positions, and pages render on demand in the browser. Can be selected as the preferred LaTeX workflow in project instructions.",
     "developerName": "Local developer",
     "category": "Productivity",
     "capabilities": [],
