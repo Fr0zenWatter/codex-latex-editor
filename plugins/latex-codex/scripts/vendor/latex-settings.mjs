@@ -1,4 +1,14 @@
-const english = {
+import {translations} from './latex-locales.mjs';
+
+export const english = {
+  '章节目录':'Section outline',
+  '轮盘':'Dial', '章节卡片 + 小节轮盘':'Section cards + subsection dial',
+  '章节卡片：方向键浏览，Enter 跳转':'Section cards: arrow keys to browse, Enter to jump',
+  '小节轮盘：方向键浏览，Enter 跳转':'Subsection dial: arrow keys to browse, Enter to jump',
+  '打开章节拨轮':'Open section dial', '章节拨轮：方向键浏览，Enter 跳转':'Section dial: arrow keys to browse, Enter to jump',
+  '拖动滚动 PDF，悬停或点击打开章节目录':'Drag to scroll PDF; hover or click to open outline',
+  '方向键滚动 PDF，Enter 打开章节目录':'Arrow keys scroll PDF; Enter opens outline',
+  '跳转到章节':'Jump to section', '点击跳转':'Click to jump', 'PDF 当前':'PDF position',
   '项目设置':'Project settings', '项目根目录':'Project folder', '主编译文件':'Main TeX file', '项目源码':'Project source', '应用':'Apply',
   '主文件：{name}':'Main: {name}',
   '选择包含主文件和附录的文件夹。主编译文件可填写相对路径；切换源码始终编译此文件。':'Choose the folder containing the main file and appendices. The main file can use a relative path; it is compiled when editing any source.',
@@ -90,7 +100,7 @@ const english = {
   '保存并编译':'Save and compile', '正在编译…':'Compiling…', '本机编译 · PDF 预览':'Local compiler · PDF preview',
   '按住空格拖动 PDF':'Hold Space to pan the PDF',
   '拖动':'Pan', '选字':'Select text', '切换拖动页面与选择文字':'Switch between panning and text selection',
-  '缩小 PDF':'Zoom out', '放大 PDF':'Zoom in', '适合宽度':'Fit width', '恢复适合宽度':'Reset to fit width', '编译后的 PDF':'Compiled PDF',
+  '缩小 PDF':'Zoom out', '放大 PDF':'Zoom in', '适合宽度':'Fit width', 'PDF 缩放':'PDF zoom', '滚轮或拖动缩放，点击恢复适合宽度':'Scroll or drag to zoom; click to fit width', '滚轮或拖动缩放，方向键微调':'Scroll or drag to zoom; arrow keys fine-tune', '恢复适合宽度':'Reset to fit width', '编译后的 PDF':'Compiled PDF',
   '编译日志':'Compilation log', '源码操作':'Source actions', '注释 / 取消注释':'Toggle comment', '询问 Codex / 修改选区':'Ask Codex / Edit selection',
   '停止输入 0.8 秒后自动保存并编译':'Autosave and compile after 0.8 s', '尚未保存…':'Unsaved changes…', '请先处理文件冲突':'Resolve the file conflict first',
   '正在保存并编译…':'Saving and compiling…', '已保存 · 编译成功':'Saved · Compilation succeeded', '已保存 · 编译失败，请查看日志':'Saved · Compilation failed; see log',
@@ -139,25 +149,49 @@ const english = {
   '可以继续追问；本次对话记忆保留。':'You can follow up; this conversation is remembered.',
   '选区内容已变化，未覆盖修改。请使用当前选区重新提问。':'Selection changed; edits were preserved. Use the current selection and ask again.',
   '编辑器':'Editor', '已应用到选区，将自动保存。':'Applied to selection. Autosave will follow.',
-  '已应用。回到源码按 u 可撤销。':'Applied. Press u in the source editor to undo.'
+  '已应用。回到源码按 u 可撤销。':'Applied. Press u in the source editor to undo.',
+  '跟随系统语言；无法识别时使用英文。可在齿轮设置中手动切换。':'Follows your system language; falls back to English. Change it in the gear settings if needed.',
+  '章节目录样式':'Outline style'
 };
-export let language = 'zh-CN';
+export const supportedLanguages = ['en', 'zh-CN', 'ja', 'fr', 'de', 'es'];
+export let language = 'en';
 const bindings = new Map();
+export function resolveLanguage(preferences = []) {
+  for (const preference of preferences) {
+    if (typeof preference !== 'string') continue;
+    const base = preference.trim().replaceAll('_', '-').toLowerCase().split('-')[0];
+    if (base === 'zh') return 'zh-CN';
+    if (supportedLanguages.includes(base)) return base;
+  }
+  return 'en';
+}
 export function t(key, values = {}) {
-  return (language === 'en' ? english[key] || key : key).replace(/\{(\w+)\}/g, (match, name) => values[name] ?? match);
+  const fallback = english[key] || key;
+  const text = language === 'zh-CN' ? key : translations[fallback]?.[language] || fallback;
+  return text.replace(/\{(\w+)\}/g, (match, name) => values[name] ?? match);
 }
 export function setText(element, key, values = {}) {
   bindings.set(element, [key, values]); element.textContent = t(key, values);
 }
 export function initSettings() {
   const $ = id => document.querySelector('#' + id);
-  const languageSelect = $('language'), colorSelect = $('revision-color');
+  const languageSelect = $('language'), colorSelect = $('revision-color'), outlineSelect = $('outline-style');
   const colors = {orange:'#b85c1c', blue:'#2563b0', purple:'#8252ad', green:'#267a42', red:'#b63a3a'};
   try { languageSelect.value = localStorage.getItem('latex-codex-language') || 'system'; colorSelect.value = localStorage.getItem('latex-codex-revision-color') || 'orange'; } catch {}
-  if (!languageSelect.value) languageSelect.value = 'system';
+  if (!['system', ...supportedLanguages].includes(languageSelect.value)) languageSelect.value = 'system';
   if (!colors[colorSelect.value]) colorSelect.value = 'orange';
+  try { outlineSelect.value = localStorage.getItem('latex-codex-outline-style') || 'wheel'; } catch {}
+  if (!['wheel', 'cards'].includes(outlineSelect.value)) outlineSelect.value = 'wheel';
+  outlineSelect.onchange = () => {
+    if (!['wheel', 'cards'].includes(outlineSelect.value)) outlineSelect.value = 'wheel';
+    try { localStorage.setItem('latex-codex-outline-style', outlineSelect.value); } catch {}
+    window.dispatchEvent(new Event('latex-outline-change'));
+  };
   function applyLanguage() {
-    language = languageSelect.value === 'system' ? (navigator.language.startsWith('zh') ? 'zh-CN' : 'en') : languageSelect.value;
+    if (!['system', ...supportedLanguages].includes(languageSelect.value)) languageSelect.value = 'system';
+    language = languageSelect.value === 'system'
+      ? resolveLanguage([...(navigator.languages || []), navigator.language])
+      : languageSelect.value;
     document.documentElement.lang = language;
     for (const element of document.querySelectorAll('[data-i18n]')) element.textContent = t(element.dataset.i18n);
     for (const attribute of ['title', 'aria-label', 'placeholder', 'label', 'alt']) for (const element of document.querySelectorAll('[data-i18n-' + attribute + ']')) element.setAttribute(attribute, t(element.getAttribute('data-i18n-' + attribute)));

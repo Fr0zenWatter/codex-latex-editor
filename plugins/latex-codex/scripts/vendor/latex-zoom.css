@@ -1,0 +1,18 @@
+#zoom-fit{min-width:58px;font-variant-numeric:tabular-nums;touch-action:none}
+#pdf-zoom-dial{position:fixed;inset:auto;margin:0;padding:0;border:0;overflow:visible;background:transparent;color:#34383e;color-scheme:light;outline:none;touch-action:none;user-select:none;cursor:grab;font-family:system-ui,sans-serif}
+#pdf-zoom-dial::backdrop{background:transparent;pointer-events:none}
+#pdf-zoom-dial:popover-open{animation:zoom-dial-open 300ms cubic-bezier(.22,.8,.25,1)}
+#pdf-zoom-dial::before{content:'';position:absolute;inset:0 0 -80px -80px;background:#fffffff0;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);--zoom-frost-mask:radial-gradient(circle at 100% 0,#000b 25%,#000a 42%,#0005 58%,transparent 70%);mask-image:var(--zoom-frost-mask);-webkit-mask-image:var(--zoom-frost-mask);pointer-events:none}
+.pdf-zoom-face{position:relative;width:240px;height:240px;transform:scale(var(--zoom-dial-scale,1));transform-origin:top left}
+.pdf-zoom-arc{position:absolute;inset:0;width:240px;height:240px;fill:none;stroke:#84899040;stroke-width:1;pointer-events:none}
+.pdf-zoom-rotor{position:absolute;inset:0}
+.pdf-zoom-tick{position:absolute;left:240px;top:0;min-width:12px;height:24px;line-height:24px;color:#646a72;font-size:12px;font-weight:450;font-variant-numeric:tabular-nums;text-shadow:0 1px 5px #ffffffd9,0 0 12px #ffffffb3;pointer-events:none}
+.pdf-zoom-tick::before{content:'';position:absolute;top:-5px;left:50%;width:1px;height:4px;background:#84899080;transform:rotate(45deg)}
+.pdf-zoom-tick.is-major::before{height:7px;top:-9px}
+.pdf-zoom-tick.is-selected{color:#171b22;font-size:15px;font-weight:650}
+.pdf-zoom-tick.is-selected::before{width:2px;background:#2c6bff}
+.pdf-zoom-indicator{position:absolute;left:114px;top:120px;width:6px;height:6px;border-radius:50%;background:#2c6bff;box-shadow:0 0 12px #2c6bff26;pointer-events:none}
+#pdf-zoom-dial.is-dragging{cursor:grabbing}
+#pdf-zoom-dial:focus-visible .pdf-zoom-indicator{box-shadow:0 0 0 3px #2c6bff33}
+@keyframes zoom-dial-open{from{opacity:0;transform:translate(30px,-30px)}to{opacity:1;transform:translate(0,0)}}
+@media(prefers-reduced-motion:reduce){#pdf-zoom-dial:popover-open{animation:none}}

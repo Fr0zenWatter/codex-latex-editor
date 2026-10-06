@@ -1,15 +1,47 @@
+[English](README.md) · [简体中文](README.zh-CN.md)
+
+**Interface language:** Follows your system language, falling back to **English**. Switch manually via **gear → Language**.
+
 # LaTeX Codex
 
-在 Codex 侧边栏写 LaTeX，边写边看 PDF，也可以让 Codex 帮你修改选中的内容。
+Write LaTeX in the **Codex sidebar**, with source and PDF side by side. Compile with **your local TeX engine** and ask Codex for precise edits where you need them.
 
-- 支持 Vim 快捷键、命令补全和公式预览。
-- 支持指定项目文件夹和主文件，双击 PDF 跳到 `\input` / `\include` 的对应源码；选中文字后可添加批注。
-- 自动保存，支持查看改动和恢复历史版本；历史 PDF 改动按需缓存前后对比图。
+## Demos
 
-## 使用
+Click a preview to watch the full video. All demos include English and Chinese subtitles.
 
-1. 下载本仓库，用 Codex 打开这个文件夹。
-2. 对 Codex 说：**“请按 AGENTS.md 安装 latex-codex。”**
-3. 安装后新开对话，输入：`$latex-codex 打开 main.tex`，也可指定文稿路径。
+### AI edits with annotations
 
-编辑会直接保存到原始 `.tex` 文件。
+#### Annotations
+
+Select a word, a paragraph, or text with equations. Add comments and let Codex revise those passages, with the source and PDF updating together.
+
+[![Watch the annotation editing demo](docs/media/03-pdf-comments.gif)](docs/media/03-pdf-comments.mp4)
+
+#### Main chat annotations
+
+Select source text, click the annotation icon, and save your requests. Send them together in the main Codex chat, then review changes across files in History.
+
+[![Watch the main chat annotation demo](docs/media/04-native-comments.gif)](docs/media/04-native-comments.mp4)
+
+### LaTeX ↔ PDF
+
+In hand mode, double-click the PDF to find its source. Double-click a line number or click the middle **→** to jump back to the PDF. The chapter wheel helps you move through longer documents; setting `main.tex` enables navigation across `\input` / `\include` files.
+
+[![Watch the navigation demo](docs/media/01-navigation.gif)](docs/media/01-navigation.mp4)
+
+### Local history
+
+Edits are saved automatically. Compare source changes and the PDF before and after, then restore a previous version.
+
+[![Watch the history demo](docs/media/02-history.gif)](docs/media/02-history.mp4)
+
+Vim shortcuts, command completion, and inline formula previews are also included.
+
+## Get started
+
+1. Download this repository and open its folder in Codex.
+2. Ask Codex: **“Install latex-codex following [AGENTS.md](AGENTS.md).”**
+3. Start a new chat and say: `$latex-codex open main.tex`, or provide your document's path.
+
+Edits save directly to your original `.tex` files.

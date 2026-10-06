@@ -3,20 +3,21 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
-const script = fs.readFileSync(path.join(__dirname, 'editor.py'), 'utf8').replace(/\r\n/g, '\n').match(/<script type="module">\n([\s\S]*?)<\/script>/)[1].replace(/^import .*;\n/gm, '');
+const zoomScript = fs.readFileSync(path.join(__dirname, 'vendor/latex-zoom.mjs'), 'utf8').replace('export function', 'function');
+const script = zoomScript + '\n' + fs.readFileSync(path.join(__dirname, 'editor.py'), 'utf8').replace(/\r\n/g, '\n').match(/<script type="module">\n([\s\S]*?)<\/script>/)[1].replace(/^import .*;\n/gm, '');
 const elements = new Map();
 function element(id) {
   if (!elements.has(id)) elements.set(id, {
     children: [], append(child) { child.parent=this; this.children.push(child); },
     replaceChildren(...children) { this.children=[]; children.forEach(child=>this.append(child)); },
-    querySelector() { return this.children[0]; }, querySelectorAll() { return []; },
+    querySelector() { return this.children[0] ?? (this.children[0] = element(Symbol())); }, contains(node) { return node === this || this.children.includes(node); }, querySelectorAll() { return []; },
     get lastElementChild() { return this.children.at(-1); },
     remove() { this.parent.children.splice(this.parent.children.indexOf(this), 1); },
     dataset: {}, srcWrites: 0, set src(value) { this.imageSource=value; this.srcWrites++; },
     style: {setProperty(key, value) { this[key] = value; }},
     attributes:{},classList: {add() {}, remove() {}, toggle() {}}, setAttribute(key,value) {this.attributes[key]=value;},
     showPopover(){this.open=true;},hidePopover(){this.open=false;},focus(){this.focused=true;},
-    events:{},addEventListener(name,handler){this.events[name]=handler;},getBoundingClientRect(){return {left:120,top:180};},
+    events:{},addEventListener(name,handler){this.events[name]=handler;},getBoundingClientRect(){return {left:120,top:180,width:280,bottom:208};},
     offsetWidth:240,offsetHeight:42,
     setPointerCapture(id) { this.captured = id; },
     hasPointerCapture(id) { return this.captured === id; },
@@ -56,11 +57,15 @@ const pdf = {numPages:2,getPage:async()=>({})};
 let destroyed=0,downloads=0;
 const windowHandlers={},uiTimers=new Map();let uiTimerId=0;
 const animationFrames=new Map(),resizeObservers=[];let animationFrameId=0;
-function flushAnimationFrames(){const callbacks=[...animationFrames.values()];animationFrames.clear();callbacks.forEach(fn=>fn());}
+let animationTime=0;const reducedMotion={matches:true};
+function flushAnimationFrames(){animationTime+=16;const callbacks=[...animationFrames.values()];animationFrames.clear();callbacks.forEach(fn=>fn(animationTime));}
+function settleAnimation(){for(let i=0;animationFrames.size&&i<120;i++)flushAnimationFrames();assert.equal(animationFrames.size,0);}
 const context = vm.createContext({
   t:key=>key, setText:(element,key,values={})=>{element.textContent=key.replace(/\{(\w+)\}/g,(match,name)=>values[name]??match);},initSettings(){}, initScreenshotThemes(){}, applyCustomTheme(){return false;},
   attachMathHover(){},attachNativeAnnotations(){},attachSelectionChat(){return {open(){chatOpened.push('full');},openQuick(anchor){chatOpened.push(anchor);},refreshAnnotations(){},busy:false};},attachHistory(){},mountHistoryTabs(){},katex:{},
+  mountSourceWheel({button}){return {update(data){button.textContent=data.files.find(file=>file.path===data.path)?.name;button.files=data.files;button.mainFile=data.mainFile;},setDisabled(value){button.disabled=value;}};},
   pdfPageBoxes:async()=>[[0,0,600,800],[0,0,600,800]],
+  attachPdfOutline(){return {clear(){},load:async()=>{}};},
   pdfjsLib:{GlobalWorkerOptions:{},getDocument:()=>({promise:Promise.resolve(pdf),async destroy(){destroyed++;}})},
   EventBus:class{on(){}},PDFLinkService:class{setViewer(){} setDocument(){}},PDFViewer:function(){return viewer;},
   ResizeObserver:class{constructor(callback){this.callback=callback;}observe(target){resizeObservers.push({target,callback:this.callback});}},MutationObserver:class{observe(){}},Uint8Array,
@@ -72,7 +77,8 @@ const context = vm.createContext({
     mapCommand: (...args) => mappings.push(args),
   }},
   localStorage: {getItem(key) { return stored.get(key); }, setItem(key,value) { stored.set(key,value); }},
-  window: {innerWidth:1000,innerHeight:800,addEventListener(name,handler) {(windowHandlers[name]??=[]).push(handler);}}, setInterval() {},setTimeout(fn){uiTimers.set(++uiTimerId,fn);return uiTimerId;},clearTimeout(id){uiTimers.delete(id);},
+  performance:{now:()=>animationTime},
+  window: {innerWidth:1000,innerHeight:800,matchMedia:()=>reducedMotion,addEventListener(name,handler) {(windowHandlers[name]??=[]).push(handler);}}, setInterval() {},setTimeout(fn){uiTimers.set(++uiTimerId,fn);return uiTimerId;},clearTimeout(id){uiTimers.delete(id);},
   fetch: () => new Promise(() => {}),
 });
 vm.runInContext(script, context);
@@ -153,19 +159,20 @@ for(const [keys,mode] of [['gcc','normal'],['gc','visual']]){
   assert(mapping);actions[mapping[2]](editor);
 }
 assert.equal(commentCalls,4);
-element('#zoom-in').onclick();
+element('#zoom-fit').events.wheel({deltaY:-120,preventDefault(){},stopPropagation(){}});
 assert.equal(viewer.currentScale, 1.25);
 assert.equal(element('#preview').scrollTop, 200);
 assert.equal(element('#zoom-fit').textContent, '125%');
-for (let i = 0; i < 20; i++) element('#zoom-in').onclick();
+for (let i = 0; i < 20; i++) element('#zoom-fit').events.wheel({deltaY:-120,preventDefault(){},stopPropagation(){}});
 assert.equal(element('#zoom-fit').textContent, '250%');
-assert.equal(element('#zoom-in').disabled, true);
-for (let i = 0; i < 20; i++) element('#zoom-out').onclick();
-assert.equal(element('#zoom-fit').textContent, '75%');
-assert.equal(element('#zoom-out').disabled, true);
+assert.equal(element('#pdf-zoom-dial').attributes['aria-valuenow'], '250');
+for (let i = 0; i < 20; i++) element('#zoom-fit').events.wheel({deltaY:120,preventDefault(){},stopPropagation(){}});
+assert.equal(element('#zoom-fit').textContent, '30%');
+assert.equal(viewer.currentScale, .3);
+assert.equal(element('#pdf-zoom-dial').attributes['aria-valuenow'], '30');
 element('#zoom-fit').onclick();
 assert.equal(viewer.currentScale, 1);
-assert.equal(element('#zoom-out').disabled, false);
+assert.equal(element('#pdf-zoom-dial').attributes['aria-valuenow'], '100');
 const zoomWheel={ctrlKey:true,deltaY:-120,preventDefault(){this.prevented=true;}};
 element('#preview').events.wheel(zoomWheel);
 assert(zoomWheel.prevented, 'Ctrl+wheel must suppress browser-wide zoom.');
@@ -173,6 +180,10 @@ assert.equal(element('#zoom-fit').textContent,'125%');
 assert.equal(viewer.currentScale,1.25);
 element('#preview').events.wheel({...zoomWheel,deltaY:120});
 assert.equal(element('#zoom-fit').textContent,'100%');
+for(let i=0;i<20;i++) element('#preview').events.wheel({...zoomWheel,deltaY:120});
+assert.equal(element('#zoom-fit').textContent,'30%');
+assert.equal(element('#pdf-zoom-dial').attributes['aria-valuenow'], '30');
+element('#zoom-fit').onclick();
 for(const ignored of [{ctrlKey:false},{deltaY:0}]){
   const event={...zoomWheel,...ignored,prevented:false};
   element('#preview').events.wheel(event);
@@ -184,6 +195,42 @@ const logWheel={...zoomWheel,prevented:false};
 element('#preview').events.wheel(logWheel);
 assert.equal(logWheel.prevented,false,'Do not zoom the hidden PDF while viewing compile logs.');
 element('#preview').inert=false;
+const zoomDial=element('#pdf-zoom-dial'),zoomButton=element('#zoom-fit');
+zoomButton.onpointerenter();assert(zoomDial.open);assert.equal(zoomButton.attributes['aria-expanded'],'true');
+zoomButton.onpointerleave();zoomDial.onpointerenter();
+for(const fn of [...uiTimers.values()])fn();uiTimers.clear();
+assert(zoomDial.open,'Crossing from the percentage to the lower arc must keep the dial open.');
+const zoomPointer={pointerId:9,button:0,clientX:260,clientY:266,preventDefault(){}};
+const fitBeforeDrag=viewer.fitChanges;
+reducedMotion.matches=false;
+zoomDial.onpointerdown(zoomPointer);
+zoomDial.onpointermove({...zoomPointer,clientX:284});
+zoomDial.onpointermove({...zoomPointer,clientX:306});
+assert.equal(viewer.fitChanges,fitBeforeDrag,'Drag zoom renders once per animation frame.');
+assert.equal(animationFrames.size,1);flushAnimationFrames();
+assert(Number.parseInt(zoomButton.textContent)>100);assert.equal(element('#preview').scrollTop,200);
+zoomDial.onpointerup({...zoomPointer,clientX:306});assert.equal(zoomDial.captured,null);
+settleAnimation();
+const settledZoom=zoomButton.textContent;
+zoomDial.onpointermove({...zoomPointer,clientX:100});assert.equal(animationFrames.size,0);assert.equal(zoomButton.textContent,settledZoom);
+zoomButton.onclick();settleAnimation();
+const tickNodes=[...zoomDial.children[0].children];
+zoomButton.events.wheel({deltaY:-60,preventDefault(){},stopPropagation(){}});
+assert.equal(zoomButton.textContent,'100%','A smooth wheel event starts an animation rather than jumping 25%.');
+flushAnimationFrames();
+assert(vm.runInContext('pdfZoom',context)>100&&vm.runInContext('pdfZoom',context)<112.5,'Wheel frames must interpolate the actual PDF scale.');
+assert.equal(zoomDial.children[0].children[0],tickNodes[0],'Tick DOM nodes persist throughout rotation.');
+settleAnimation();assert.equal(zoomButton.textContent,'113%');
+zoomButton.onclick();settleAnimation();reducedMotion.matches=true;
+const keyEvent=key=>({key,preventDefault(){},stopPropagation(){}});
+zoomDial.onkeydown(keyEvent('End'));assert.equal(zoomButton.textContent,'250%');
+zoomDial.onkeydown(keyEvent('Home'));assert.equal(zoomButton.textContent,'30%');
+zoomDial.onkeydown(keyEvent('Escape'));assert(!zoomDial.open);assert(zoomButton.focused);
+zoomButton.onclick();zoomButton.onpointerenter();element('#log-toggle').onclick();
+assert(!zoomDial.open,'Opening compile logs also hides the zoom dial.');
+const hiddenZoom={deltaY:-120,preventDefault(){throw new Error('Hidden zoom consumed the wheel');},stopPropagation(){}};
+zoomButton.events.wheel(hiddenZoom);assert(!zoomDial.open);
+element('#log-toggle').onclick();
 vm.runInContext("busy=true;synchronize('forward')", context);
 assert.equal(vm.runInContext('pendingForward', context), true);
 vm.runInContext("pendingForward=false;synchronize('backward')", context);

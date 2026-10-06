@@ -25,6 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 from chat import ChatJob, chat_context, chat_models, main_chat_context
 from history import History, difference, word_changes
+from outline import compiled_outline
 
 HISTORY_PDF_CACHE_BYTES = 256 * 1024 * 1024
 HISTORY_PDF_CACHE_DAYS = 30
@@ -32,8 +33,9 @@ HISTORY_PDF_CACHE_DAYS = 30
 
 VENDOR = Path(__file__).with_name('vendor')
 ASSETS = {name: 'text/css' if name.endswith('.css') else 'text/javascript'
-          for name in ('codemirror.js', 'codemirror.css', 'cobalt.css', 'dracula.css', 'monokai.css', 'nord.css', 'stex.js', 'vim.js', 'searchcursor.js', 'matchbrackets.js', 'comment.js', 'dialog.js', 'dialog.css', 'show-hint.js', 'show-hint.css', 'latex-hint.js', 'latex-hover.mjs', 'latex-chat.mjs', 'latex-history.mjs', 'latex-settings.mjs', 'latex-themes.mjs', 'latex-history.css')}
+          for name in ('codemirror.js', 'codemirror.css', 'cobalt.css', 'dracula.css', 'monokai.css', 'nord.css', 'stex.js', 'vim.js', 'searchcursor.js', 'matchbrackets.js', 'comment.js', 'dialog.js', 'dialog.css', 'show-hint.js', 'show-hint.css', 'latex-hint.js', 'latex-hover.mjs', 'latex-chat.mjs', 'latex-history.mjs', 'latex-settings.mjs', 'latex-locales.mjs', 'latex-themes.mjs', 'latex-history.css')}
 ASSETS.update({'history-tabs.mjs':'text/javascript','history-tabs.css':'text/css','latex-native-annotations.mjs':'text/javascript','latex-pdf-analysis.mjs':'text/javascript'})
+ASSETS.update({'latex-outline.mjs':'text/javascript','latex-outline.css':'text/css','latex-zoom.mjs':'text/javascript','latex-zoom.css':'text/css'})
 ASSETS.update({name + '.css':'text/css' for name in ('eclipse', 'idea', 'neo', 'base16-light', 'solarized', 'material-darker', 'material-palenight', 'ayu-dark', 'gruvbox-dark')})
 ASSETS.update({file.relative_to(VENDOR).as_posix(): {
     '.mjs': 'text/javascript', '.css': 'text/css', '.wasm': 'application/wasm',
@@ -43,7 +45,8 @@ ASSETS.update({file.relative_to(VENDOR).as_posix(): {
 
 
 PAGE = r'''<!doctype html>
-<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<link rel="modulepreload" href="/vendor/latex-locales.mjs">
 <title>LaTeX Codex</title>
 <link rel="stylesheet" href="/vendor/codemirror.css"><link rel="stylesheet" href="/vendor/dialog.css"><link rel="stylesheet" href="/vendor/cobalt.css">
 <link rel="stylesheet" href="/vendor/history-tabs.css">
@@ -51,6 +54,8 @@ PAGE = r'''<!doctype html>
 <link rel="stylesheet" href="/vendor/eclipse.css"><link rel="stylesheet" href="/vendor/idea.css"><link rel="stylesheet" href="/vendor/neo.css"><link rel="stylesheet" href="/vendor/base16-light.css"><link rel="stylesheet" href="/vendor/solarized.css"><link rel="stylesheet" href="/vendor/material-darker.css"><link rel="stylesheet" href="/vendor/material-palenight.css"><link rel="stylesheet" href="/vendor/ayu-dark.css"><link rel="stylesheet" href="/vendor/gruvbox-dark.css">
 <link rel="stylesheet" href="/vendor/show-hint.css"><link rel="stylesheet" href="/vendor/latex-history.css">
 <link rel="stylesheet" href="/vendor/pdfjs/web/pdf_viewer.css">
+<link rel="stylesheet" href="/vendor/latex-outline.css">
+<link rel="stylesheet" href="/vendor/latex-zoom.css">
 <link rel="stylesheet" href="/vendor/katex/katex.min.css">
 <style>
 :root{--quick-accent:#ff9d00;color-scheme:dark;--environment-command:#fff44f;--bg:#002240;--panel:#00172b;--border:#35516d;--text:#e4edf6;--muted:#93aeca;--math:#a5ff90;--operator:#ff80e1;--reference:#ff9d00;--command:#9effff;--environment:#c3a6ff;--number:#ffee80}
@@ -75,7 +80,7 @@ main{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 6px minm
 .sync-rail{position:relative;background:var(--panel)}#splitter{position:absolute;inset:0;cursor:col-resize;touch-action:none;z-index:2}#splitter::before{content:'';position:absolute;inset:0 -3px}#splitter:hover,#splitter:focus-visible,main.resizing #splitter{background:var(--command)}main.resizing,main.resizing *{cursor:col-resize!important;user-select:none!important}#splitter:focus-visible{outline:2px solid var(--command)}#forward{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:3;padding:3px 0;width:22px;font-size:18px}
 main>section{min-width:0;min-height:0;display:flex;flex-direction:column;background:var(--bg)}label,.caption{padding:9px 14px;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #filename[hidden]{display:none}
-#source-files{display:flex;align-items:center;gap:8px;padding:5px 10px;min-width:0;font-size:12px;color:var(--muted)}#source-file{flex:1;min-width:0;padding:3px 6px;font-size:12px}#project-main{max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#project-dialog{width:min(600px,calc(100vw - 32px));border:1px solid var(--border);border-radius:12px;background:var(--panel);color:var(--text);padding:20px}#project-dialog::backdrop{background:#0006}#project-dialog label{display:block;padding:10px 0 4px;color:var(--text)}#project-dialog input{width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font:inherit}#project-dialog p{color:var(--muted);line-height:1.6}#project-error{color:#ff6262!important}
+#source-files{display:flex;align-items:center;gap:8px;padding:5px 10px;min-width:0;font-size:12px;color:var(--muted)}#source-file{min-width:0;max-width:100%;padding:3px 0;border:0;border-radius:3px;background:transparent;font-size:12px;font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#source-file.is-main{font-weight:700}#source-file:hover{color:var(--command)}#project-dialog{width:min(600px,calc(100vw - 32px));border:1px solid var(--border);border-radius:12px;background:var(--panel);color:var(--text);padding:20px}#project-dialog::backdrop{background:#0006}#project-dialog label{display:block;padding:10px 0 4px;color:var(--text)}#project-dialog input{width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font:inherit}#project-dialog p{color:var(--muted);line-height:1.6}#project-error{color:#ff6262!important}
 #status,.native-annotation-feedback{animation:status-fade 4s ease forwards}
 @keyframes status-fade{0%,75%{opacity:1}100%{opacity:0}}
 @media(prefers-reduced-motion:reduce){#status,.native-annotation-feedback{animation-timing-function:step-end}}
@@ -88,7 +93,7 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 #compile{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-width:110px;padding:3px 10px;font-size:13px;background:#15803d;border-color:#22c55e;color:#fff;font-weight:600}#compile:hover:not(:disabled){background:#166534}#compile[aria-busy=true]{opacity:1;cursor:wait}
 #compile::before{content:'';display:none;width:14px;height:14px;border:2px solid #ffffff55;border-top-color:#fff;border-radius:50%;animation:compile-spin .8s linear infinite}#compile[aria-busy=true]::before{display:block}.compile-busy,#compile[aria-busy=true] .compile-idle{display:none}#compile[aria-busy=true] .compile-busy{display:inline}
 @keyframes compile-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){#compile::before{animation:none}}
-#log-toggle{margin-right:auto;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:4px}#log-toggle[aria-pressed=true]{background:var(--border);color:var(--command)}.pdf-toolbar[data-log-view=true] :is(#pan-mode,#pan-hint,#zoom-out,#zoom-fit,#zoom-in){display:none}
+#log-toggle{margin-right:auto;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:4px}#log-toggle[aria-pressed=true]{background:var(--border);color:var(--command)}.pdf-toolbar[data-log-view=true] :is(#pan-mode,#pan-hint,#zoom-fit){display:none}
 .preview-shell{position:relative;flex:1;min-height:0}#preview{position:absolute;inset:0;overflow:auto;background:var(--panel)}
 #preview.hand-tool{cursor:grab;user-select:none}#preview.hand-tool .textLayer{pointer-events:none}#preview.dragging{cursor:grabbing}
 .CodeMirror{flex:1;min-height:0;height:100%;border-top:1px solid var(--border);font:14px/1.65 Consolas,monospace}.CodeMirror.CodeMirror{background:var(--bg);color:var(--text);line-height:1.65}.CodeMirror .CodeMirror-gutters{background:var(--bg);border-right-color:var(--border)}.CodeMirror .CodeMirror-cursor{border-left:1px solid var(--text)}.CodeMirror-lines{padding:12px 0}.CodeMirror-focused{outline:2px solid var(--border);outline-offset:-2px}
@@ -109,7 +114,7 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 #chat-panel{position:absolute;right:0;top:0;bottom:0;z-index:20;width:min(460px,48%);display:flex;flex-direction:column;background:var(--panel);border-left:1px solid var(--border);box-shadow:-8px 0 24px #0004}
 #chat-panel[hidden],#chat-panel [hidden]{display:none}#chat-panel .chat-bar{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border)}#chat-panel .chat-bar strong{flex:1;font-size:14px}#chat-panel button{font-size:12px;padding:5px 9px}
 #chat-context{display:block;margin-top:6px;color:var(--muted)}
-#settings-menu{max-height:calc(100dvh - 64px);overflow:auto}#chat-context-settings{margin-top:8px;padding:8px;border-top:1px solid var(--border);font-size:12px}#chat-context-settings summary{cursor:pointer;color:var(--text)}#chat-context-settings pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0;font:12px/1.5 Consolas,monospace;max-height:140px;overflow:auto}#chat-panel pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0;font:12px/1.5 Consolas,monospace;max-height:140px;overflow:auto}
+#settings-menu{max-height:calc(100dvh - 64px);overflow:auto}#language-help{display:block;padding:0 8px 8px;color:var(--muted);font-size:12px;line-height:1.5}#chat-context-settings{margin-top:8px;padding:8px;border-top:1px solid var(--border);font-size:12px}#chat-context-settings summary{cursor:pointer;color:var(--text)}#chat-context-settings pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0;font:12px/1.5 Consolas,monospace;max-height:140px;overflow:auto}#chat-panel pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0;font:12px/1.5 Consolas,monospace;max-height:140px;overflow:auto}
 #chat-messages{flex:1;min-height:60px;overflow:auto;padding:12px}.chat-message{margin-bottom:14px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}.chat-message b{display:block;font-size:12px;color:var(--command);margin-bottom:4px}
 #chat-status{padding:6px 12px;font-size:12px;color:var(--muted)}#chat-proposal{padding:8px 12px;background:var(--bg);border-top:1px solid var(--border)}#chat-apply,#chat-send{background:#176f49;border-color:#329b72;color:white}
 #chat-form{padding:10px 12px;border-top:1px solid var(--border)}#chat-form label{display:block;padding:0 0 5px}#chat-input{display:block;width:100%;resize:vertical;min-height:70px;max-height:200px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px;font:14px/1.5 system-ui}#chat-form .chat-actions{display:flex;align-items:center;gap:8px;margin-top:8px}#chat-form small{flex:1;color:var(--muted);font-size:11px}.CodeMirror .chat-selection{background:#88c0d030;outline:1px solid #88c0d080}
@@ -131,13 +136,13 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 #annotations-send[hidden]{display:none}
 @media(prefers-reduced-motion:reduce){#annotations-send::before{animation:none}}
 </style>
-<header id="app-toolbar"><button id="file-menu-button" class="icon-button" aria-label="文件" data-i18n-aria-label="文件" title="文件" data-i18n-title="文件" popovertarget="file-menu" aria-expanded="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H5v20h14V7zM14 2v6h5"/></svg></button><button id="native-annotation-open" class="icon-button" disabled aria-pressed="false" aria-label="原生批注选区" data-i18n-aria-label="原生批注选区" title="原生批注选区" data-i18n-title="原生批注选区"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg></button><span id="status" role="status" aria-live="polite">正在打开…</span>
+<header id="app-toolbar"><button id="file-menu-button" class="icon-button" aria-label="文件" data-i18n-aria-label="文件" title="文件" data-i18n-title="文件" popovertarget="file-menu" aria-expanded="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H5v20h14V7zM14 2v6h5"/></svg></button><button id="native-annotation-open" class="icon-button" disabled aria-pressed="false" aria-label="原生批注选区" data-i18n-aria-label="原生批注选区" title="原生批注选区" data-i18n-title="原生批注选区"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg></button><span id="status" role="status" aria-live="polite" data-i18n="正在打开…">正在打开…</span>
 <span id="native-annotation-status" hidden role="status" aria-live="polite"><span data-i18n="按 Esc 返回编辑">按 Esc 返回编辑</span><span class="native-annotation-feedback" data-i18n="已保存批注可在主对话统一发送。" style="margin-left:8px">已保存批注可在主对话统一发送。</span></span>
 <button id="annotations-toggle" hidden popovertarget="annotations-review" aria-expanded="false">批注 · 0</button><button id="annotations-stop" hidden data-i18n="停止">停止</button><button id="annotations-send" hidden disabled aria-busy="false" title="发送全部批注" data-i18n-title="发送全部批注">Send</button>
 <button id="history-open" class="icon-button" disabled><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2.6 7M3 4v7h7M12 7v5l3 2"/></svg><span data-i18n="历史">历史</span></button><button id="settings-menu-button" class="icon-button" popovertarget="settings-menu" aria-label="设置" data-i18n-aria-label="设置" title="设置" data-i18n-title="设置" aria-expanded="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3 1-2h4l1 2 2 1 2-.2 2 3-1 2v3l1 2-2 3-2-.2-2 1-1 3h-4l-1-3-2-1-2 .2-2-3 1-2V9L3 7l2-3 2 .2z" transform="translate(0 1) scale(1 .95)"/><circle cx="12" cy="11" r="3"/></svg></button></header>
 <div id="file-menu" class="toolbar-menu" popover="auto" aria-label="文件" data-i18n-aria-label="文件"><button id="open" data-i18n="打开文件">打开文件</button><button id="project-open" data-i18n="项目设置">项目设置</button><button id="reload" data-i18n="重新读取文件">重新读取文件</button><a href="/pdf" download="document.pdf" data-i18n="下载 PDF">下载 PDF</a></div>
 <dialog id="project-dialog" aria-labelledby="project-title"><h3 id="project-title" data-i18n="项目设置">项目设置</h3><form id="project-form"><label for="project-root" data-i18n="项目根目录">项目根目录</label><input id="project-root" required><label for="project-entry" data-i18n="主编译文件">主编译文件</label><input id="project-entry" required placeholder="main.tex"><p data-i18n="选择包含主文件和附录的文件夹。主编译文件可填写相对路径；切换源码始终编译此文件。">选择包含主文件和附录的文件夹。主编译文件可填写相对路径；切换源码始终编译此文件。</p><p id="project-error" role="alert"></p><div class="history-dialog-actions"><button id="project-cancel" type="button" data-i18n="取消">取消</button><button id="project-apply" type="submit" data-i18n="应用">应用</button></div></form></dialog>
-<div id="settings-menu" class="toolbar-menu" popover="auto" aria-label="设置" data-i18n-aria-label="设置"><label for="language"><span data-i18n="语言">语言</span><select id="language" aria-label="语言" data-i18n-aria-label="语言"><option value="system" data-i18n="跟随系统">跟随系统</option><option value="zh-CN" data-i18n="简体中文">简体中文</option><option value="en">English</option></select></label><label for="editor-mode"><span data-i18n="编辑模式">编辑模式</span><select id="editor-mode" aria-label="编辑模式" data-i18n-aria-label="编辑模式"><option value="vim">Vim</option><option value="default" data-i18n="普通编辑">普通编辑</option></select></label><div class="theme-setting"><div class="theme-setting-heading"><label for="theme" data-i18n="配色">配色</label><button id="theme-customize" class="icon-button" aria-label="截图生成主题" data-i18n-aria-label="截图生成主题" title="截图生成主题" data-i18n-title="截图生成主题"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3 1-2h4l1 2 2 1 2-.2 2 3-1 2v3l1 2-2 3-2-.2-2 1-1 3h-4l-1-3-2-1-2 .2-2-3 1-2V9L3 7l2-3 2 .2z" transform="translate(0 1) scale(1 .95)"/><circle cx="12" cy="11" r="3"/></svg></button></div><select id="theme" aria-label="配色" data-i18n-aria-label="配色"><optgroup label="浅色" data-i18n-label="浅色"><option value="eclipse" data-i18n="Eclipse · 白底">Eclipse · 白底</option><option value="idea" data-i18n="IDEA · 白底">IDEA · 白底</option><option value="neo" data-i18n="Neo · 简洁白">Neo · 简洁白</option><option value="base16-light" data-i18n="Base16 · 浅灰">Base16 · 浅灰</option><option value="solarized-light" data-i18n="Solarized · 暖白">Solarized · 暖白</option></optgroup><optgroup label="深色" data-i18n-label="深色"><option value="cobalt" data-i18n="Cobalt · 深蓝">Cobalt · 深蓝</option><option value="dracula" data-i18n="Dracula · 紫灰">Dracula · 紫灰</option><option value="monokai" data-i18n="Monokai · 炭黑">Monokai · 炭黑</option><option value="nord" data-i18n="Nord · 冷灰">Nord · 冷灰</option><option value="material-darker" data-i18n="Material · 深灰">Material · 深灰</option><option value="material-palenight" data-i18n="Palenight · 蓝紫">Palenight · 蓝紫</option><option value="ayu-dark" data-i18n="Ayu · 深夜">Ayu · 深夜</option><option value="gruvbox-dark" data-i18n="Gruvbox · 暖黑">Gruvbox · 暖黑</option><option value="solarized-dark" data-i18n="Solarized · 深青">Solarized · 深青</option></optgroup></select></div><label for="chat-color"><span data-i18n="修改标记颜色">修改标记颜色</span><select id="chat-color" aria-label="修改标记颜色" data-i18n-aria-label="修改标记颜色"><option value="" data-i18n="无">无</option><option value="blue" data-i18n="蓝色">蓝色</option><option value="red" data-i18n="红色">红色</option><option value="teal" data-i18n="青色">青色</option><option value="magenta" data-i18n="洋红">洋红</option><option value="orange" data-i18n="橙色">橙色</option><option value="violet" data-i18n="紫色">紫色</option></select></label><label for="revision-color"><span data-i18n="当前用户修订色">当前用户修订色</span><select id="revision-color" aria-label="当前用户修订色" data-i18n-aria-label="当前用户修订色"><option value="orange" data-i18n="橙色">橙色</option><option value="blue" data-i18n="蓝色">蓝色</option><option value="purple" data-i18n="紫色">紫色</option><option value="green" data-i18n="绿色">绿色</option><option value="red" data-i18n="红色">红色</option></select></label><button id="chat-view" aria-controls="chat-panel" data-i18n="查看对话">查看对话</button><details id="chat-context-settings"><summary data-i18n="上下文记录">上下文记录</summary><pre id="chat-selection"></pre><button id="chat-use-selection" data-i18n="使用当前选区">使用当前选区</button><small id="chat-context" data-i18n="携带论文全文；正在读取主对话…">携带论文全文；正在读取主对话…</small></details></div>
+<div id="settings-menu" class="toolbar-menu" popover="auto" aria-label="设置" data-i18n-aria-label="设置"><label for="language"><span data-i18n="语言">语言</span><select id="language" aria-label="语言" data-i18n-aria-label="语言"><option value="system" data-i18n="跟随系统">跟随系统</option><option value="en">English</option><option value="zh-CN">简体中文</option><option value="ja">日本語</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="es">Español</option></select></label><small id="language-help" data-i18n="跟随系统语言；无法识别时使用英文。可在齿轮设置中手动切换。">跟随系统语言；无法识别时使用英文。可在齿轮设置中手动切换。</small><label for="editor-mode"><span data-i18n="编辑模式">编辑模式</span><select id="editor-mode" aria-label="编辑模式" data-i18n-aria-label="编辑模式"><option value="vim">Vim</option><option value="default" data-i18n="普通编辑">普通编辑</option></select></label><label for="outline-style"><span data-i18n="章节目录样式">章节目录样式</span><select id="outline-style" aria-label="章节目录样式" data-i18n-aria-label="章节目录样式"><option value="wheel" data-i18n="轮盘">轮盘</option><option value="cards" data-i18n="章节卡片 + 小节轮盘">章节卡片 + 小节轮盘</option></select></label><div class="theme-setting"><div class="theme-setting-heading"><label for="theme" data-i18n="配色">配色</label><button id="theme-customize" class="icon-button" aria-label="截图生成主题" data-i18n-aria-label="截图生成主题" title="截图生成主题" data-i18n-title="截图生成主题"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3 1-2h4l1 2 2 1 2-.2 2 3-1 2v3l1 2-2 3-2-.2-2 1-1 3h-4l-1-3-2-1-2 .2-2-3 1-2V9L3 7l2-3 2 .2z" transform="translate(0 1) scale(1 .95)"/><circle cx="12" cy="11" r="3"/></svg></button></div><select id="theme" aria-label="配色" data-i18n-aria-label="配色"><optgroup label="浅色" data-i18n-label="浅色"><option value="eclipse" data-i18n="Eclipse · 白底">Eclipse · 白底</option><option value="idea" data-i18n="IDEA · 白底">IDEA · 白底</option><option value="neo" data-i18n="Neo · 简洁白">Neo · 简洁白</option><option value="base16-light" data-i18n="Base16 · 浅灰">Base16 · 浅灰</option><option value="solarized-light" data-i18n="Solarized · 暖白">Solarized · 暖白</option></optgroup><optgroup label="深色" data-i18n-label="深色"><option value="cobalt" data-i18n="Cobalt · 深蓝">Cobalt · 深蓝</option><option value="dracula" data-i18n="Dracula · 紫灰">Dracula · 紫灰</option><option value="monokai" data-i18n="Monokai · 炭黑">Monokai · 炭黑</option><option value="nord" data-i18n="Nord · 冷灰">Nord · 冷灰</option><option value="material-darker" data-i18n="Material · 深灰">Material · 深灰</option><option value="material-palenight" data-i18n="Palenight · 蓝紫">Palenight · 蓝紫</option><option value="ayu-dark" data-i18n="Ayu · 深夜">Ayu · 深夜</option><option value="gruvbox-dark" data-i18n="Gruvbox · 暖黑">Gruvbox · 暖黑</option><option value="solarized-dark" data-i18n="Solarized · 深青">Solarized · 深青</option></optgroup></select></div><label for="chat-color"><span data-i18n="修改标记颜色">修改标记颜色</span><select id="chat-color" aria-label="修改标记颜色" data-i18n-aria-label="修改标记颜色"><option value="" data-i18n="无">无</option><option value="blue" data-i18n="蓝色">蓝色</option><option value="red" data-i18n="红色">红色</option><option value="teal" data-i18n="青色">青色</option><option value="magenta" data-i18n="洋红">洋红</option><option value="orange" data-i18n="橙色">橙色</option><option value="violet" data-i18n="紫色">紫色</option></select></label><label for="revision-color"><span data-i18n="当前用户修订色">当前用户修订色</span><select id="revision-color" aria-label="当前用户修订色" data-i18n-aria-label="当前用户修订色"><option value="orange" data-i18n="橙色">橙色</option><option value="blue" data-i18n="蓝色">蓝色</option><option value="purple" data-i18n="紫色">紫色</option><option value="green" data-i18n="绿色">绿色</option><option value="red" data-i18n="红色">红色</option></select></label><button id="chat-view" aria-controls="chat-panel" data-i18n="查看对话">查看对话</button><details id="chat-context-settings"><summary data-i18n="上下文记录">上下文记录</summary><pre id="chat-selection"></pre><button id="chat-use-selection" data-i18n="使用当前选区">使用当前选区</button><small id="chat-context" data-i18n="携带论文全文；正在读取主对话…">携带论文全文；正在读取主对话…</small></details></div>
 <dialog id="theme-dialog" aria-labelledby="theme-dialog-title">
 <div class="theme-dialog-heading"><strong id="theme-dialog-title" data-i18n="截图生成主题">截图生成主题</strong><button id="theme-close" aria-label="关闭" data-i18n-aria-label="关闭">×</button></div>
 <a href="https://21st.dev/community/themes" target="_blank" rel="noopener noreferrer">21st.dev / Community Themes ↗</a>
@@ -153,9 +158,9 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 <span style="color:var(--environment-command)">\end</span>{<span style="color:var(--environment)">equation</span>}
 <span style="color:var(--command)">\cite</span>{<span style="color:var(--reference)">example2026</span>}</pre><div class="theme-sample-capsule"><span data-i18n="询问 Codex…">询问 Codex…</span><span class="theme-sample-send" aria-hidden="true">↑</span></div></div>
 </div><div class="theme-dialog-actions"><button id="theme-save" disabled data-i18n="保存并使用">保存并使用</button></div></dialog>
-<main><section><div id="source-files"><select id="source-file" disabled aria-label="项目源码" data-i18n-aria-label="项目源码"></select><span id="project-main"></span></div><label id="filename" hidden for="source" data-i18n="LaTeX 源码">LaTeX 源码</label><textarea id="source" spellcheck="false" disabled aria-label="LaTeX 源码" data-i18n-aria-label="LaTeX 源码"></textarea></section>
+<main><section><div id="source-files"><button id="source-file" disabled aria-label="项目源码" data-i18n-aria-label="项目源码" aria-expanded="false" aria-controls="source-file-wheel"></button><div id="source-file-wheel" popover="auto"></div></div><label id="filename" hidden for="source" data-i18n="LaTeX 源码">LaTeX 源码</label><textarea id="source" spellcheck="false" disabled aria-label="LaTeX 源码" data-i18n-aria-label="LaTeX 源码"></textarea></section>
 <div class="sync-rail"><div id="splitter" role="separator" tabindex="0" aria-label="调整 LaTeX 和 PDF 宽度" data-i18n-aria-label="调整 LaTeX 和 PDF 宽度" aria-orientation="vertical" aria-valuemin="15" aria-valuemax="85" aria-valuenow="50" title="拖动调整宽度 · 双击恢复各半" data-i18n-title="拖动调整宽度 · 双击恢复各半"></div><button id="forward" disabled aria-label="定位光标到 PDF" data-i18n-aria-label="定位光标到 PDF" title="跳到光标对应的 PDF 位置" data-i18n-title="跳到光标对应的 PDF 位置">→</button></div>
-<section><div class="pdf-toolbar"><div class="compile-group"><button id="compile" aria-busy="false" disabled><span class="compile-idle" data-i18n="保存并编译">保存并编译</span><span class="compile-busy" data-i18n="正在编译…">正在编译…</span></button><button id="compile-menu-button" popovertarget="compile-menu" aria-label="编译选项" data-i18n-aria-label="编译选项" title="编译选项" data-i18n-title="编译选项" aria-expanded="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></button></div><div id="compile-menu" class="toolbar-menu" popover="auto" aria-label="编译选项" data-i18n-aria-label="编译选项"><label for="auto-compile"><span data-i18n="自动编译">自动编译</span><input id="auto-compile" type="checkbox" checked aria-label="自动编译" data-i18n-aria-label="自动编译"></label></div><button id="log-toggle" aria-label="编译日志" data-i18n-aria-label="编译日志" title="编译日志" data-i18n-title="编译日志" aria-pressed="false" aria-controls="log"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 2H5v20h14V7zM14 2v6h5M8 12h8M8 16h8"/></svg></button><span id="pan-hint" role="status" hidden data-i18n="按住空格拖动 PDF">按住空格拖动 PDF</span><button id="pan-mode" aria-pressed="true" title="切换拖动页面与选择文字" data-i18n-title="切换拖动页面与选择文字" ><svg class="toolbar-icon pan-hand-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 11V7a2 2 0 0 0-4 0v3M14 10V5a2 2 0 0 0-4 0v6M10 10.5V7a2 2 0 0 0-4 0v5l-1-1a2 2 0 0 0-3 2l4 6a6 6 0 0 0 5 3h3a6 6 0 0 0 6-6v-3a2 2 0 0 0-4 0v1"/></svg><svg class="toolbar-icon pan-select-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m4 3 15 10-7 1-4 7Z"/></svg><span id="pan-label" data-i18n="拖动">拖动</span></button><button id="zoom-out" aria-label="缩小 PDF" data-i18n-aria-label="缩小 PDF" title="缩小 PDF" data-i18n-title="缩小 PDF">−</button><button id="zoom-fit" aria-label="适合宽度" data-i18n-aria-label="适合宽度" title="恢复适合宽度" data-i18n-title="恢复适合宽度">100%</button><button id="zoom-in" aria-label="放大 PDF" data-i18n-aria-label="放大 PDF" title="放大 PDF" data-i18n-title="放大 PDF">+</button></div><div class="preview-shell"><div id="preview" class="hand-tool" role="region" aria-label="编译后的 PDF" data-i18n-aria-label="编译后的 PDF" tabindex="0"><div id="pdf-viewer" class="pdfViewer"></div></div><pre id="log" hidden tabindex="0" role="region" aria-label="编译日志" data-i18n-aria-label="编译日志"></pre></div></section></main>
+<section><div class="pdf-toolbar"><div class="compile-group"><button id="compile" aria-busy="false" disabled><span class="compile-idle" data-i18n="保存并编译">保存并编译</span><span class="compile-busy" data-i18n="正在编译…">正在编译…</span></button><button id="compile-menu-button" popovertarget="compile-menu" aria-label="编译选项" data-i18n-aria-label="编译选项" title="编译选项" data-i18n-title="编译选项" aria-expanded="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></button></div><div id="compile-menu" class="toolbar-menu" popover="auto" aria-label="编译选项" data-i18n-aria-label="编译选项"><label for="auto-compile"><span data-i18n="自动编译">自动编译</span><input id="auto-compile" type="checkbox" checked aria-label="自动编译" data-i18n-aria-label="自动编译"></label></div><button id="log-toggle" aria-label="编译日志" data-i18n-aria-label="编译日志" title="编译日志" data-i18n-title="编译日志" aria-pressed="false" aria-controls="log"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 2H5v20h14V7zM14 2v6h5M8 12h8M8 16h8"/></svg></button><span id="pan-hint" role="status" hidden data-i18n="按住空格拖动 PDF">按住空格拖动 PDF</span><button id="pan-mode" aria-pressed="true" title="切换拖动页面与选择文字" data-i18n-title="切换拖动页面与选择文字" ><svg class="toolbar-icon pan-hand-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 11V7a2 2 0 0 0-4 0v3M14 10V5a2 2 0 0 0-4 0v6M10 10.5V7a2 2 0 0 0-4 0v5l-1-1a2 2 0 0 0-3 2l4 6a6 6 0 0 0 5 3h3a6 6 0 0 0 6-6v-3a2 2 0 0 0-4 0v1"/></svg><svg class="toolbar-icon pan-select-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m4 3 15 10-7 1-4 7Z"/></svg><span id="pan-label" data-i18n="拖动">拖动</span></button><button id="zoom-fit" aria-label="PDF 缩放" aria-expanded="false" aria-controls="pdf-zoom-dial">100%</button><div id="pdf-zoom-dial" popover="manual" role="slider" tabindex="0" aria-label="PDF 缩放" aria-orientation="horizontal" aria-valuemin="30" aria-valuemax="250" aria-valuenow="100" aria-controls="preview"><div class="pdf-zoom-face"><svg class="pdf-zoom-arc" viewBox="0 0 240 240" aria-hidden="true"><path d="M 50 0 A 190 190 0 0 0 240 190"/></svg><div class="pdf-zoom-rotor" aria-hidden="true"></div><span class="pdf-zoom-indicator" aria-hidden="true"></span></div></div></div><div class="preview-shell"><div id="preview" class="hand-tool" role="region" aria-label="编译后的 PDF" data-i18n-aria-label="编译后的 PDF" tabindex="0"><div id="pdf-viewer" class="pdfViewer"></div></div><nav id="pdf-outline" aria-label="章节目录" data-i18n-aria-label="章节目录" hidden></nav><pre id="log" hidden tabindex="0" role="region" aria-label="编译日志" data-i18n-aria-label="编译日志"></pre></div></section></main>
 <aside id="chat-panel" role="dialog" aria-label="项目侧边聊天" data-i18n-aria-label="项目侧边聊天" hidden>
 <div class="chat-bar"><strong data-i18n="Codex · 项目对话">Codex · 项目对话</strong><button id="chat-end" data-i18n="新对话">新对话</button><button id="chat-close" aria-label="收起项目对话" data-i18n-aria-label="收起项目对话">×</button></div>
 <div id="chat-messages" role="log" aria-label="对话记录" data-i18n-aria-label="对话记录" aria-live="polite"></div>
@@ -182,13 +187,15 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 <script type="module">
 import * as pdfjsLib from '/vendor/pdfjs/build/pdf.mjs';
 import {pdfPageBoxes} from '/vendor/latex-pdf-analysis.mjs';
+import {attachPdfOutline} from '/vendor/latex-outline.mjs';
+import {attachPdfZoom} from '/vendor/latex-zoom.mjs';
 import {EventBus, PDFViewer, PDFLinkService} from '/vendor/pdfjs/web/pdf_viewer.mjs';
 import katex from '/vendor/katex/katex.mjs';
 import {attachMathHover,findMathRanges} from '/vendor/latex-hover.mjs';
 import {attachSelectionChat} from '/vendor/latex-chat.mjs';
 import {attachNativeAnnotations} from '/vendor/latex-native-annotations.mjs';
 import {attachHistory} from '/vendor/latex-history.mjs';
-import {mountHistoryTabs} from '/vendor/history-tabs.mjs';
+import {mountHistoryTabs,mountSourceWheel} from '/vendor/history-tabs.mjs';
 import {t, setText, initSettings} from '/vendor/latex-settings.mjs';
 import {initScreenshotThemes, applyCustomTheme} from '/vendor/latex-themes.mjs';
 initSettings();
@@ -202,6 +209,7 @@ new MutationObserver(()=>{
 setText(status,'正在打开…');
 const openButton=document.querySelector('#open'),compileButton=document.querySelector('#compile'),forwardButton=document.querySelector('#forward'),preview=document.querySelector('#preview');
 function showCompileLog(show){
+  if(show)pdfZoomControl.close();
   log.hidden=!show;preview.style.visibility=show?'hidden':'';preview.inert=show;
   preview.setAttribute('aria-hidden',String(show));
   document.querySelector('#log-toggle').setAttribute('aria-pressed',String(show));
@@ -213,6 +221,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc='/vendor/pdfjs/build/pdf.worker.mjs';
 const pdfEvents=new EventBus(),pdfLinks=new PDFLinkService({eventBus:pdfEvents,externalLinkTarget:2});
 const pdfViewer=new PDFViewer({container:preview,viewer:document.querySelector('#pdf-viewer'),eventBus:pdfEvents,linkService:pdfLinks,annotationEditorMode:-1,removePageBorders:true,imageResourcesPath:'/vendor/pdfjs/web/images/'});
 pdfLinks.setViewer(pdfViewer);
+const pdfOutline=attachPdfOutline({container:document.querySelector('#pdf-outline'),preview,viewer:pdfViewer,eventBus:pdfEvents,t,style:document.querySelector('#outline-style').value});
+window.addEventListener('latex-outline-change',()=>pdfOutline.setStyle(document.querySelector('#outline-style').value));
 let pdfTask=null,pdfBuild='',panMode=true,panHintTimer;
 document.querySelector('#pan-mode').onclick=()=>{
   endSpacePan();panMode=!panMode;preview.classList.toggle('hand-tool',panMode);
@@ -312,24 +322,25 @@ function restorePreviewPosition(position){
   preview.scrollLeft=position.x*preview.scrollWidth;
   pdfViewer.update();
 }
-function setPdfZoom(value,position=previewPosition()){
-  pdfZoom=Math.max(75,Math.min(250,value));
-  if(pdfViewer.pagesCount){pdfViewer.currentScaleValue='page-width';pdfViewer.currentScale*=pdfZoom/100;restorePreviewPosition(position);}
+function setPdfZoom(value,position=previewPosition(),fit=false){
+  const previousZoom=pdfZoom;
+  pdfZoom=Math.max(30,Math.min(250,value));
+  if(pdfViewer.pagesCount){
+    if(fit){pdfViewer.currentScaleValue='page-width';pdfViewer.currentScale*=pdfZoom/100;}
+    else pdfViewer.currentScale*=pdfZoom/previousZoom;
+    restorePreviewPosition(position);
+  }
   preview.querySelectorAll('.sync-highlight').forEach(mark=>mark.remove());
-  document.querySelector('#zoom-fit').textContent=pdfZoom+'%';
-  document.querySelector('#zoom-out').disabled=pdfZoom===75;
-  document.querySelector('#zoom-in').disabled=pdfZoom===250;
+  pdfZoomControl.update();
 }
 let previewWidth=0;
 function resizePdfPreview(position){
   if(splitDrag||preview.clientWidth===previewWidth)return;
   previewWidth=preview.clientWidth;
-  setPdfZoom(pdfZoom,position);
+  setPdfZoom(pdfZoom,position,true);
 }
 new ResizeObserver(()=>resizePdfPreview()).observe(preview);
-document.querySelector('#zoom-out').onclick=()=>setPdfZoom(pdfZoom-25);
-document.querySelector('#zoom-in').onclick=()=>setPdfZoom(pdfZoom+25);
-document.querySelector('#zoom-fit').onclick=()=>setPdfZoom(100);
+const pdfZoomControl=attachPdfZoom({button:document.querySelector('#zoom-fit'),dial:document.querySelector('#pdf-zoom-dial'),preview,getZoom:()=>pdfZoom,setZoom:setPdfZoom,t});
 preview.addEventListener('wheel',event=>{
   if(!event.ctrlKey||!event.deltaY||preview.inert||!pdfViewer.pagesCount)return;
   event.preventDefault();
@@ -354,6 +365,7 @@ function setEditorMode(){
 editorMode.onchange=setEditorMode;setEditorMode();
 let version='',saved='',busy=false,loading=false,timer,conflict=false,pdfVersion='',syncBusy=false,pendingForward=false,compiledLabels={},compiledCitations={},projectRoot='',mainFile='',projectVersion='';
 const sourceFile=document.querySelector('#source-file'),projectDialog=document.querySelector('#project-dialog');
+const sourcePicker=mountSourceWheel({button:sourceFile,popup:document.querySelector('#source-file-wheel'),translate:t,onSelect:switchSource});
 const autoCompile=document.querySelector('#auto-compile');
 autoCompile.checked=true;
 try{autoCompile.checked=localStorage.getItem('latex-codex-auto-compile')!=='off';}catch(e){}
@@ -378,7 +390,7 @@ function showCompileError(error){
   editor.setCursor(cursor);editor.focus();editor.scrollIntoView(cursor,editor.getScrollInfo().clientHeight/2);
   setText(status,'编译失败 · 第 {line} 行：{message}',error);
 }
-function updateSyncControls(){forwardButton.disabled=busy||syncBusy||editor.getOption('readOnly');compileButton.disabled=forwardButton.disabled;openButton.disabled=busy||syncBusy;sourceFile.disabled=!!forwardButton.disabled;document.querySelector('#project-open').disabled=!!forwardButton.disabled;document.querySelector('#history-open').disabled=!!forwardButton.disabled;}
+function updateSyncControls(){forwardButton.disabled=busy||syncBusy||editor.getOption('readOnly');compileButton.disabled=forwardButton.disabled;openButton.disabled=busy||syncBusy;sourcePicker.setDisabled(!!forwardButton.disabled);document.querySelector('#project-open').disabled=!!forwardButton.disabled;document.querySelector('#history-open').disabled=!!forwardButton.disabled;}
 async function request(url,options){
   const retry=!options||!options.method||options.method==='GET'||(url==='/chat'&&options.method==='POST'&&/^[0-9a-f]{32}$/.test(JSON.parse(options.body).request_id));
   for(let attempt=0;;attempt++){
@@ -399,21 +411,19 @@ function display(data,preservePdf=false){
   saved=text;version=data.version;pdfVersion=preservePdf&&data.sync&&data.pdf_revision===pdfBuild?version:'';compiledLabels=pdfVersion?data.labels||{}:{};compiledCitations=pdfVersion?data.citations||{}:{};editor.setOption('readOnly',false);conflict=false;updateSyncControls();
   const label=document.querySelector('#filename');label.dataset.name=data.name;label.title=data.path;updateCompileCaption();
   projectRoot=data.project_root||'';mainFile=data.main_file||data.path;projectVersion=data.project_version||'';
-  sourceFile.replaceChildren(...(data.files||[{path:data.path,name:data.name}]).map(file=>{const option=document.createElement('option');option.value=file.path;option.textContent=file.name;return option;}));sourceFile.value=data.path;
-  const caption=document.querySelector('#project-main');setText(caption,'主文件：{name}',{name:mainFile.split(/[\\/]/).pop()});caption.title=projectRoot;
+  sourcePicker.update({files:data.files||[{path:data.path,name:data.name}],path:data.path,mainFile});
   document.querySelector('a[download]').download=mainFile.split(/[\\/]/).pop().replace(/\.tex$/i,'.pdf');
 }
 async function switchSource(path,initialize=true){
   if(path===document.querySelector('#filename').title)return true;
-  if(busy||conflict||selectionChat.busy||selectionChat.hasAnnotations){setText(status,'请先保存修改、处理冲突，并发送或删除批注，再切换源码。');sourceFile.value=document.querySelector('#filename').title;return false;}
+  if(busy||conflict||selectionChat.busy||selectionChat.hasAnnotations){setText(status,'请先保存修改、处理冲突，并发送或删除批注，再切换源码。');return false;}
   if(editor.getValue()!==saved)await compile(false);
   if(conflict||editor.getValue()!==saved)return false;
   clearTimeout(timer);busy=true;editor.setOption('readOnly','nocursor');updateSyncControls();
   try{const data=await request('/source',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,version})});display(data,true);return true;}
-  catch(e){setText(status,'打开失败：{message}',{message:e.message});sourceFile.value=document.querySelector('#filename').title;return false;}
+  catch(e){setText(status,'打开失败：{message}',{message:e.message});return false;}
   finally{busy=false;editor.setOption('readOnly',false);updateSyncControls();if(initialize&&!pdfVersion&&!conflict)await compile();}
 }
-sourceFile.onchange=()=>switchSource(sourceFile.value);
 document.querySelector('#project-open').onclick=()=>{document.querySelector('#file-menu').hidePopover();document.querySelector('#project-root').value=projectRoot;document.querySelector('#project-entry').value=mainFile;document.querySelector('#project-error').textContent='';projectDialog.showModal();};
 document.querySelector('#project-cancel').onclick=()=>projectDialog.close();
 document.querySelector('#project-form').onsubmit=async event=>{
@@ -427,7 +437,7 @@ document.querySelector('#project-form').onsubmit=async event=>{
   finally{busy=false;editor.setOption('readOnly',false);updateSyncControls();document.querySelector('#project-apply').disabled=false;}
   if(!projectDialog.open)await compile();
 };
-async function clearPreview(){pdfViewer.setDocument(null);pdfLinks.setDocument(null);if(pdfTask)await pdfTask.destroy();pdfTask=null;pdfBuild='';log.textContent='';}
+async function clearPreview(){pdfOutline.clear();pdfViewer.setDocument(null);pdfLinks.setDocument(null);if(pdfTask)await pdfTask.destroy();pdfTask=null;pdfBuild='';log.textContent='';}
 async function openFile(){
   if(busy||syncBusy)return;
   if((editor.getValue()!==saved||selectionChat.hasAnnotations)&&!confirm(t(selectionChat.hasAnnotations?'打开其他文件会放弃未发送批注和未保存修改。继续？':'打开其他文件会放弃尚未保存的修改。继续？')))return;
@@ -489,7 +499,7 @@ async function refreshPreview(data){
     const pdf=await task.promise;await pdf.getPage(1);
     pdfLinks.setDocument(pdf);pdfViewer.setDocument(pdf);
     await pdfViewer.firstPagePromise;
-    if(oldDocument)pdfViewer.currentScale=scale;else setPdfZoom(pdfZoom);
+    if(oldDocument)pdfViewer.currentScale=scale;else setPdfZoom(pdfZoom,undefined,true);
     if(position){
       const target=Math.min(position.page,pdf.numPages),view=pdfViewer.getPageView(target-1);
       if(!view.pdfPage)view.setPdfPage(await pdf.getPage(target));
@@ -499,6 +509,7 @@ async function refreshPreview(data){
     }
     restorePreviewPosition(position);
     pdfTask=task;pdfBuild=data.pdf_revision;
+    void pdfOutline.load(pdf,data.outline||[]);
   }catch(error){
     pdfLinks.setDocument(oldDocument);pdfViewer.setDocument(oldDocument);
     if(oldDocument){await pdfViewer.firstPagePromise;pdfViewer.currentScale=scale;await pdfViewer.pagesPromise;restorePreviewPosition(position);}
@@ -1447,6 +1458,13 @@ def history_pdf_snapshot(server, path, source):
         if main_file != path:
             main_entry.parent.mkdir(parents=True, exist_ok=True)
             main_entry.write_text(main_source, encoding='utf-8')
+        # Explicit ../ inputs must exist beside the temporary main file on MiKTeX.
+        dependencies = set(project_files(root)) | getattr(server, 'dependencies', set())
+        for dependency in dependencies - {path, main_file}:
+            if dependency.is_file() and dependency.is_relative_to(root):
+                target = overlay / dependency.relative_to(root)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(dependency, target)
         ok, log, _ = compile_tex(main_file, directory.name, main_source, entry=main_entry, project_root=root, directory=main_entry.parent)
         pdf = Path(directory.name) / (main_file.stem + '.pdf')
         if not ok or not pdf.is_file():
@@ -2005,9 +2023,9 @@ def make_server(path, port=0, main_thread=None, project_root=None):
                     if not isinstance(data.get('source'), str) or not isinstance(data.get('version'), str):
                         raise ValueError('Expected source and version strings.')
                     # Preserve even an unsaved editor draft before restoring a snapshot.
-                    state = save_source(path, revision['source'], data['version'], history, 'restore', data['source'])
+                    save_source(path, revision['source'], data['version'], history, 'restore', data['source'])
                     self.server.sync_version = ''
-                    self.reply(200, state)
+                    self.reply(200, project_state())
                     return
                 if self.path == '/chat/cancel':
                     if self.server.chat and data.get('id') == self.server.chat.id:
@@ -2155,7 +2173,7 @@ def make_server(path, port=0, main_thread=None, project_root=None):
                             break
                 self.server.labels = compiled_labels(pdf.with_suffix('.aux')) if ok else {}
                 self.server.citations = compiled_citations(pdf.with_suffix('.aux')) if ok else {}
-                self.reply(200, {'ok': ok, 'log': log[-24000:], 'diagnostic': diagnostic, 'version': version, 'project_version': self.server.project_version, 'pdf_revision': self.server.pdf_revision, 'engine': engine_name, 'sync': bool(self.server.sync_version), 'labels': self.server.labels, 'citations': self.server.citations})
+                self.reply(200, {'ok': ok, 'log': log[-24000:], 'diagnostic': diagnostic, 'version': version, 'project_version': self.server.project_version, 'pdf_revision': self.server.pdf_revision, 'engine': engine_name, 'sync': bool(self.server.sync_version), 'labels': self.server.labels, 'citations': self.server.citations, 'outline': compiled_outline(pdf.with_suffix('.aux')) if ok else []})
             except subprocess.TimeoutExpired:
                 self.reply(500, {'error': '历史版本编译或定位超时，请重试。' if self.path == '/history/pdf' else '定位超时，请重试。'})
             except FileConflict as error:

@@ -155,12 +155,21 @@ with tempfile.TemporaryDirectory(prefix='latex project ') as directory:
         compile_current()
         current = switch(appendix)
         assert current['sync']
+        _, sibling_history = history_pdf_snapshot(server, appendix, before)
+        assert sibling_history['pdf'].is_file(), 'Historical overlays must retain ../ sibling dependencies.'
+        _, main_history = history_pdf_snapshot(server, main, snapshot(main)['source'])
+        assert main_history['pdf'].is_file(), 'Nested main history must compile with sibling inputs.'
         code, point = request('/synctex', {'direction':'forward', 'line':2, 'version':current['version'],
                                          'pdf_revision':server.pdf_revision, 'boxes':boxes})
         assert code == 200, point
         assert request('/project', {'project_root':str(appendix.parent), 'main_file':str(main),
                                    'version':current['version']})[0] == 400
         assert state()['main_file'] == str(main)
+        revision = first_history.record(before, 'open')
+        current = state()
+        code, restored = request('/history/restore', {'id':revision, 'path':str(appendix), 'source':current['source'], 'version':current['version']})
+        assert code == 200 and restored['project_root'] == str(root) and restored['main_file'] == str(main), restored
+        assert restored['path'] == str(appendix) and len(restored['files']) == 5, restored
         print('PASS: project root validation, stale switches, configurable nested main and sibling appendices using relative input paths')
     finally:
         server.shutdown()

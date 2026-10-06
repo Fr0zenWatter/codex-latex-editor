@@ -7,7 +7,7 @@ https://github.com/simple-icons/simple-icons/blob/11.15.0/icons/openai.svg
 The license is retained in simple-icons.LICENSE.txt. Its fill uses currentColor
 to follow the editor theme; it does not load external assets at runtime.
 
-The history pill tabs are a locally bundled React island built from
+The history pill tabs and source-file option wheel are locally bundled React islands built from
 `../../frontend/` with React, Radix Tabs, Framer Motion and Tailwind CSS.
 Exact npm versions and integrity hashes are in the frontend package-lock.json.
 The user-supplied PillMorphTabs design is adapted to the existing three views,

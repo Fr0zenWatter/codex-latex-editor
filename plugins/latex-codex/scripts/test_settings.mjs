@@ -1,6 +1,7 @@
 // Run: node test_settings.mjs (stdlib only).
 import assert from 'node:assert/strict';
-import {initSettings, setText, t} from './vendor/latex-settings.mjs';
+import {english, initSettings, resolveLanguage, setText, t} from './vendor/latex-settings.mjs';
+import {translations} from './vendor/latex-locales.mjs';
 const elements=new Map(), stored=new Map(), properties={}, events=[];
 function element(id) {
   if(!elements.has(id)) elements.set(id,{value:'',dataset:{},attributes:{},style:{},events:{},textContent:'',
@@ -31,6 +32,14 @@ element('revision-color').value='blue';element('revision-color').onchange();
 assert.equal(properties['--revision-color'],'#2563b0');
 assert.equal(stored.get('latex-codex-language'),'en');assert.equal(stored.get('latex-codex-revision-color'),'blue');
 initSettings();assert.equal(element('language').value,'en');assert.equal(element('revision-color').value,'blue');
+assert.equal(element('outline-style').value,'wheel');
+element('outline-style').value='cards';element('outline-style').onchange();
+assert.equal(stored.get('latex-codex-outline-style'),'cards');
+assert(events.includes('latex-outline-change'));
+initSettings();assert.equal(element('outline-style').value,'cards');
+stored.set('latex-codex-outline-style','invalid');initSettings();
+assert.equal(element('outline-style').value,'wheel');
+assert.equal(t('章节卡片 + 小节轮盘'),'Section cards + subsection dial');
 element('file-menu').events.beforetoggle({newState:'open'});
 assert.equal(element('file-menu-button').attributes['aria-expanded'],'true');
 assert.equal(element('file-menu').style.left,'720px');
@@ -42,4 +51,43 @@ assert.equal(element('compile-menu').style.left,'600px');assert.equal(element('c
 element('compile-menu').events.beforetoggle({newState:'closed'});
 assert.equal(element('compile-menu-button').attributes['aria-expanded'],'false');
 assert(events.includes('latex-language-change'));
-console.log('PASS: language switching, dynamic labels, source isolation, persistent revision color and file menu positioning');
+
+// Regional system preferences, English fallback, and manual overrides survive reloads.
+for (const [preferences, expected] of [
+  [['ja-JP'], 'ja'], [['fr-CA'], 'fr'], [['de-AT'], 'de'], [['es-MX'], 'es'],
+  [['zh-TW'], 'zh-CN'], [['EN_us'], 'en'], [['it-IT', 'fr-FR'], 'fr'],
+  [['ko-KR', 'ru-RU'], 'en'], [[], 'en'], [[null, '', 'invalid'], 'en']
+]) assert.equal(resolveLanguage(preferences), expected);
+const placeholders = text => [...text.matchAll(/\{\w+\}/g)].map(match => match[0]).sort();
+for (const message of Object.values(english)) for (const code of ['ja', 'fr', 'de', 'es']) {
+  assert(translations[message]?.[code]?.trim(), `Missing ${code}: ${message}`);
+  assert.deepEqual(placeholders(translations[message][code]), placeholders(message), `${code}: ${message}`);
+}
+for (const [code, history, settings, located] of [
+  ['ja', '履歴', '設定', 'PDF 12 ページに移動しました'],
+  ['fr', 'Historique', 'Paramètres', 'Localisé à la page PDF 12'],
+  ['de', 'Verlauf', 'Einstellungen', 'Auf PDF-Seite 12 gefunden'],
+  ['es', 'Historial', 'Ajustes', 'Localizado en la página PDF 12']
+]) {
+  element('language').value=code;element('language').onchange();
+  assert.equal(label.textContent,history);assert.equal(tooltip.attributes.title,settings);
+  assert.equal(status.textContent,located);assert.equal(document.documentElement.lang,code);
+  assert.equal(source.textContent,'历史 is literal source text');
+  assert.equal(t('A new English UI message'),'A new English UI message');
+  assert.equal(stored.get('latex-codex-language'),code);
+  navigator.language='zh-CN';navigator.languages=['zh-CN'];initSettings();
+  assert.equal(element('language').value,code);assert.equal(label.textContent,history);
+}
+element('language').value='system';navigator.language='ja-JP';navigator.languages=['it-IT','fr-CA'];
+element('language').onchange();assert.equal(document.documentElement.lang,'fr');
+assert.equal(stored.get('latex-codex-language'),'system');
+navigator.language='ko-KR';navigator.languages=['ko-KR'];initSettings();
+assert.equal(document.documentElement.lang,'en');assert.equal(label.textContent,'History');
+stored.set('latex-codex-language','invalid');initSettings();
+assert.equal(element('language').value,'system');assert.equal(document.documentElement.lang,'en');
+stored.clear();delete navigator.languages;delete navigator.language;initSettings();
+assert.equal(document.documentElement.lang,'en');
+globalThis.localStorage={getItem(){throw new Error('Storage unavailable');},setItem(){throw new Error('Storage unavailable');}};
+element('language').value='';initSettings();assert.equal(document.documentElement.lang,'en');
+element('language').value='de';element('language').onchange();assert.equal(label.textContent,'Verlauf');
+console.log('PASS: six languages, system preferences, English fallback, complete translations, placeholders, persistence, source isolation and menu positioning');

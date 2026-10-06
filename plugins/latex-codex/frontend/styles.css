@@ -3,3 +3,16 @@
 @import "tailwindcss/utilities.css" layer(utilities);
 @source "./components";
 @source "./main.tsx";
+
+#source-file-wheel{position:fixed;inset:auto;margin:0;padding:0;height:240px;border:0;background:transparent;color:var(--text);overflow:visible;outline:none}
+#source-file-wheel::backdrop{background:transparent}
+#source-file-wheel::before{content:'';position:absolute;inset:-96px -140px -120px -112px;background:color-mix(in srgb,var(--bg) 99%,transparent);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);--source-frost-mask:radial-gradient(ellipse 48% 48% at 50% 50%,#000 48%,#000f 66%,#0009 80%,transparent 100%);mask-image:var(--source-frost-mask);-webkit-mask-image:var(--source-frost-mask);pointer-events:none}
+#source-file-wheel:popover-open{animation:source-wheel-open 440ms cubic-bezier(.22,.8,.25,1);transform-origin:left var(--source-wheel-center,50%)}
+.source-option-wheel{mask-image:linear-gradient(transparent,#000 12%,#000 78%,transparent)}
+.source-option-wheel [role=option]{top:var(--source-wheel-center,50%);max-width:calc(100% - 52px);padding:8px 2px;font-weight:400}
+.source-option-wheel .option-wheel-label{display:block;overflow:hidden;text-overflow:ellipsis;transform-origin:left center;animation:source-label-enter 620ms cubic-bezier(.22,1,.36,1) both}
+.source-option-wheel [role=option].is-main{font-weight:700}
+.source-option-wheel:focus-visible [aria-selected=true]{text-decoration:underline;text-underline-offset:5px;text-decoration-color:var(--command)}
+@keyframes source-wheel-open{from{opacity:0;transform:translateX(-8px) scale(.88)}to{opacity:1;transform:translateX(0) scale(1)}}
+@keyframes source-label-enter{0%{opacity:0;transform:translate(-30px,12px) rotate(-8deg) scale(.62);filter:blur(3px)}58%{opacity:1;transform:translate(4px,-2px) rotate(1deg) scale(1.07);filter:blur(0)}78%{transform:translate(-1px,1px) scale(.985)}100%{opacity:1;transform:translate(0,0) rotate(0) scale(1);filter:blur(0)}}
+@media(prefers-reduced-motion:reduce){#source-file-wheel:popover-open,.source-option-wheel .option-wheel-label{animation:none}}
