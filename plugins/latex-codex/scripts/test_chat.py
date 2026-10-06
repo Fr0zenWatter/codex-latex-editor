@@ -158,12 +158,15 @@ with patch('chat.codex_executable',return_value='codex.exe'), patch('chat.subpro
     process = Mock(returncode=0)
     process.communicate.return_value=(json.dumps({'type':'item.completed','item':{'type':'agent_message','text':json.dumps({'summaries':summaries})}}).encode(),b'')
     spawn.return_value=process
-    memory=Mock()
-    job=ChatJob({'task':'history-summary','items':items,'effort':'low'},memory); job.run()
-    assert job.result=={'status':'done','summaries':summaries}
-    memory.save_summaries.assert_called_once_with(items,summaries)
-    assert 'history activity feed' in process.communicate.call_args.args[0].decode()
-    assert job.context is None
+    for language, name in [('en','English'),('zh-CN','Simplified Chinese'),('ja','Japanese'),
+                           ('fr','French'),('de','German'),('es','Spanish'),('invalid','English')]:
+        memory=Mock()
+        job=ChatJob({'task':'history-summary','items':items,'effort':'low','language':language},memory); job.run()
+        expected = 'en' if language=='invalid' else language
+        assert job.result=={'status':'done','summaries':summaries,'language':expected}
+        memory.save_summaries.assert_called_once_with(items,summaries,expected)
+        assert f'concise {name} for a history activity feed' in process.communicate.call_args.args[0].decode()
+        assert job.context is None
 
 catalog = {'models':[{'slug':'visible','display_name':'Visible','visibility':'list',
                      'default_reasoning_level':'low','supported_reasoning_levels':[{'effort':'low'}]},

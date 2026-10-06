@@ -1,4 +1,4 @@
-import {t} from './latex-settings.mjs';
+import {t, language} from './latex-settings.mjs';
 import {analyzePdf} from './latex-pdf-analysis.mjs';
 
 export function pdfChangeCard(index) {
@@ -80,7 +80,7 @@ export function attachHistory(editor, request, getState, restore) {
   const comparison = () => target.value === 'previous' ? {compare:'previous'} : target.value === 'current' ? {source:context.source} : {target_id:Number(target.value)};
   const time = historyTime;
   const title = row => row.label || row.sections?.slice(0,2).map(section=>t(section)).join(' · ') || t('正文');
-  const needsSummary = row => row.baseline && !row.summary && !['调整空白或换行','内容与上一版相同'].includes(row.description);
+  const needsSummary = row => row.baseline && !row.summaries?.[language] && !['调整空白或换行','内容与上一版相同'].includes(row.description);
   const post = (route, data, options={}) => request('/history/' + route, {...options, method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({path:context.path, ...data})});
   const notice = (text='') => { $('status').textContent = text; $('status').hidden = !text; };
   function controls() {
@@ -254,8 +254,8 @@ export function attachHistory(editor, request, getState, restore) {
       const text = document.createElement('span'); text.className = 'history-entry-text';
       const heading = document.createElement('strong'); heading.textContent = title(row); heading.title = (row.sections || []).join(' · ');
       const summary = document.createElement('span'); summary.className = 'history-entry-summary';
-      summary.textContent = row.summary || t(row.description || '更新正文');
-      if (row.summary) { const badge = document.createElement('small'); badge.className = 'history-ai-badge'; badge.textContent = 'AI'; text.append(badge); }
+      summary.textContent = row.summaries?.[language] || t(row.description || '更新正文');
+      if (row.summaries?.[language]) { const badge = document.createElement('small'); badge.className = 'history-ai-badge'; badge.textContent = 'AI'; text.append(badge); }
       text.append(heading, summary);
       const stamp = document.createElement('time'); stamp.textContent = time(row.created); stamp.setAttribute('datetime',row.created);
       button.append(icon,text,stamp);
@@ -279,10 +279,10 @@ export function attachHistory(editor, request, getState, restore) {
   }
   async function loadSummaries() {
     if (summaryLoading || !dialog.open || !revisions.some(needsSummary)) return;
-    const path = context.path, ticket = summarySerial;
+    const path = context.path, ticket = summarySerial, locale = language;
     summaryLoading = true; $('summary-status').textContent = t('AI 正在概括改动…');
     try {
-      const start = await post('summaries',{ids:revisions.filter(needsSummary).slice(0,100).map(row=>row.id)});
+      const start = await post('summaries',{ids:revisions.filter(needsSummary).slice(0,100).map(row=>row.id),language:locale});
       if (ticket !== summarySerial || !dialog.open || context.path !== path) {
         if (start.id) request('/history/summaries/cancel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,id:start.id})}).catch(()=>{});
         return;
@@ -296,11 +296,17 @@ export function attachHistory(editor, request, getState, restore) {
       }
       if (ticket !== summarySerial || !dialog.open || context.path !== path) return;
       if (result.status !== 'done') throw new Error(result.error || t('本次回复已停止。'));
-      for (const saved of result.summaries) { const row = revisions.find(row=>row.id===saved.id); if (row) row.summary = saved.summary; }
+      if (result.language !== locale) throw new Error(t('AI 摘要暂不可用，章节位置已保留'));
+      for (const saved of result.summaries) { const row = revisions.find(row=>row.id===saved.id); if (row) (row.summaries ??= {})[locale] = saved.summary; }
       renderList(); $('summary-status').textContent = '';
     } catch (error) {
       if (ticket === summarySerial && dialog.open) { $('summary-status').textContent = t('AI 摘要暂不可用，章节位置已保留'); $('summary-status').title = error.message; }
     } finally { if (ticket === summarySerial) { summaryLoading = false; summaryJob = null; } }
+  }
+  function cancelSummaries() {
+    summarySerial++;
+    if (summaryJob) post('summaries/cancel',{id:summaryJob}).catch(()=>{});
+    summaryJob = null; summaryLoading = false; $('summary-status').textContent = '';
   }
   $('sidebar').onpointerenter = () => { $('sidebar-toggle').setAttribute('aria-expanded','true'); loadSummaries(); };
   $('sidebar').onpointerleave = () => $('sidebar-toggle').setAttribute('aria-expanded',String(dialog.dataset.sidebarOpen==='true'));
@@ -332,9 +338,8 @@ export function attachHistory(editor, request, getState, restore) {
   $('open').onclick = () => { dialog.showModal(); refresh(); };
   $('close').onclick = () => dialog.close();
   dialog.addEventListener('close', () => {
-    serial++; summarySerial++; clearPdf(); detail = null; working = false;
-    if (summaryJob) post('summaries/cancel',{id:summaryJob}).catch(()=>{});
-    summaryJob = null; summaryLoading = false; pinSidebar(false); $('summary-status').textContent = '';
+    serial++; cancelSummaries(); clearPdf(); detail = null; working = false;
+    pinSidebar(false);
     $('actions').hidePopover();
     for (const name of ['name-dialog','confirmation']) if ($(name).open) $(name).close();
     menuId = editingId = null;
@@ -379,5 +384,8 @@ export function attachHistory(editor, request, getState, restore) {
   editor.on('swapDoc', () => { if (dialog.open) dialog.close(); });
   code.addEventListener('scroll', updateNext);
   new ResizeObserver(updateNext).observe(code);
-  window.addEventListener('latex-language-change', () => { pinSidebar(dialog.dataset.sidebarOpen==='true'); if (dialog.open) { renderList(); renderCode(); } });
+  window.addEventListener('latex-language-change', () => {
+    cancelSummaries(); pinSidebar(dialog.dataset.sidebarOpen==='true');
+    if (dialog.open) { renderList(); renderCode(); loadSummaries(); }
+  });
 }

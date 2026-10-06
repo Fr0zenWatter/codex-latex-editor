@@ -24,7 +24,7 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 from chat import ChatJob, chat_context, chat_models, main_chat_context
-from history import History, difference, word_changes
+from history import History, difference, word_changes, summary_language
 from outline import compiled_outline
 
 HISTORY_PDF_CACHE_BYTES = 256 * 1024 * 1024
@@ -1842,7 +1842,7 @@ def make_server(path, port=0, main_thread=None, project_root=None):
                     state = snapshot(path)
                     history.record(state['source'])
                     before = query.get('before', [None])[0]
-                    self.reply(200, {**history.list(int(before) if before is not None else None), 'path': str(path)})
+                    self.reply(200, {**history.list(int(before) if before is not None else None, query.get('language',['en'])[0]), 'path': str(path)})
                 except FileConflict as error:
                     self.reply(409, {'error': str(error)})
                 except ValueError as error:
@@ -1983,15 +1983,21 @@ def make_server(path, port=0, main_thread=None, project_root=None):
                         self.reply(200, {'ok':True})
                         return
                     if self.path == '/history/summaries':
+                        language = summary_language(data.get('language'))
                         job = self.server.history_summary
                         if job and job.result['status']=='running':
-                            self.reply(200, {'id':job.id})
-                            return
-                        items = history.summary_context(data.get('ids'))
+                            if (job.context or {}).get('language','en') == language:
+                                self.reply(200, {'id':job.id})
+                                return
+                            job.cancel()
+                        items = history.summary_context(data.get('ids'),language)
                         if not items:
-                            self.reply(200, {'status':'done','summaries':[]})
+                            ids = data['ids']
+                            rows = history.list(max(ids)+1 if ids else None,language)['revisions']
+                            self.reply(200, {'status':'done','language':language,'summaries':[
+                                {'id':row['id'],'summary':row['summary']} for row in rows if row['id'] in ids and row['summary']]})
                             return
-                        self.server.history_summary = ChatJob({'task':'history-summary','items':items,'effort':'low'},history).start()
+                        self.server.history_summary = ChatJob({'task':'history-summary','items':items,'effort':'low','language':language},history).start()
                         self.reply(200, {'id':self.server.history_summary.id})
                         return
                     revision = history.get(data.get('id'))

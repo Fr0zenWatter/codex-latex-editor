@@ -9,6 +9,14 @@ import sqlite3
 import zlib
 
 
+SUMMARY_LANGUAGES = {'en':'English', 'zh-CN':'Simplified Chinese', 'ja':'Japanese',
+                     'fr':'French', 'de':'German', 'es':'Spanish'}
+
+
+def summary_language(value):
+    return value if isinstance(value, str) and value in SUMMARY_LANGUAGES else 'en'
+
+
 # Keep immutable backups; show the last automatic save in each five-minute window.
 VISIBLE_REVISIONS = """WITH checkpoints AS (
     SELECT id, created, kind, label, SUM(CASE WHEN kind NOT IN ('save', 'external') OR label!=''
@@ -35,6 +43,9 @@ class History:
             db.execute('CREATE INDEX IF NOT EXISTS file_revisions ON revisions(file, id)')
             db.execute("CREATE TABLE IF NOT EXISTS chat_messages (id INTEGER PRIMARY KEY, role TEXT NOT NULL, content TEXT NOT NULL, file TEXT NOT NULL DEFAULT '', selection TEXT NOT NULL DEFAULT '')")
             db.execute("CREATE TABLE IF NOT EXISTS revision_activity (revision_id INTEGER NOT NULL, baseline_id INTEGER NOT NULL, sections TEXT NOT NULL, details TEXT NOT NULL, description TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', PRIMARY KEY(revision_id,baseline_id))")
+            db.execute('CREATE TABLE IF NOT EXISTS revision_summaries (revision_id INTEGER NOT NULL, baseline_id INTEGER NOT NULL, language TEXT NOT NULL, summary TEXT NOT NULL, PRIMARY KEY(revision_id,baseline_id,language))')
+            # Earlier versions always generated Simplified Chinese summaries.
+            db.execute("INSERT OR IGNORE INTO revision_summaries SELECT revision_id,baseline_id,'zh-CN',summary FROM revision_activity WHERE summary!=''")
 
     def connect(self):
         db = sqlite3.connect(self.database, timeout=10)
@@ -76,7 +87,8 @@ class History:
                               (self.file, datetime.now(timezone.utc).isoformat(), kind,
                                digest, zlib.compress(raw))).lastrowid
 
-    def list(self, before=None):
+    def list(self, before=None, language='en'):
+        language = summary_language(language)
         if before is not None and (type(before) is not int or before < 1):
             raise ValueError('历史记录游标无效。')
         with closing(self.connect()) as db, db:
@@ -93,16 +105,19 @@ class History:
                     db.execute('INSERT INTO revision_activity(revision_id,baseline_id,sections,details,description) VALUES (?,?,?,?,?) ON CONFLICT(revision_id,baseline_id) DO UPDATE SET sections=excluded.sections,details=excluded.details,description=excluded.description,summary=\'\'',
                                (row['id'],baseline,json.dumps(data['sections'],ensure_ascii=False),data['details'],data['description']))
                     activity = {**data,'summary':''}
+                    db.execute('DELETE FROM revision_summaries WHERE revision_id=? AND baseline_id=?', (row['id'],baseline))
                 else:
                     activity = {**dict(activity),'sections':json.loads(activity['sections'])}
-                result.append({**dict(row), 'baseline':baseline, **{key:activity[key] for key in ('sections','description','summary')}})
+                summaries = dict(db.execute('SELECT language,summary FROM revision_summaries WHERE revision_id=? AND baseline_id=?', (row['id'],baseline)))
+                result.append({**dict(row), 'baseline':baseline, **{key:activity[key] for key in ('sections','description')},
+                               'summaries':summaries, 'summary':summaries.get(language,'')})
         return {'revisions': result,
                 'next': rows[99]['id'] if len(rows) > 100 else None}
 
-    def summary_context(self, ids):
+    def summary_context(self, ids, language='en'):
         if not isinstance(ids, list) or len(ids)>100 or any(type(value) is not int for value in ids):
             raise ValueError('历史记录编号无效。')
-        visible = {row['id']:row for row in self.list(max(ids)+1 if ids else None)['revisions']}
+        visible = {row['id']:row for row in self.list(max(ids)+1 if ids else None, language)['revisions']}
         items = []
         with closing(self.connect()) as db:
             for revision in ids:
@@ -117,7 +132,8 @@ class History:
                     break
         return items
 
-    def save_summaries(self, items, summaries):
+    def save_summaries(self, items, summaries, language='en'):
+        language = summary_language(language)
         expected = {item['id']:item['baseline'] for item in items}
         if not isinstance(summaries, list) or any(not isinstance(row,dict) or type(row.get('id')) is not int or row['id'] not in expected or not isinstance(row.get('summary'),str) or not 1<=len(row['summary'].strip())<=160 for row in summaries):
             raise ValueError('AI 改动摘要格式无效。')
@@ -125,8 +141,8 @@ class History:
             raise ValueError('AI 改动摘要缺少记录或包含重复记录。')
         with closing(self.connect()) as db, db:
             for row in summaries:
-                db.execute('UPDATE revision_activity SET summary=? WHERE revision_id=? AND baseline_id=?',
-                           (row['summary'].strip(),row['id'],expected[row['id']]))
+                db.execute('INSERT INTO revision_summaries(revision_id,baseline_id,language,summary) VALUES (?,?,?,?) ON CONFLICT(revision_id,baseline_id,language) DO UPDATE SET summary=excluded.summary',
+                           (row['id'],expected[row['id']],language,row['summary'].strip()))
 
     def get(self, revision):
         if type(revision) is not int or revision < 1:

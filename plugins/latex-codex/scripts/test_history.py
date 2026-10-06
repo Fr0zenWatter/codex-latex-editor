@@ -1,5 +1,6 @@
 """Run: python test_history.py (stdlib only; no TeX needed)."""
 import json
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sqlite3
@@ -25,10 +26,25 @@ with tempfile.TemporaryDirectory() as directory:
     current = activity.record(changed,'save')
     row = activity.list()['revisions'][0]
     assert row['sections'] == ['2.1 Stability'] and row['baseline'] == first and not row['summary']
-    context = activity.summary_context([current])
-    activity.save_summaries(context,[{'id':current,'summary':'将稳定性估计中的平方项改为立方项。'}])
-    assert History(Path(directory)/'main.tex').list()['revisions'][0]['summary'].startswith('将稳定性')
-    assert activity.summary_context([current]) == [], 'Saved summaries must not create another model request.'
+    context = activity.summary_context([current], 'zh-CN')
+    # Simulate an existing database from before summaries were language-specific.
+    with closing(activity.connect()) as db, db:
+        db.execute('UPDATE revision_activity SET summary=? WHERE revision_id=?', ('将稳定性估计中的平方项改为立方项。',current))
+    activity = History(Path(directory)/'main.tex')
+    assert activity.list(language='zh-CN')['revisions'][0]['summary'].startswith('将稳定性')
+    assert activity.list(language='en')['revisions'][0]['summary'] == ''
+    assert activity.summary_context([current], 'zh-CN') == [], 'Legacy Chinese summaries must remain cached.'
+    for language, summary in [('en','Changed the square to a cube.'), ('ja','二乗を三乗に変更。'),
+                              ('fr','Remplacement du carré par un cube.'), ('de','Quadrat durch Kubus ersetzt.'),
+                              ('es','Se cambió el cuadrado por un cubo.')]:
+        items = activity.summary_context([current], language)
+        assert items == context, 'A different language needs its own summary.'
+        activity.save_summaries(items,[{'id':current,'summary':summary}],language)
+        reopened = History(Path(directory)/'main.tex')
+        assert reopened.list(language=language)['revisions'][0]['summary'] == summary
+        assert reopened.summary_context([current],language) == [], 'Cached languages must not invoke the model again.'
+    assert len(activity.list()['revisions'][0]['summaries']) == 6
+    assert activity.list(language='invalid')['revisions'][0]['summary'] == 'Changed the square to a cube.'
     for invalid in ([],[{'id':current,'summary':'x'}]*2,[{'id':True,'summary':'x'}]):
         try: activity.save_summaries(context,invalid)
         except ValueError: pass
@@ -37,6 +53,7 @@ with tempfile.TemporaryDirectory() as directory:
     assert activity.list()['revisions'][0]['baseline']==first
     activity.label(current,'Checkpoint')
     assert activity.list()['revisions'][0]['baseline']==current, 'Named checkpoints change the activity comparison boundary.'
+    assert not activity.list()['revisions'][0]['summaries'], 'A new comparison boundary must not reuse another diff summary.'
 
 
 for old, new in [('the smoothing iteration is convergent', 'the smoothing factor decays'),
@@ -116,17 +133,35 @@ with tempfile.TemporaryDirectory() as directory:
         assert path.read_text(encoding='utf-8') == edited
         second = listing()[0]['id']
         with patch('editor.ChatJob') as constructor:
-            job = Mock(id='summary-job',result={'status':'running'}); job.start.return_value=job
+            job = Mock(id='summary-job',result={'status':'running'},context={'language':'fr'}); job.start.return_value=job
             constructor.return_value=job
-            code, started = request('/history/summaries',{'path':str(path),'ids':[second]})
+            code, started = request('/history/summaries',{'path':str(path),'ids':[second],'language':'fr'})
             assert code==200 and started['id']=='summary-job'
             assert constructor.call_args.args[0]['task']=='history-summary'
             assert constructor.call_args.args[0]['items'][0]['id']==second
+            assert constructor.call_args.args[0]['language']=='fr'
+            assert request('/history/summaries',{'path':str(path),'ids':[second],'language':'fr'})[1]['id']=='summary-job'
+            assert constructor.call_count == 1, 'Reuse only a job in the same language.'
+            replacement = Mock(id='english-job',result={'status':'running'},context={'language':'en'})
+            replacement.start.return_value = replacement
+            constructor.return_value = replacement
+            assert request('/history/summaries',{'path':str(path),'ids':[second],'language':'en'})[1]['id']=='english-job'
+            job.cancel.assert_called_once()
+            assert constructor.call_args.args[0]['language']=='en'
+            server.history_summary=job
             assert request('/history/summaries?id=summary-job')[1]['status']=='running'
             assert request('/history/summaries?id=wrong')[0]==404
             assert request('/history/summaries/cancel',{'path':str(path),'id':'summary-job'})[0]==200
-            job.cancel.assert_called_once()
+            assert job.cancel.call_count == 2
             server.history_summary=None
+        items = history.summary_context([second],'fr')
+        history.save_summaries(items,[{'id':second,'summary':'Texte révisé.'}],'fr')
+        with patch('editor.ChatJob') as constructor:
+            code, cached = request('/history/summaries',{'path':str(path),'ids':[second],'language':'fr'})
+            assert code==200 and cached=={'status':'done','language':'fr','summaries':[{'id':second,'summary':'Texte révisé.'}]}
+            constructor.assert_not_called()
+        assert request('/history?path='+quote(str(path))+'&language=fr')[1]['revisions'][0]['summary']=='Texte révisé.'
+        assert request('/history?path='+quote(str(path))+'&language=en')[1]['revisions'][0]['summary']==''
         assert history.get(second)['source'] == edited
         assert history.previous(first) is None and history.previous(second)['id'] == first
         code, previous = request('/history/diff', {'path':str(path), 'id':second, 'compare':'previous'})

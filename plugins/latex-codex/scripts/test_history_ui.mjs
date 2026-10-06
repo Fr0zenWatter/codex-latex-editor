@@ -1,6 +1,7 @@
 // Run: node test_history_ui.mjs. Exercise browsing/restore without a browser or TeX.
 import assert from 'node:assert/strict';
 import {attachHistory, sourceRows, pdfChangeCard, markPdfText, historyTime} from './vendor/latex-history.mjs';
+import {initSettings, t} from './vendor/latex-settings.mjs';
 
 const numbered = sourceRows([{kind:'equal',text:'first\n'}, {kind:'delete',text:'removed\n'}, {kind:'insert',text:'new\n'}, {kind:'equal',text:'last'}]);
 assert.deepEqual(numbered.map(row=>row.number), [1,null,2,3]);
@@ -29,9 +30,17 @@ class Element {
 const elements = new Map();
 const $ = id => { if (!elements.has(id)) elements.set(id, Object.assign(new Element(),{id})); return elements.get(id); };
 globalThis.Option = Element;
-globalThis.document = {querySelector:selector => $(selector.slice(9)), createElement:() => new Element(), createDocumentFragment:() => Object.assign(new Element(), {fragment:true})};
+globalThis.document = {querySelector:selector => $(selector.startsWith('#history-') ? selector.slice(9) : selector.slice(1)),
+  querySelectorAll:()=>[], documentElement:{style:{setProperty(){}}},
+  createElement:() => new Element(), createDocumentFragment:() => Object.assign(new Element(), {fragment:true})};
 globalThis.ResizeObserver = class {observe(){}};
-globalThis.window = {innerWidth:1000,innerHeight:800,addEventListener(){}};
+const windowEvents = {};
+globalThis.window = {innerWidth:1000,innerHeight:800,addEventListener(name,fn){windowEvents[name]=fn;},dispatchEvent(event){windowEvents[event.type]?.();}};
+const settings = new Map([['latex-codex-language','zh-CN']]);
+globalThis.localStorage = {getItem:key=>settings.get(key),setItem:(key,value)=>settings.set(key,value)};
+Object.defineProperty(globalThis,'navigator',{value:{language:'zh-CN'},configurable:true});
+initSettings();
+const setLanguage = value => { $('language').value=value; $('language').onchange(); };
 globalThis.matchMedia = ()=>({matches:true});
 assert.equal(historyTime(new Date(2026,9,1,16,59,22).toISOString()),'16:59 2026/10/01');
 const card = pdfChangeCard(0), toggle = card.block.children[0].children[1];
@@ -52,15 +61,21 @@ assert.deepEqual([...written.data.slice(0,8)],[220,38,38,255,255,255,255,255]);
 assert(written.data[8]>written.data[9] && written.data[11]===255,'Keep antialiasing and alpha while tinting changed glyphs red.');
 const events = {};
 const context = {path:'paper.tex', source:'unsaved draft', version:'current-version'};
-const rows = [{id:2, created:'2026-10-01T00:01:00Z', kind:'save', label:'',sections:['2.1 Stability'],baseline:1,summary:'',description:'调整公式与论述'}, {id:1, created:'2026-10-01T00:00:00Z', kind:'open', label:'初稿'}];
+const rows = [{id:2, created:'2026-10-01T00:01:00Z', kind:'save', label:'',sections:['2.1 Stability'],baseline:1,summaries:{},description:'调整公式与论述'}, {id:1, created:'2026-10-01T00:00:00Z', kind:'open', label:'初稿'}];
 const calls = [];
-let restorePayload, deferred, pdfError=false, pdfImages=false;
+let restorePayload, deferred, deferredSummary, pdfError=false, pdfImages=false;
+const localizedSummaries = {'zh-CN':'更新稳定性估计。',en:'Updated the stability estimate.',fr:'Estimation de stabilité révisée.',de:'Stabilitätsabschätzung aktualisiert.'};
 const flush = () => new Promise(resolve => setImmediate(resolve));
 async function request(route, options) {
   const data = options ? JSON.parse(options.body) : null; calls.push({route, data, signal:options?.signal});
-  if (route.startsWith('/history?')) return {revisions:rows.map(row=>({...row})), next:null};
+  if (route.startsWith('/history?')) return {revisions:structuredClone(rows), next:null};
   if (route === '/history/label') {rows.find(row=>row.id===data.id).label=data.label.trim();return {ok:true};}
-  if (route === '/history/summaries') return {status:'done',summaries:[{id:2,summary:'更新稳定性估计。'}]};
+  if (route === '/history/summaries') {
+    if (deferredSummary) return new Promise(resolve=>{deferredSummary.resolve=resolve;});
+    const summary=localizedSummaries[data.language]; rows[0].summaries[data.language]=summary;
+    return {status:'done',language:data.language,summaries:[{id:2,summary}]};
+  }
+  if (route === '/history/summaries/cancel') return {ok:true};
   if (deferred) return new Promise(resolve => { deferred.resolve = resolve; });
   if (route === '/history/pdf') { if(pdfError)throw new Error('compile failed'); return pdfImages ? {images:true, changes:[{kind:'replace', before:[{page:1,image:'/before.png'},{page:2,image:'/before-continuation.png'}], after:[{page:2,image:'/after.png'},{page:3,image:'/after-continuation.png'}]}]} : {changes:[]}; }
   return {...rows.find(row=>row.id===data.id), source:'old source', changes:[{kind:'equal',text:'same\n'.repeat(10)},{kind:'delete',text:'old'},{kind:'insert',text:'new'},{kind:'equal',text:'\nend'}], same:false};
@@ -74,12 +89,37 @@ assert.equal($('list').children[0].children[1].children[0].textContent,'2.1 Stab
 $('sidebar').onpointerenter(); await flush();
 assert.equal($('sidebar-toggle').attributes['aria-expanded'],'true');
 assert.equal(calls.at(-1).route,'/history/summaries');
+assert.equal(calls.at(-1).data.language,'zh-CN');
 assert.equal($('list').children[0].children[1].children.at(-1).textContent,'更新稳定性估计。');
 $('sidebar').onpointerleave(); assert.equal($('sidebar-toggle').attributes['aria-expanded'],'false');
 $('sidebar-pin').onclick(); assert.equal($('dialog').dataset.sidebarOpen,'true');
 assert.equal($('sidebar-pin').attributes['aria-pressed'],'true');
 $('sidebar').onpointerleave();assert.equal($('sidebar-toggle').attributes['aria-expanded'],'true');
 $('sidebar-pin').onclick(); assert.equal($('dialog').dataset.sidebarOpen,'false');
+// Switching languages updates generated notes while preserving titles and selection.
+const selectedBefore=$('list').children.map(row=>row.attributes['aria-pressed']);
+setLanguage('en');
+assert.equal($('list').children[0].children[1].children.at(-1).textContent,t('调整公式与论述'));
+await flush();
+assert.equal($('list').children[0].children[1].children.at(-1).textContent,localizedSummaries.en);
+assert.equal($('list').children[1].children[1].children[0].textContent,'初稿','User labels stay verbatim.');
+assert.deepEqual($('list').children.map(row=>row.attributes['aria-pressed']),selectedBefore);
+const requestsBefore=calls.filter(call=>call.route==='/history/summaries').length;
+setLanguage('zh-CN'); await flush();
+assert.equal($('list').children[0].children[1].children.at(-1).textContent,localizedSummaries['zh-CN']);
+assert.equal(calls.filter(call=>call.route==='/history/summaries').length,requestsBefore,'Switching back uses the cached language.');
+deferredSummary={}; setLanguage('fr'); await flush();
+const lateSummary=deferredSummary; deferredSummary=null;
+setLanguage('de'); await flush();
+lateSummary.resolve({id:'obsolete-french-job'}); await flush();
+assert.equal($('list').children[0].children[1].children.at(-1).textContent,localizedSummaries.de);
+assert.equal(calls.findLast(call=>call.route==='/history/summaries/cancel').data.id,'obsolete-french-job');
+deferredSummary={}; setLanguage('fr'); await flush();
+const lateResult=deferredSummary; deferredSummary=null;
+setLanguage('en'); await flush();
+lateResult.resolve({status:'done',language:'fr',summaries:[{id:2,summary:'STALE'}]}); await flush();
+assert.equal($('list').children[0].children[1].children.at(-1).textContent,localizedSummaries.en,'Late results cannot overwrite the current language.');
+setLanguage('zh-CN'); await flush();
 assert(!$('next').hidden); assert.equal($('next-label').textContent,'下方还有 1 处改动');
 $('next').onclick(); assert($('code').scrollTop>0); assert($('next').hidden);
 $('pdf').onclick(); await flush();
