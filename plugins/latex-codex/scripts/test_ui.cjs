@@ -335,7 +335,9 @@ element('#pan-mode').onclick();
 context.fetch=async()=>{downloads++;return{ok:true,arrayBuffer:async()=>new ArrayBuffer(1)};};
 (async()=>{
   context.findMathRanges=(await import('./vendor/latex-hover.mjs')).findMathRanges;
+  context.documentMacros=(await import('./vendor/latex-hover.mjs')).documentMacros;
   const actualKatex=(await import('./vendor/katex/katex.mjs')).default;
+  context.katex.renderToString=actualKatex.renderToString;
   context.katex.render=(tex,node,configuration)=>{
     const markup=actualKatex.renderToString(tex,configuration).replace(/<annotation\b[\s\S]*?<\/annotation>/g,'');
     node.textContent=markup.replace(/<[^>]+>/g,'').replace(/&#x([0-9a-f]+);/gi,(_,code)=>String.fromCodePoint(parseInt(code,16)))
@@ -425,7 +427,7 @@ context.fetch=async()=>{downloads++;return{ok:true,arrayBuffer:async()=>new Arra
   assert.equal(vm.runInContext(String.raw`sourceParagraphRange('\\begin{document}\n\\newpage\nText.\n\\end{document}',[3,3]).from.line`,context),2);
   assert.equal(vm.runInContext(String.raw`sourceParagraphRange('\\begin{abstract}\nAbstract text.\n\n\\end{abstract}',[2,2]).from.line`,context),1,'Do not pull a neighboring environment opener into the paragraph.');
   assert.equal(vm.runInContext(String.raw`sourceParagraphRange('\\begin{align}\nx&=y\n\\end{align}',[2,2]).to.line`,context),1,'Keep equation environment delimiters outside a selected body.');
-  const exact=(text,locations,pdfText,labels={},citations={})=>JSON.parse(JSON.stringify(vm.runInContext('sourcePdfTextRange('+JSON.stringify(text)+','+JSON.stringify(locations)+','+JSON.stringify(pdfText)+','+JSON.stringify(labels)+','+JSON.stringify(citations)+')',context)));
+  const exact=(text,locations,pdfText,labels={},citations={},macroSource=text)=>JSON.parse(JSON.stringify(vm.runInContext('sourcePdfTextRange('+JSON.stringify(text)+','+JSON.stringify(locations)+','+JSON.stringify(pdfText)+','+JSON.stringify(labels)+','+JSON.stringify(citations)+','+JSON.stringify(macroSource)+')',context)));
   assert.deepEqual(exact('Before. On the matrix level, we solve it. After.',[1,1],'On the matrix level'),{from:{line:0,ch:8},to:{line:0,ch:27}});
   assert.deepEqual(exact('Before. On the\nmatrix~level, after.',[1,2],'On the matrix level'),{from:{line:0,ch:8},to:{line:1,ch:12}});
   assert.deepEqual(exact('efficient method',[1,1],'ef\ufb01cient method'),{from:{line:0,ch:0},to:{line:0,ch:16}});
@@ -506,6 +508,24 @@ Following prose.`;
   assert.equal(await mathMatch([3,10],estimatorSelection,async()=>({regions:[{page:1,rect:[0,150,120,185]},{page:2,rect:[0,150,120,185]}]})),null,'Overlapping formula candidates remain ambiguous.');
   assert.equal(await mathMatch([3,10],{fragments:[...estimatorSelection.fragments,fragment('η2',2,80)]}),null,'Never silently skip unselected prose between two formula blocks.');
   assert.equal(await context.sourcePdfMathRange(String.raw`Prose \[\custom{x}\] after.`,[1],{fragments:[fragment('Prose',1,170)]},{},{},mappedRegions),null,'Shared-line geometry cannot turn a prose-only selection into a formula selection.');
+  const macroPreamble=String.raw`\newcommand{\R}{\mathbb R}
+\newcommand{\calB}{\mathcal B}
+\newcommand{\T}{^\top}`;
+  const macroProse=String.raw`Matrices $Q\in\R^{n_Q\times d}$ and $K\in\R^{n_K\times d}$ preserve $\calB=(B_1,\ldots,B_m)$.`;
+  const macroPdf='Matrices Q ∈ RnQ×d and K ∈ RnK×d preserve B = (B1, . . . , Bm).';
+  const macroChild=String.raw`Before.
+${macroProse}
+\begin{align}
+ Z_{ij}&=q_i k_j\T/\sqrt d,\label{eq:score}\\
+ f_T(Q,K)&=\sum_i\left[\log\sum_j e^{Z_{ij}}-\sum_j T_{ij}Z_{ij}\right].
+\end{align}
+After.`;
+  assert.deepEqual(exact(macroChild,[2],macroPdf,{}, {},macroPreamble),{from:{line:1,ch:0},to:{line:1,ch:macroProse.length},approximate:true},'Child-file PDF prose must expand macros declared in the main preamble.');
+  assert.throws(()=>exact(macroChild,[2],macroPdf),/唯一匹配/,'Unknown macros remain barriers without the main preamble.');
+  const macroSelection={fragments:[fragment(macroPdf,1,200),fragment('Zij = qi k⊤j /√d, (1)',1,170),fragment('fT(Q,K) = ∑i [log ∑j eZij − ∑j TijZij]. (2)',1,155)]};
+  const macroRegions=async()=>({regions:[{page:1,rect:[0,150,120,185]}]});
+  assert.deepEqual(JSON.parse(JSON.stringify(await context.sourcePdfMathRange(macroChild,[2,5],macroSelection,{}, {},macroRegions,macroPreamble))),{from:{line:1,ch:0},to:{line:5,ch:11},approximate:true,mathBlock:true},'Custom-macro prose plus reordered multiline math must preserve the exact prose start and complete display environment.');
+  assert.equal(await context.sourcePdfMathRange(macroChild,[2,5],{fragments:[fragment(macroPdf+' Unselected extra sentence.',1,200),...macroSelection.fragments.slice(1)]},{},{},macroRegions,macroPreamble),null,'Document macros must not weaken prose verification.');
   source=paragraphs;
   vm.runInContext("panMode=false;busy=false;syncBusy=false;conflict=false;version=pdfVersion='v';saved=paragraphs;pdfBuild='second'",context);
   const gutterPage={};
@@ -658,7 +678,7 @@ Following prose.`;
   assert.equal(editor.doc.source,'Line one\nLine two');assert.equal(vm.runInContext('saved',context),editor.doc.source,'Loaded CRLF files must not appear dirty in the LF editor.');
   source='Main source';editor.swapDoc=doc=>{editor.doc=doc;source=doc.source;};
   vm.runInContext("busy=false;syncBusy=false;conflict=false;loading=false;display({source:'Main source',version:'main-v',name:'main.tex',path:'/project/main.tex',project_root:'/project',main_file:'/project/main.tex',project_version:'project-v'});pdfVersion=version;pdfBuild='second'",context);
-  const childState={source:'Appendix paragraph.',version:'appendix-v',name:'body.tex',path:'/project/appendices/body.tex',project_root:'/project',main_file:'/project/main.tex',project_version:'project-v',sync:true,pdf_revision:'second',labels:{eq:'7'},citations:{paper:'9'},files:[{path:'/project/main.tex',name:'main.tex'},{path:'/project/appendices/body.tex',name:'appendices/body.tex'}]};
+  const childState={source:'Appendix paragraph.',main_source:macroPreamble,version:'appendix-v',name:'body.tex',path:'/project/appendices/body.tex',project_root:'/project',main_file:'/project/main.tex',project_version:'project-v',sync:true,pdf_revision:'second',labels:{eq:'7'},citations:{paper:'9'},files:[{path:'/project/main.tex',name:'main.tex'},{path:'/project/appendices/body.tex',name:'appendices/body.tex'}]};
   const oldPreview=viewer.pdfDocument;let sourceSwitches=0;
   context.fetch=async(url,options)=>{
     if(url==='/synctex')return {ok:true,json:async()=>({path:childState.path,line:1,column:1})};
@@ -668,6 +688,7 @@ Following prose.`;
   await vm.runInContext("synchronize('backward',{page:1,x:10,y:10})",context);
   assert.equal(sourceSwitches,1);assert.equal(element('#filename').title,childState.path);
   assert.equal(vm.runInContext('mainFile',context),'/project/main.tex');
+  assert.equal(vm.runInContext('mainSource',context),macroPreamble,'PDF inverse navigation must retain the main preamble for child formulas.');
   assert.equal(vm.runInContext('pdfVersion',context),'appendix-v');assert.equal(viewer.pdfDocument,oldPreview,'Inverse source switches preserve the compiled main PDF.');
   assert.equal(vm.runInContext('compiledLabels.eq',context),'7');assert.equal(element('a[download]').download,'main.pdf');
   assert.equal(editor.cursor.line,0);
@@ -681,11 +702,12 @@ Following prose.`;
     routes.push(url);
     if(url==='/save'){assert.equal(JSON.parse(options.body).source,source);return {ok:true,json:async()=>({version:'edited-v'})};}
     assert.equal(url,'/source');assert.equal(JSON.parse(options.body).version,'edited-v');
-    return {ok:true,json:async()=>({...childState,source:'Main source',version:'main-v2',name:'main.tex',path:'/project/main.tex',sync:false})};
+    return {ok:true,json:async()=>({...childState,source:'Main source',main_source:'',version:'main-v2',name:'main.tex',path:'/project/main.tex',sync:false})};
   };
   assert.equal(await vm.runInContext("switchSource('/project/main.tex',false)",context),true);
   assert.deepEqual(routes,['/save','/source'],'Navigation saves the active child before switching.');
   assert.equal(vm.runInContext('pdfVersion',context),'','Unsynced child edits disable old PDF synchronization.');
+  assert.equal(vm.runInContext('mainSource',context),'','Opening the main source must discard the previous child preamble snapshot.');
   console.log('PASS: inverse source switching, fixed main download, shared metadata, pending-comment protection and save-before-switch');
   console.log('PASS: slow state polling stays single-flight and resumes after completion');
   console.log('PASS: transient connection recovery, safe Send retry and no duplicate saves');

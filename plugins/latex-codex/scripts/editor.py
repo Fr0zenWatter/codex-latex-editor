@@ -193,7 +193,7 @@ import {attachPdfOutline} from '/vendor/latex-outline.mjs';
 import {attachPdfZoom} from '/vendor/latex-zoom.mjs';
 import {EventBus, PDFViewer, PDFLinkService} from '/vendor/pdfjs/web/pdf_viewer.mjs';
 import katex from '/vendor/katex/katex.mjs';
-import {attachMathHover,findMathRanges} from '/vendor/latex-hover.mjs';
+import {attachMathHover,findMathRanges,documentMacros} from '/vendor/latex-hover.mjs';
 import {attachSelectionChat} from '/vendor/latex-chat.mjs';
 import {attachNativeAnnotations} from '/vendor/latex-native-annotations.mjs';
 import {attachHistory} from '/vendor/latex-history.mjs';
@@ -387,7 +387,7 @@ function setEditorMode(){
   try{preferences.setItem('latex-codex-editor-mode',editorMode.value);}catch(e){}
 }
 editorMode.onchange=setEditorMode;setEditorMode();
-let version='',saved='',busy=false,loading=false,timer,conflict=false,pdfVersion='',syncBusy=false,pendingForward=false,compiledLabels={},compiledCitations={},projectRoot='',mainFile='',projectVersion='';
+let version='',saved='',mainSource='',busy=false,loading=false,timer,conflict=false,pdfVersion='',syncBusy=false,pendingForward=false,compiledLabels={},compiledCitations={},projectRoot='',mainFile='',projectVersion='';
 const sourceFile=document.querySelector('#source-file'),projectDialog=document.querySelector('#project-dialog');
 const sourcePicker=mountSourceWheel({button:sourceFile,popup:document.querySelector('#source-file-wheel'),translate:t,onSelect:switchSource});
 const autoCompile=document.querySelector('#auto-compile');
@@ -430,7 +430,7 @@ async function request(url,options){
 }
 function display(data,preservePdf=false){
   showCompileError(null);showCompileLog(false);
-  mathHover.setMainSource(data.main_source||'');
+  mainSource=data.main_source||'';mathHover.setMainSource(mainSource);
   const text=data.source.replace(/\r\n/g,'\n');
   editor.setOption('keyMap','default');editor.swapDoc(new CodeMirror.Doc(text,editor.getOption('mode')));editor.setOption('keyMap',editorMode.value);
   saved=text;version=data.version;pdfVersion=preservePdf&&data.sync&&data.pdf_revision===pdfBuild?version:'';compiledLabels=pdfVersion?data.labels||{}:{};compiledCitations=pdfVersion?data.citations||{}:{};editor.setOption('readOnly',false);conflict=false;updateSyncControls();
@@ -549,7 +549,7 @@ async function load(force=false){
   try{
     const data=await request('/state');
     if(busy||syncBusy||historyDialog.open)return;
-    mathHover.setMainSource(data.main_source||'');
+    mainSource=data.main_source||'';mathHover.setMainSource(mainSource);
     if(!force&&version&&data.version===version){
       if(data.project_version&&data.project_version!==projectVersion){projectVersion=data.project_version;pdfVersion='';compiledLabels={};compiledCitations={};if(autoCompile.checked)await compile();else setText(status,'项目文件已变化，请重新编译后定位。');}
       return;
@@ -596,10 +596,10 @@ async function synchronize(direction,position,quiet=false){
       if(!data.length)throw results.find(result=>result.status==='rejected').reason;
       const locations=data.map(point=>point.line);
       let range;
-      try{range=sourcePdfTextRange(saved,locations,position.text,compiledLabels,compiledCitations);}
+      try{range=sourcePdfTextRange(saved,locations,position.text,compiledLabels,compiledCitations,mainSource||saved);}
       catch(error){
         range=await sourcePdfMathRange(saved,locations,position,compiledLabels,compiledCitations,
-          (first,last)=>syncRequest({direction:'range',version:revision,pdf_revision:build,first,last}));
+          (first,last)=>syncRequest({direction:'range',version:revision,pdf_revision:build,first,last}),mainSource||saved);
         if(!range)throw error;
       }
       if(busy||version!==revision||pdfBuild!==build||editor.getValue()!==saved)throw new Error(t('PDF 或源码已变化，请重新选择 PDF 文字。'));
@@ -652,7 +652,7 @@ function sourceParagraphRange(source,locations){
   if(!lines.slice(from,to+1).join('').trim())throw new Error(t('无法确定对应段落，请在源码中选择。'));
   return {from:{line:from,ch:0},to:{line:to,ch:lines[to].length}};
 }
-function sourcePdfTextRange(source,locations,text,labels={},citations={}){
+function sourcePdfTextRange(source,locations,text,labels={},citations={},macroSource=source){
   const fail=()=>{throw new Error(t('无法唯一匹配选中的 PDF 文字，请在源码中选择。'));};
   if(typeof text!=='string'||!text.trim())fail();
   const nearby=sourceParagraphRange(source,locations),lines=source.split('\n');
@@ -682,6 +682,7 @@ function sourcePdfTextRange(source,locations,text,labels={},citations={}){
   if(found<0){
     if(snippet.length>12000||needle.length>3000)fail();
     approximate=true;haystack='';offsets=[];
+    const macros={'\\bm':'\\boldsymbol{#1}',...documentMacros(macroSource,katex),'\\label':{numArgs:1,tokens:[]}};
     const formulas=new Map(findMathRanges(snippet).map(range=>[range.from,range]));
     const append=(value,from,to)=>{
       value=normalize(value);haystack+=value;
@@ -696,7 +697,7 @@ function sourcePdfTextRange(source,locations,text,labels={},citations={}){
         const rendered=document.createElement('div');
         try{
           const tex=formula.tex.replace(/\\(begin|end)\s*\{(equation|align|alignat|gather)\}/g,'\\$1{$2*}');
-          katex.render(tex,rendered,{output:'mathml',displayMode:formula.display,throwOnError:true,trust:false,strict:'ignore',maxExpand:1000,maxSize:20,macros:{'\\label':{numArgs:1,tokens:[]},'\\bm':'\\boldsymbol{#1}'}});
+          katex.render(tex,rendered,{output:'mathml',displayMode:formula.display,throwOnError:true,trust:false,strict:'ignore',maxExpand:1000,maxSize:20,macros:{...macros}});
           rendered.querySelectorAll('annotation').forEach(node=>node.remove());
           const key=formula.tex.match(/\\label\{([^{}]+)\}/)?.[1],number=Object.hasOwn(labels,key)?labels[key]:'';
           append((number?'('+number+')':'')+rendered.textContent,formula.from,formula.to);
@@ -788,7 +789,7 @@ function sourcePdfTextRange(source,locations,text,labels={},citations={}){
   if(braces)fail();
   return approximate?{from:position(from),to:position(to),approximate:true}:{from:position(from),to:position(to)};
 }
-async function sourcePdfMathRange(source,locations,selection,labels,citations,regionsForLines){
+async function sourcePdfMathRange(source,locations,selection,labels,citations,regionsForLines,macroSource=source){
   // PDF math reading order is not TeX order. Verify its compiled position instead.
   if(!selection.fragments?.length||selection.fragments.length>10000)return null;
   const lineStarts=[0];for(let i=0;i<source.length;i++)if(source[i]==='\n')lineStarts.push(i+1);
@@ -832,7 +833,7 @@ async function sourcePdfMathRange(source,locations,selection,labels,citations,re
     if(run.formula){intervals.push([run.formula.from,run.formula.to]);continue;}
     try{
       const context=[Math.max(1,Math.min(...locations)-1),Math.min(lineStarts.length,Math.max(...locations)+1)];
-      const range=sourcePdfTextRange(source,context,run.text.join('\n'),labels,citations);
+      const range=sourcePdfTextRange(source,context,run.text.join('\n'),labels,citations,macroSource);
       intervals.push([offset(range.from),offset(range.to)]);
     }catch(error){return null;}
   }
