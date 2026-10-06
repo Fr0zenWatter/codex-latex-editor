@@ -20,6 +20,8 @@ Select source text, click the annotation icon, and save your requests. Send them
 
 Select a word, a paragraph, or text with equations in the PDF. Add comments and let Codex revise those passages, with the source and PDF updating together.
 
+Choose a color under **gear → Replacement color** to mark actual annotation edits with LaTeX `\color`, making changes easy to spot in the PDF. Select **None** to turn color marking off.
+
 [![Watch the annotation editing demo](docs/media/03-pdf-comments.gif)](docs/media/03-pdf-comments.mp4)
 
 ### LaTeX ↔ PDF
@@ -34,9 +36,11 @@ Edits are saved automatically. Compare source changes and the PDF before and aft
 
 [![Watch the history demo](docs/media/02-history.gif)](docs/media/02-history.mp4)
 
-Vim shortcuts, command completion, and inline formula previews are also included.
+### Editing and personalization
 
-**Interface language:** Follows your system language, falling back to **English**. Switch manually via **gear → Language**.
+- **Editor features:** Standard editing by default, with an optional Vim mode, syntax highlighting, command completion, and inline formula previews.
+- **Interface language:** Supports multiple languages and follows your system language, falling back to English. Choose a language manually via **gear → Language**.
+- **Themes:** Switch between built-in light and dark themes, or upload or paste a screenshot to generate and save a custom color theme.
 
 ## Get started
 
