@@ -44,11 +44,86 @@ export function findMathRanges(source) {
   return ranges;
 }
 
+// Import only literal declarations, never execute the document preamble or packages.
+// KaTeX parses arguments/expansions; unsupported declarations are isolated.
+export function documentMacros(source, katex) {
+  source = source.replace(/\\verb\*?([^\w\s])[^\r\n]*?\1|\\begin\{(verbatim\*?|lstlisting|minted|comment)\}[\s\S]*?\\end\{\2\}|\\[\s\S]|%[^\r\n]*/g,
+    token => token.startsWith('%') || token.startsWith('\\verb') || token.startsWith('\\begin') ? ' ' : token);
+  let macros = {}, depth = 0, conditional = 0, count = 0;
+  const tokens = /\\[A-Za-z@]+|\\[^\s]|[{}]/g;
+  function group(index, left = '{', right = '}') {
+    while (/\s/.test(source[index] || '') && index < source.length) index++;
+    if (source[index] !== left) return null;
+    const start = index++;
+    let nesting = 1;
+    for (; index < source.length; index++) {
+      if (source[index] === '\\') { index++; continue; }
+      if (source[index] === left) nesting++;
+      if (source[index] === right && --nesting === 0) return {text: source.slice(start, index + 1), end: index + 1};
+    }
+    return null;
+  }
+  for (let match; (match = tokens.exec(source)) && count < 500;) {
+    if (/^\\if/.test(match[0])) { conditional++; continue; }
+    if (match[0] === '\\fi') { conditional = Math.max(0, conditional - 1); continue; }
+    if (conditional) continue; // TeX conditionals need the full compiler's state.
+    if (match[0] === '{') { depth++; continue; }
+    if (match[0] === '}') { depth = Math.max(0, depth - 1); continue; }
+    if (!depth && match[0] === '\\begin' && group(tokens.lastIndex)?.text === '{document}') break;
+    if (depth || !/^\\(?:newcommand|renewcommand|providecommand|DeclareMathOperator|def|gdef)$/.test(match[0])) continue;
+    const command = match[0];
+    let index = tokens.lastIndex, statement;
+    const starred = source[index] === '*';
+    if (starred) index++;
+    while (/\s/.test(source[index] || '') && index < source.length) index++;
+    const nameGroup = group(index), nameToken = source.slice(index).match(/^\\(?:[A-Za-z@]+|[^\s])/);
+    if (!nameGroup && !nameToken) continue;
+    const name = nameGroup ? nameGroup.text.slice(1, -1).trim() : nameToken[0];
+    if (!/^\\(?:[A-Za-z@]+|[^\s])$/.test(name)) continue;
+    index = nameGroup ? nameGroup.end : index + name.length;
+    if (command === '\\def' || command === '\\gdef') {
+      const parameters = source.slice(index).match(/^\s*(?:#[1-9]\s*)*/)[0];
+      index += parameters.length;
+      const body = group(index);
+      if (!body) continue;
+      statement = command + name + parameters + body.text; index = body.end;
+    } else {
+      const args = group(index, '[', ']');
+      if (args) index = args.end;
+      const defaults = group(index, '[', ']');
+      if (defaults) index = defaults.end;
+      const body = group(index);
+      if (!body) continue;
+      index = body.end;
+      tokens.lastIndex = index;
+      if (defaults) continue; // KaTeX does not implement optional default arguments.
+      statement = command === '\\DeclareMathOperator'
+        ? '\\newcommand{' + name + '}{\\operatorname' + (starred ? '*' : '') + body.text + '}'
+        : command + '{' + name + '}' + (args?.text || '') + body.text;
+    }
+    tokens.lastIndex = index; count++;
+    const candidate = {...macros};
+    const options = {macros: candidate, globalGroup: true,
+      throwOnError: true, trust: false, strict: 'ignore', maxExpand: 1000, maxSize: 20};
+    try {
+      try { katex.renderToString(statement, options); }
+      catch (error) {
+        // KaTeX predefines aliases (e.g. \R) that ordinary LaTeX leaves undefined.
+        if (!statement.startsWith('\\newcommand') || Object.hasOwn(macros, name)
+          || !error.message.includes('attempting to redefine')) throw error;
+        katex.renderToString(statement.replace(/^\\newcommand/, '\\renewcommand'), options);
+      }
+      macros = candidate;
+    } catch {} // One malformed or unsupported definition must not hide valid macros.
+  }
+  return macros;
+}
+
 export function attachMathHover(cm, katex) {
   const wrapper = cm.getWrapperElement(), tip = document.createElement('div');
   tip.id = 'math-hover'; tip.role = 'tooltip'; tip.hidden = true;
   document.body.append(tip);
-  let ranges = null, active = null;
+  let ranges = null, active = null, mainSource = '', macroSource = null, macros = {};
   function hide() {
     active = null; tip.hidden = true;
     cm.getInputField().removeAttribute('aria-describedby');
@@ -59,10 +134,12 @@ export function attachMathHover(cm, katex) {
       const formula = document.createElement('div');
       tip.append(formula);
       try {
-        // ponytail: standalone KaTeX; import document macro definitions if projects need them.
+        const source = mainSource || cm.getValue();
+        if (source !== macroSource) { macros = documentMacros(source, katex); macroSource = source; }
         const tex = range.tex.replace(/\\(begin|end)\s*\{(equation|align|alignat|gather)\}/g, '\\$1{$2*}');
         katex.render(tex, formula, {displayMode: range.display, throwOnError: true,
-          trust: false, strict: 'ignore', maxExpand: 1000, maxSize: 20, macros: {'\\label': {numArgs: 1, tokens: []}}});
+          trust: false, strict: 'ignore', maxExpand: 1000, maxSize: 20,
+          macros: {...macros, '\\label': {numArgs: 1, tokens: []}}});
       } catch (error) {
         formula.className = 'math-hover-error';
         formula.textContent = '此公式暂无法预览，请查看右侧 PDF。';
@@ -97,4 +174,8 @@ export function attachMathHover(cm, katex) {
   wrapper.addEventListener('keyup', event => { if (event.key === 'Escape') hide(); });
   window.addEventListener('blur', hide);
   window.addEventListener('resize', update);
+  return {setMainSource(source = '') {
+    if (source === mainSource) return;
+    mainSource = source; active = null; update();
+  }};
 }

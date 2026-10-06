@@ -233,7 +233,7 @@ document.querySelector('#pan-mode').onclick=()=>{
 const editor=CodeMirror.fromTextArea(source,{mode:'text/x-stex',theme:'cobalt',keyMap:'default',lineNumbers:true,lineWrapping:true,tabSize:2,indentUnit:2,readOnly:'nocursor',screenReaderLabel:t('LaTeX 源码'),extraKeys:{'Ctrl-S':compile,'Cmd-S':compile,'Ctrl-Space':completeLatex,'Alt-/':toggleSourceComment,'Ctrl-/':toggleSourceComment,'Cmd-/':toggleSourceComment}});
 attachNativeAnnotations(editor,setText);
 window.addEventListener('latex-language-change',()=>{editor.setOption('screenReaderLabel',t('LaTeX 源码'));setText(document.querySelector('#pan-label'),panMode?'拖动':'选字');});
-attachMathHover(editor,katex);
+const mathHover=attachMathHover(editor,katex);
 document.querySelector('main').append(document.querySelector('#chat-panel'));
 const selectionChat=attachSelectionChat(editor,request,paintPdfAnnotations);
 pdfEvents.on('pagerendered',()=>selectionChat.refreshAnnotations());
@@ -406,6 +406,7 @@ async function request(url,options){
 }
 function display(data,preservePdf=false){
   showCompileError(null);showCompileLog(false);
+  mathHover.setMainSource(data.main_source||'');
   const text=data.source.replace(/\r\n/g,'\n');
   editor.setOption('keyMap','default');editor.swapDoc(new CodeMirror.Doc(text,editor.getOption('mode')));editor.setOption('keyMap',editorMode.value);
   saved=text;version=data.version;pdfVersion=preservePdf&&data.sync&&data.pdf_revision===pdfBuild?version:'';compiledLabels=pdfVersion?data.labels||{}:{};compiledCitations=pdfVersion?data.citations||{}:{};editor.setOption('readOnly',false);conflict=false;updateSyncControls();
@@ -524,6 +525,7 @@ async function load(force=false){
   try{
     const data=await request('/state');
     if(busy||syncBusy||historyDialog.open)return;
+    mathHover.setMainSource(data.main_source||'');
     if(!force&&version&&data.version===version){
       if(data.project_version&&data.project_version!==projectVersion){projectVersion=data.project_version;pdfVersion='';compiledLabels={};compiledCitations={};if(autoCompile.checked)await compile();else setText(status,'项目文件已变化，请重新编译后定位。');}
       return;
@@ -1762,6 +1764,7 @@ def make_server(path, port=0, main_thread=None, project_root=None):
         fingerprint = project_digest(dependencies)
         synced = bool(server.sync_version) and fingerprint == server.project_version
         return {**state, 'project_root': str(root), 'main_file': str(main_file),
+                'main_source': snapshot(main_file)['source'] if main_file != path else '',
                 'files': [{'path': str(file), 'name': file.relative_to(root).as_posix()} for file in files],
                 'project_version': fingerprint, 'sync': synced,
                 'pdf_revision': server.pdf_revision, 'labels': server.labels if synced else {},

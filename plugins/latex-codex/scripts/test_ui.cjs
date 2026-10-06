@@ -62,7 +62,7 @@ function flushAnimationFrames(){animationTime+=16;const callbacks=[...animationF
 function settleAnimation(){for(let i=0;animationFrames.size&&i<120;i++)flushAnimationFrames();assert.equal(animationFrames.size,0);}
 const context = vm.createContext({
   t:key=>key, setText:(element,key,values={})=>{element.textContent=key.replace(/\{(\w+)\}/g,(match,name)=>values[name]??match);},initSettings(){}, initScreenshotThemes(){}, applyCustomTheme(){return false;},
-  attachMathHover(){},attachNativeAnnotations(){},attachSelectionChat(){return {open(){chatOpened.push('full');},openQuick(anchor){chatOpened.push(anchor);},refreshAnnotations(){},busy:false};},attachHistory(){},mountHistoryTabs(){},katex:{},
+  attachMathHover(){return {setMainSource(){}};},attachNativeAnnotations(){},attachSelectionChat(){return {open(){chatOpened.push('full');},openQuick(anchor){chatOpened.push(anchor);},refreshAnnotations(){},busy:false};},attachHistory(){},mountHistoryTabs(){},katex:{},
   mountSourceWheel({button}){return {update(data){button.textContent=data.files.find(file=>file.path===data.path)?.name;button.files=data.files;button.mainFile=data.mainFile;},setDisabled(value){button.disabled=value;}};},
   pdfPageBoxes:async()=>[[0,0,600,800],[0,0,600,800]],
   attachPdfOutline(){return {clear(){},load:async()=>{}};},

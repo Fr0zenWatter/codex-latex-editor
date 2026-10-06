@@ -1,6 +1,6 @@
 // Run: node test_hover.mjs (stdlib and the bundled KaTeX only).
 import assert from 'node:assert/strict';
-import {findMathRanges, attachMathHover} from './vendor/latex-hover.mjs';
+import {findMathRanges, attachMathHover, documentMacros} from './vendor/latex-hover.mjs';
 import katex from './vendor/katex/katex.mjs';
 
 for (const [left, right, display] of [
@@ -30,6 +30,47 @@ for (const tex of [nested, '\\begin{align}x&=1\\\\y&=2\\end{align}', '\\bm{x}+\\
 }
 assert.throws(() => katex.renderToString('\\missingCustomMacro'), /Undefined control sequence/);
 assert(!katex.renderToString('\\href{javascript:alert(1)}{x}', {trust: false, strict: 'ignore'}).includes('href='));
+
+const preamble = String.raw`
+% \newcommand{\ignored}{bad}
+\newcommand{\cNK}{c_{n,k}}
+\newcommand{\R}{\mathcal R}
+\newcommand{\Le}{L_{n,k,\varepsilon}}
+\newcommand*{\Ae}{A_{k,\varepsilon}}
+\newcommand{\1}{\mathbf 1}
+\newcommand{\norm}[1]{\left\lVert#1\right\rVert}
+\newcommand\alias{\cNK}
+\providecommand{\alias}{wrong}
+\renewcommand{\Ae}{B_{\varepsilon}}
+\DeclareMathOperator{\logodds}{logit}
+\DeclareMathOperator*{\argmax}{arg\,max}
+\def\pair#1#2{\frac{#1}{#2}}
+\gdef\nested{\norm{\cNK}}
+\newcommand{\unsupported}[1][x]{#1}
+\newcommand{\malformed}[bad]{x}
+\newcommand{\afterBad}{y}
+\newcommand{\commented}{x% ignored closing brace }
++y}
+\newcommand{\escaped}{\{x\}}
+\newcommand{\loop}{\loop}
+\newcommand{\unsafe}{\href{javascript:alert(1)}{x}}
+\title{\newcommand{\hidden}{x}}
+\begin{verbatim}\newcommand{\hiddenVerb}{x}\end{verbatim}
+\ifdefined\something\newcommand{\conditional}{x}\else\newcommand{\conditional}{y}\fi
+\begin{document}
+\renewcommand{\cNK}{wrong}
+`;
+const macros = documentMacros(preamble, katex);
+for (const name of ['ignored', 'hidden', 'hiddenVerb', 'conditional', 'unsupported', 'malformed']) assert(!Object.hasOwn(macros, '\\' + name), name);
+const preview = (tex, definitions = macros) => katex.renderToString(tex, {macros: {...definitions}, trust: false, strict: 'ignore', maxExpand: 1000}).replace(/<annotation[\s\S]*?<\/annotation>/g, '');
+assert.equal(preview('\\R'), preview('\\mathcal R'));
+assert.equal(preview(String.raw`\cNK+\Le+\Ae+\1+\norm{x}+\alias+\logodds(x)+\argmax_x x+\pair{a}{b}+\nested+\afterBad+\commented+\escaped`),
+  preview(String.raw`c_{n,k}+L_{n,k,\varepsilon}+B_{\varepsilon}+\mathbf 1+\left\lVert x\right\rVert+c_{n,k}+\operatorname{logit}(x)+\operatorname*{arg\,max}_x x+\frac{a}{b}+\left\lVert c_{n,k}\right\rVert+y+x+y+\{x\}`));
+assert.throws(() => preview('\\loop'), /Too many expansions/);
+assert(!preview('\\unsafe').includes('href='));
+assert(!Object.hasOwn(macros, '\\leak'));
+preview('\\gdef\\leak{x}');
+assert(!Object.hasOwn(macros, '\\leak'), 'Rendering must use a fresh macro dictionary.');
 
 // Caret movement and editing update previews without compilation or source mutation.
 const elements = [];
@@ -75,3 +116,21 @@ text = nested; handlers.changes();
 assert(rendered.startsWith('\\begin{equation*}') && rendered.endsWith('\\end{equation*}'));
 assert(!katex.renderToString(rendered, {displayMode: true, macros: {'\\label': {numArgs: 1, tokens: []}}}).includes('eqn-num'));
 console.log('PASS: math ranges, KaTeX, caret entry/exit, live edits, focus, scroll, dismissal and formula-only content');
+
+// Real renderer exercises live preamble edits, child/main context and project switches.
+const hover = attachMathHover(cm, katex);
+const macroTip = elements.filter(el => el.id === 'math-hover').at(-1);
+katex.render = (tex, node, options) => { node.html = katex.renderToString(tex, options); };
+text = String.raw`\newcommand{\cNK}{c_{n,k}}\begin{document}$\cNK$`;
+cursor = text.lastIndexOf('$') - 2; handlers.changes();
+assert(macroTip.children[0].html.includes('<math'));
+text = text.replace('c_{n,k}', 'd_{n,k}'); handlers.changes();
+assert(macroTip.children[0].html.includes('>d<'));
+text = '$\\Le$'; cursor = 2;
+hover.setMainSource(preamble); handlers.swapDoc();
+assert(macroTip.children[0].html.includes('<math'));
+hover.setMainSource(preamble.replace('L_{n,k,\\varepsilon}', 'Z'));
+assert(macroTip.children[0].html.includes('>Z<'));
+hover.setMainSource('');
+assert.equal(macroTip.children[0].className, 'math-hover-error');
+console.log('PASS: document macros, isolation, limits, live changes and main-file context');

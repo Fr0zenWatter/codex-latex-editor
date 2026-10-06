@@ -53,6 +53,7 @@ with tempfile.TemporaryDirectory(prefix='latex project ') as directory:
         assert code == 200, data
         assert data['path'] == str(file) and data['main_file'] == str(main)
         assert data['project_root'] == str(root)
+        assert data['main_source'] == (snapshot(main)['source'] if file != main else '')
         return data
 
     def compile_current():
