@@ -1,6 +1,7 @@
 // Run: node test_chat_ui.mjs (stdlib only).
 import assert from 'node:assert/strict';
 import {attachSelectionChat,colorReplacement} from './vendor/latex-chat.mjs';
+import {initSettings} from './vendor/latex-settings.mjs';
 const elements = new Map();
 function el(id) {
   if (!elements.has(id)) elements.set(id, {value:'',textContent:'',hidden:true,children:[],style:{},dataset:{},attributes:{},
@@ -12,9 +13,12 @@ function el(id) {
     focus(){this.events.focus?.();},showPopover(){this.open=true;},hidePopover(){this.open=false;this.events.beforetoggle?.({newState:'closed'});},addEventListener(name,handler){this.events[name]=handler;}});
   return elements.get(id);
 }
-globalThis.document = {querySelector:el,createElement:()=>el(Symbol())};
+globalThis.document = {querySelector:el,querySelectorAll:()=>[],documentElement:{style:{setProperty(){}}},createElement:()=>el(Symbol())};
 const windowEvents = {};
 globalThis.window = {innerWidth:1000,innerHeight:800,addEventListener(name,handler){windowEvents[name]=handler;}};
+window.dispatchEvent=()=>{};
+globalThis.localStorage={getItem:key=>key==='latex-codex-language'?'zh-CN':null,setItem(){}};
+initSettings();
 let quickResize;
 globalThis.ResizeObserver = class {constructor(callback){quickResize=callback;}observe(){}};
 let operations=0; const marks=[];

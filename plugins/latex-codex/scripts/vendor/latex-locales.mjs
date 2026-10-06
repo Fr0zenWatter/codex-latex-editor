@@ -1,5 +1,11 @@
 // Interface messages keyed by their English fallback. Keep placeholders unchanged.
 export const translations = {
+  "Source font size": {"ja":"ソースの文字サイズ","fr":"Taille du texte source","de":"Quelltext-Schriftgröße","es":"Tamaño de letra del código fuente"},
+  "Save settings": {"ja":"設定を保存","fr":"Enregistrer les paramètres","de":"Einstellungen speichern","es":"Guardar ajustes"},
+  "Settings are saved automatically and restored next time.": {"ja":"設定は自動保存され、次回も復元されます。","fr":"Les paramètres sont enregistrés automatiquement et restaurés à la prochaine ouverture.","de":"Einstellungen werden automatisch gespeichert und beim nächsten Öffnen wiederhergestellt.","es":"Los ajustes se guardan automáticamente y se restauran la próxima vez."},
+  "Saving settings…": {"ja":"設定を保存中…","fr":"Enregistrement des paramètres…","de":"Einstellungen werden gespeichert…","es":"Guardando ajustes…"},
+  "Settings saved. They will be restored next time.": {"ja":"設定を保存しました。次回も復元されます。","fr":"Paramètres enregistrés. Ils seront restaurés à la prochaine ouverture.","de":"Einstellungen gespeichert. Sie werden beim nächsten Öffnen wiederhergestellt.","es":"Ajustes guardados. Se restaurarán la próxima vez."},
+  "Could not save settings: {message}": {"ja":"設定を保存できませんでした：{message}","fr":"Impossible d’enregistrer les paramètres : {message}","de":"Einstellungen konnten nicht gespeichert werden: {message}","es":"No se pudieron guardar los ajustes: {message}"},
   "Section outline": {"ja":"章の目次","fr":"Sommaire des sections","de":"Abschnittsübersicht","es":"Índice de secciones"},
   "Dial": {"ja":"ダイヤル","fr":"Molette","de":"Drehrad","es":"Rueda"},
   "Section cards + subsection dial": {"ja":"章カード＋小節ダイヤル","fr":"Cartes de sections + molette de sous-sections","de":"Abschnittskarten + Unterabschnittsrad","es":"Tarjetas de secciones + rueda de subsecciones"},

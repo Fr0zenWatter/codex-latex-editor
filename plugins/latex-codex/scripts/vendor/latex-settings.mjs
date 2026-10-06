@@ -1,6 +1,10 @@
 import {translations} from './latex-locales.mjs';
 
 export const english = {
+  '源码字号':'Source font size', '保存设置':'Save settings',
+  '设置更改会自动保存，并在下次打开时恢复。':'Settings are saved automatically and restored next time.',
+  '正在保存设置…':'Saving settings…', '设置已保存，下次打开会恢复。':'Settings saved. They will be restored next time.',
+  '设置保存失败：{message}':'Could not save settings: {message}',
   '章节目录':'Section outline',
   '轮盘':'Dial', '章节卡片 + 小节轮盘':'Section cards + subsection dial',
   '章节卡片：方向键浏览，Enter 跳转':'Section cards: arrow keys to browse, Enter to jump',
@@ -156,6 +160,61 @@ export const english = {
 export const supportedLanguages = ['en', 'zh-CN', 'ja', 'fr', 'de', 'es'];
 export let language = 'en';
 const bindings = new Map();
+const preferenceKeys = ['language','revision-color','outline-style','theme','custom-themes',
+  'editor-mode','source-font-size','chat-color','auto-compile','split'].map(name=>'latex-codex-'+name);
+let persisted = null, pending = {}, saveTimer, saveQueue = Promise.resolve();
+function preferenceData() {
+  if (persisted === null) {
+    const json = document.querySelector('#user-preferences')?.textContent;
+    persisted = json ? JSON.parse(json) : undefined;
+  }
+  return persisted;
+}
+function preferenceNotice(key, values = {}, error = false) {
+  const status = document.querySelector('#settings-save-status');
+  if (status) { setText(status, key, values); status.dataset.error = String(error); }
+}
+export const preferences = {
+  getItem(key) {
+    const saved = preferenceData();
+    if (saved && Object.hasOwn(saved, key)) return saved[key];
+    try { return localStorage.getItem(key); } catch { return null; }
+  },
+  setItem(key, value) {
+    value = String(value);
+    try { localStorage.setItem(key, value); } catch {}
+    const saved = preferenceData();
+    if (!saved || saved[key] === value) return;
+    saved[key] = value; pending[key] = value;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => { savePreferences().catch(() => {}); }, 250);
+  }
+};
+export function savePreferences(all = false) {
+  clearTimeout(saveTimer);
+  if (all) for (const key of preferenceKeys) {
+    const value = preferences.getItem(key);
+    if (value != null) pending[key] = value;
+  }
+  if (!Object.keys(pending).length) return saveQueue;
+  const changes = pending; pending = {};
+  const body = JSON.stringify(changes);
+  saveQueue = saveQueue.catch(() => {}).then(async () => {
+    preferenceNotice('正在保存设置…');
+    const response = await fetch('/preferences', {method:'POST', headers:{'Content-Type':'application/json'},
+      body, keepalive: new TextEncoder().encode(body).length < 60000});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || response.status);
+    preferenceNotice('设置已保存，下次打开会恢复。');
+  }).catch(error => {
+    for (const [key, value] of Object.entries(changes)) {
+      if (preferences.getItem(key) === value && !Object.hasOwn(pending, key)) pending[key] = value;
+    }
+    preferenceNotice('设置保存失败：{message}', {message:error.message}, true);
+    throw error;
+  });
+  return saveQueue;
+}
 export function resolveLanguage(preferences = []) {
   for (const preference of preferences) {
     if (typeof preference !== 'string') continue;
@@ -177,14 +236,28 @@ export function initSettings() {
   const $ = id => document.querySelector('#' + id);
   const languageSelect = $('language'), colorSelect = $('revision-color'), outlineSelect = $('outline-style');
   const colors = {orange:'#b85c1c', blue:'#2563b0', purple:'#8252ad', green:'#267a42', red:'#b63a3a'};
-  try { languageSelect.value = localStorage.getItem('latex-codex-language') || 'system'; colorSelect.value = localStorage.getItem('latex-codex-revision-color') || 'orange'; } catch {}
+  $('settings-save').onclick = async () => {
+    $('settings-save').disabled = true;
+    try {
+      for (const [id, name] of [['language','language'],['revision-color','revision-color'],
+        ['outline-style','outline-style'],['theme','theme'],['editor-mode','editor-mode'],
+        ['source-font-size','source-font-size'],['chat-color','chat-color']]) {
+        preferences.setItem('latex-codex-'+name, $(id).value);
+      }
+      preferences.setItem('latex-codex-auto-compile', $('auto-compile').checked ? 'on' : 'off');
+      await savePreferences(true);
+    } catch {}
+    finally { $('settings-save').disabled = false; }
+  };
+  window.addEventListener?.('pagehide', () => { savePreferences().catch(() => {}); });
+  try { languageSelect.value = preferences.getItem('latex-codex-language') || 'system'; colorSelect.value = preferences.getItem('latex-codex-revision-color') || 'orange'; } catch {}
   if (!['system', ...supportedLanguages].includes(languageSelect.value)) languageSelect.value = 'system';
   if (!colors[colorSelect.value]) colorSelect.value = 'orange';
-  try { outlineSelect.value = localStorage.getItem('latex-codex-outline-style') || 'wheel'; } catch {}
+  try { outlineSelect.value = preferences.getItem('latex-codex-outline-style') || 'wheel'; } catch {}
   if (!['wheel', 'cards'].includes(outlineSelect.value)) outlineSelect.value = 'wheel';
   outlineSelect.onchange = () => {
     if (!['wheel', 'cards'].includes(outlineSelect.value)) outlineSelect.value = 'wheel';
-    try { localStorage.setItem('latex-codex-outline-style', outlineSelect.value); } catch {}
+    try { preferences.setItem('latex-codex-outline-style', outlineSelect.value); } catch {}
     window.dispatchEvent(new Event('latex-outline-change'));
   };
   function applyLanguage() {
@@ -196,12 +269,12 @@ export function initSettings() {
     for (const element of document.querySelectorAll('[data-i18n]')) element.textContent = t(element.dataset.i18n);
     for (const attribute of ['title', 'aria-label', 'placeholder', 'label', 'alt']) for (const element of document.querySelectorAll('[data-i18n-' + attribute + ']')) element.setAttribute(attribute, t(element.getAttribute('data-i18n-' + attribute)));
     for (const [element, [key, values]] of bindings) element.textContent = t(key, values);
-    try { localStorage.setItem('latex-codex-language', languageSelect.value); } catch {}
+    try { preferences.setItem('latex-codex-language', languageSelect.value); } catch {}
     window.dispatchEvent(new Event('latex-language-change'));
   }
   function applyColor() {
     document.documentElement.style.setProperty('--revision-color', colors[colorSelect.value]);
-    try { localStorage.setItem('latex-codex-revision-color', colorSelect.value); } catch {}
+    try { preferences.setItem('latex-codex-revision-color', colorSelect.value); } catch {}
   }
   languageSelect.onchange = applyLanguage; colorSelect.onchange = applyColor; applyLanguage(); applyColor();
   for (const name of ['file', 'settings', 'compile']) {

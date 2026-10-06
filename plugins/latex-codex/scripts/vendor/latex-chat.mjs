@@ -1,4 +1,4 @@
-import {t} from './latex-settings.mjs';
+import {t, preferences} from './latex-settings.mjs';
 
 export function colorReplacement(text, color, segments) {
   if (!color || !text || !segments || segments.map(part => part[0]).join('') !== text) return text;
@@ -149,11 +149,15 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     finally { modelsLoading = false; renderQuickSettings(); }
   }
   const colorSelect = $('chat-color');
+  colorSelect.value = preferences.getItem('latex-codex-chat-color') || '';
+  if (!['','blue','red','teal','magenta','orange','violet'].includes(colorSelect.value)) colorSelect.value = '';
+  color = colorSelect.value;
   function renderProposal() {
     if (proposal) $('chat-replacement').textContent = colorReplacement(proposal.replacement, color, proposal.segments) || t('（删除选区）');
   }
   colorSelect.onchange = () => {
     color = colorSelect.value;
+    preferences.setItem('latex-codex-chat-color', color);
     renderProposal();
   };
   async function refreshContext() {

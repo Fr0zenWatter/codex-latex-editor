@@ -1,6 +1,7 @@
 // Run: node plugins/latex-codex/scripts/test_themes.mjs
 import assert from 'node:assert/strict';
 import {webcrypto} from 'node:crypto';
+import {t} from './vendor/latex-settings.mjs';
 import {screenshotPalette,screenshotDistribution,colorHue,makeTheme,themeButtonText,contrast,initScreenshotThemes,applyCustomTheme} from './vendor/latex-themes.mjs';
 
 const originalColors=['#ffffff','#e5e7eb','#f8fafc','#e0f2fe','#f4f4f5','#3b82f6','#333333'];
@@ -23,7 +24,7 @@ for(const theme of [light,dark,multi,makeTheme(['#ff0000','#ffff00'],'#ff0000')]
   for(const role of ['text','muted','command','math','operator','reference','environment','number','environment-command'])assert(contrast(theme[role],theme.bg)>=4.5,role+' must remain readable');
   assert(contrast(themeButtonText(theme),theme['quick-accent'])>=4.5,'Button text must remain readable without altering the original fill');
 }
-assert.throws(()=>screenshotPalette(new Uint8ClampedArray(16)),/未识别/);
+assert.throws(()=>screenshotPalette(new Uint8ClampedArray(16)),/No palette found/);
 
 const nodes=new Map(),stored=new Map(),properties={};
 function element(id){
@@ -33,7 +34,7 @@ function element(id){
     getContext(){return {drawImage(){},getImageData(){return {data:pixels};}};},toDataURL(){return 'data:image/png;base64,AA==';}});
   return nodes.get(id);
 }
-globalThis.document={getElementById:element,createElement:()=>element(Symbol()),createTextNode:text=>({textContent:text}),documentElement:{style:{setProperty(k,v){properties[k]=v;},removeProperty(k){delete properties[k];}}}};
+globalThis.document={querySelector:selector=>element(selector.slice(1)),getElementById:element,createElement:()=>element(Symbol()),createTextNode:text=>({textContent:text}),documentElement:{style:{setProperty(k,v){properties[k]=v;},removeProperty(k){delete properties[k];}}}};
 Object.defineProperty(globalThis,'crypto',{value:webcrypto,configurable:true});
 globalThis.localStorage={getItem:key=>stored.get(key),setItem:(key,value)=>stored.set(key,value)};
 globalThis.createImageBitmap=async()=>({width:25,height:pixels.length/4/25,close(){}});
@@ -52,7 +53,7 @@ element('theme-palette').children[5].onclick();assert.equal(element('theme-sampl
 element('theme-name').value='   ';element('theme-save').onclick();assert.equal(applied,0);
 element('theme-name').value='Modern Minimal';element('theme-save').onclick();assert.equal(applied,1);assert.equal(properties['--bg'],'#ffffff');
 const id=select.value;assert(id.startsWith('custom-'));assert(!element('theme-dialog').open);
-element('theme-generate').onclick();element('theme-name').oninput();assert.equal(element('theme-save').textContent,'更新并使用');element('theme-save').onclick();assert.equal(select.value,id);assert.equal(JSON.parse(stored.get('latex-codex-custom-themes')).length,1,'Updating a name keeps a single theme');
+element('theme-generate').onclick();element('theme-name').oninput();assert.equal(element('theme-save').textContent,t('更新并使用'));element('theme-save').onclick();assert.equal(select.value,id);assert.equal(JSON.parse(stored.get('latex-codex-custom-themes')).length,1,'Updating a name keeps a single theme');
 const saved=JSON.parse(stored.get('latex-codex-custom-themes'));assert.equal(saved[0].name,'Modern Minimal');assert(!JSON.stringify(saved).includes('data:image'),'Store colors only, never the screenshot');
 assert.deepEqual(saved[0].palette,originalColors,'Preserve the original palette alongside derived UI colors');
 assert.equal(saved[0].distribution.reduce((sum,item)=>sum+item.count,0),pixels.length/4);

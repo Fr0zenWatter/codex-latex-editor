@@ -168,7 +168,7 @@ export function attachMathHover(cm, katex) {
     if (anchor.bottom <= bounds.top || anchor.top >= bounds.bottom) { hide(); return; }
     show(range, anchor);
   }
-  for (const event of ['cursorActivity', 'focus', 'scroll']) cm.on(event, update);
+  for (const event of ['cursorActivity', 'focus', 'scroll', 'refresh']) cm.on(event, update);
   for (const event of ['changes', 'swapDoc']) cm.on(event, () => { ranges = null; update(); });
   cm.on('blur', hide);
   wrapper.addEventListener('keyup', event => { if (event.key === 'Escape') hide(); });

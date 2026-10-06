@@ -32,6 +32,7 @@ let vimEscapes=0;
 let selected=false,commentCalls=0,cursorChanges=0;
 const chatOpened=[];
 const editor = {
+  getWrapperElement:()=>element('.CodeMirror'),
   refreshes:0,
   state:{},closeHint(){this.closedHint=true;},showHint(config){this.hint=config;},swapDoc(doc){this.doc=doc;},
   lastLine:()=>99,lineCount:()=>100,addLineClass(line,where,name){this.marks??=new Set();this.marks.add(where+':'+name);return {line};},
@@ -42,7 +43,7 @@ const editor = {
   coordsChar:()=>({line:3,ch:2}),setCursor(cursor){cursorChanges++;this.cursor=cursor;},focus(){},refresh(){this.refreshes=(this.refreshes||0)+1;},
   setSelection(from,to){this.selection={from,to};},
   getOption: key => options[key], getCursor: () => ({line: 88, ch: 8}),
-  charCoords: () => ({left:80,bottom:900}), getScrollInfo: () => ({clientHeight: 600}),
+  charCoords: () => ({left:80,top:880,bottom:900}), getScrollInfo: () => ({left:0,top:200,clientHeight: 600}),
   scrollTo(x, y) { this.scroll = [x, y]; },
 };
 const views = [element('page1'),element('page2')].map(div=>({div,viewport:{width:500,height:700,convertToPdfPoint:(x,y)=>[x,700-y],convertToViewportPoint:(x,y)=>[x,700-y]},setPdfPage(page){this.pdfPage=page;}}));
@@ -61,6 +62,7 @@ let animationTime=0;const reducedMotion={matches:true};
 function flushAnimationFrames(){animationTime+=16;const callbacks=[...animationFrames.values()];animationFrames.clear();callbacks.forEach(fn=>fn(animationTime));}
 function settleAnimation(){for(let i=0;animationFrames.size&&i<120;i++)flushAnimationFrames();assert.equal(animationFrames.size,0);}
 const context = vm.createContext({
+  preferences:{getItem(key){return stored.get(key);},setItem(key,value){stored.set(key,value);}},
   t:key=>key, setText:(element,key,values={})=>{element.textContent=key.replace(/\{(\w+)\}/g,(match,name)=>values[name]??match);},initSettings(){}, initScreenshotThemes(){}, applyCustomTheme(){return false;},
   attachMathHover(){return {setMainSource(){}};},attachNativeAnnotations(){},attachSelectionChat(){return {open(){chatOpened.push('full');},openQuick(anchor){chatOpened.push(anchor);},refreshAnnotations(){},busy:false};},attachHistory(){},mountHistoryTabs(){},katex:{},
   mountSourceWheel({button}){return {update(data){button.textContent=data.files.find(file=>file.path===data.path)?.name;button.files=data.files;button.mainFile=data.mainFile;},setDisabled(value){button.disabled=value;}};},

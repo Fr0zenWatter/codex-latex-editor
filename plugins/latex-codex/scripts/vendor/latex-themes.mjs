@@ -1,4 +1,4 @@
-import {t, setText} from './latex-settings.mjs';
+import {t, setText, preferences} from './latex-settings.mjs';
 
 const key='latex-codex-custom-themes';
 const roles=['bg','panel','border','text','muted','math','operator','reference','command','environment','number','environment-command','quick-accent'];
@@ -94,7 +94,7 @@ export function initScreenshotThemes(select,apply) {
   const $=id=>document.getElementById(id),dialog=$('theme-dialog'),file=$('theme-image'),preview=$('theme-screenshot'),status=$('theme-status');
   const generated=$('theme-generated'),sample=$('theme-sample'),name=$('theme-name'),save=$('theme-save');
   let pixels=null,imageWidth=0,draft=null,palette=[],distribution=[],load=0;
-  try{const saved=JSON.parse(localStorage.getItem(key)||'[]');customThemes=Array.isArray(saved)?saved.filter(item=>typeof item.id==='string' && /^custom-[\w-]+$/.test(item.id) && typeof item.name==='string' && item.name.length<=60 && validTheme(item.colors)):[];}catch{customThemes=[];}
+  try{const saved=JSON.parse(preferences.getItem(key)||'[]');customThemes=Array.isArray(saved)?saved.filter(item=>typeof item.id==='string' && /^custom-[\w-]+$/.test(item.id) && typeof item.name==='string' && item.name.length<=60 && validTheme(item.colors)):[];}catch{customThemes=[];}
   const group=document.createElement('optgroup');group.dataset.i18nLabel='自定义';group.label=t('自定义');select.append(group);
   function addOption(item){const option=document.createElement('option');option.value=item.id;option.textContent=item.name;group.append(option);}
   customThemes.forEach(addOption);
@@ -145,7 +145,7 @@ export function initScreenshotThemes(select,apply) {
     const label=name.value.trim();if(!label){setText(status,'请输入主题名称。');name.focus();return;}
     const existing=customThemes.find(item=>item.name===label),item={id:existing?.id||'custom-'+crypto.randomUUID(),name:label,colors:draft,palette,distribution};
     const next=customThemes.filter(theme=>theme.id!==item.id).concat(item);
-    try{localStorage.setItem(key,JSON.stringify(next));}catch{setText(status,'无法保存主题，请检查浏览器存储空间。');return;}
+    try{preferences.setItem(key,JSON.stringify(next));}catch{setText(status,'无法保存主题，请检查浏览器存储空间。');return;}
     customThemes=next;if(!existing)addOption(item);select.value=item.id;apply();dialog.close();
   };
 }
