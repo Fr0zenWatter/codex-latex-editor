@@ -55,15 +55,19 @@ assert(events.includes('latex-language-change'));
 // Regional system preferences, English fallback, and manual overrides survive reloads.
 for (const [preferences, expected] of [
   [['ja-JP'], 'ja'], [['fr-CA'], 'fr'], [['de-AT'], 'de'], [['es-MX'], 'es'],
-  [['zh-TW'], 'zh-CN'], [['EN_us'], 'en'], [['it-IT', 'fr-FR'], 'fr'],
+  [['zh-TW'], 'zh-TW'], [['zh_HK'], 'zh-TW'], [['zh-MO'], 'zh-TW'],
+  [['zh-Hant'], 'zh-TW'], [['zh-Hant-CN'], 'zh-TW'], [['zh-Hans-TW'], 'zh-CN'],
+  [['zh-CN'], 'zh-CN'], [['zh-SG'], 'zh-CN'], [['zh'], 'zh-CN'],
+  [['EN_us'], 'en'], [['it-IT', 'fr-FR'], 'fr'],
   [['ko-KR', 'ru-RU'], 'en'], [[], 'en'], [[null, '', 'invalid'], 'en']
 ]) assert.equal(resolveLanguage(preferences), expected);
 const placeholders = text => [...text.matchAll(/\{\w+\}/g)].map(match => match[0]).sort();
-for (const message of Object.values(english)) for (const code of ['ja', 'fr', 'de', 'es']) {
+for (const message of Object.values(english)) for (const code of ['zh-TW', 'ja', 'fr', 'de', 'es']) {
   assert(translations[message]?.[code]?.trim(), `Missing ${code}: ${message}`);
   assert.deepEqual(placeholders(translations[message][code]), placeholders(message), `${code}: ${message}`);
 }
 for (const [code, history, settings, located] of [
+  ['zh-TW', '歷史', '設定', '已定位到 PDF 第 12 頁'],
   ['ja', '履歴', '設定', 'PDF 12 ページに移動しました'],
   ['fr', 'Historique', 'Paramètres', 'Localisé à la page PDF 12'],
   ['de', 'Verlauf', 'Einstellungen', 'Auf PDF-Seite 12 gefunden'],
@@ -90,7 +94,7 @@ assert.equal(document.documentElement.lang,'en');
 globalThis.localStorage={getItem(){throw new Error('Storage unavailable');},setItem(){throw new Error('Storage unavailable');}};
 element('language').value='';initSettings();assert.equal(document.documentElement.lang,'en');
 element('language').value='de';element('language').onchange();assert.equal(label.textContent,'Verlauf');
-console.log('PASS: six languages, system preferences, English fallback, complete translations, placeholders, persistence, source isolation and menu positioning');
+console.log('PASS: seven languages, system preferences, English fallback, complete translations, placeholders, persistence, source isolation and menu positioning');
 
 // User preferences override per-port browser storage, and failed saves retain retryable changes.
 globalThis.localStorage={getItem:key=>stored.get(key),setItem:(key,value)=>stored.set(key,value)};

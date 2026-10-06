@@ -157,7 +157,7 @@ export const english = {
   '跟随系统语言；无法识别时使用英文。可在齿轮设置中手动切换。':'Follows your system language; falls back to English. Change it in the gear settings if needed.',
   '章节目录样式':'Outline style'
 };
-export const supportedLanguages = ['en', 'zh-CN', 'ja', 'fr', 'de', 'es'];
+export const supportedLanguages = ['en', 'zh-CN', 'zh-TW', 'ja', 'fr', 'de', 'es'];
 export let language = 'en';
 const bindings = new Map();
 const preferenceKeys = ['language','revision-color','outline-style','theme','custom-themes',
@@ -218,8 +218,13 @@ export function savePreferences(all = false) {
 export function resolveLanguage(preferences = []) {
   for (const preference of preferences) {
     if (typeof preference !== 'string') continue;
-    const base = preference.trim().replaceAll('_', '-').toLowerCase().split('-')[0];
-    if (base === 'zh') return 'zh-CN';
+    const parts = preference.trim().replaceAll('_', '-').toLowerCase().split('-');
+    const base = parts[0];
+    if (base === 'zh') {
+      if (parts.includes('hant')) return 'zh-TW';
+      if (parts.includes('hans')) return 'zh-CN';
+      return parts.some(part => ['tw', 'hk', 'mo'].includes(part)) ? 'zh-TW' : 'zh-CN';
+    }
     if (supportedLanguages.includes(base)) return base;
   }
   return 'en';

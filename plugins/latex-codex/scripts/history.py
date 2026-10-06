@@ -9,7 +9,7 @@ import sqlite3
 import zlib
 
 
-SUMMARY_LANGUAGES = {'en':'English', 'zh-CN':'Simplified Chinese', 'ja':'Japanese',
+SUMMARY_LANGUAGES = {'en':'English', 'zh-CN':'Simplified Chinese', 'zh-TW':'Traditional Chinese', 'ja':'Japanese',
                      'fr':'French', 'de':'German', 'es':'Spanish'}
 
 

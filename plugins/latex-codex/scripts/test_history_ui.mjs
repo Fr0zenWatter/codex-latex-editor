@@ -64,7 +64,7 @@ const context = {path:'paper.tex', source:'unsaved draft', version:'current-vers
 const rows = [{id:2, created:'2026-10-01T00:01:00Z', kind:'save', label:'',sections:['2.1 Stability'],baseline:1,summaries:{},description:'调整公式与论述'}, {id:1, created:'2026-10-01T00:00:00Z', kind:'open', label:'初稿'}];
 const calls = [];
 let restorePayload, deferred, deferredSummary, pdfError=false, pdfImages=false;
-const localizedSummaries = {'zh-CN':'更新稳定性估计。',en:'Updated the stability estimate.',fr:'Estimation de stabilité révisée.',de:'Stabilitätsabschätzung aktualisiert.'};
+const localizedSummaries = {'zh-CN':'更新稳定性估计。','zh-TW':'更新穩定性估計。',en:'Updated the stability estimate.',fr:'Estimation de stabilité révisée.',de:'Stabilitätsabschätzung aktualisiert.'};
 const flush = () => new Promise(resolve => setImmediate(resolve));
 async function request(route, options) {
   const data = options ? JSON.parse(options.body) : null; calls.push({route, data, signal:options?.signal});
@@ -105,9 +105,13 @@ assert.equal($('list').children[0].children[1].children.at(-1).textContent,local
 assert.equal($('list').children[1].children[1].children[0].textContent,'初稿','User labels stay verbatim.');
 assert.deepEqual($('list').children.map(row=>row.attributes['aria-pressed']),selectedBefore);
 const requestsBefore=calls.filter(call=>call.route==='/history/summaries').length;
+setLanguage('zh-TW'); await flush();
+assert.equal(calls.at(-1).data.language,'zh-TW');
+assert.equal($('list').children[0].children[1].children.at(-1).textContent,localizedSummaries['zh-TW']);
+assert.equal($('list').children[1].children[1].children[0].textContent,'初稿','User labels stay verbatim in Traditional Chinese.');
 setLanguage('zh-CN'); await flush();
 assert.equal($('list').children[0].children[1].children.at(-1).textContent,localizedSummaries['zh-CN']);
-assert.equal(calls.filter(call=>call.route==='/history/summaries').length,requestsBefore,'Switching back uses the cached language.');
+assert.equal(calls.filter(call=>call.route==='/history/summaries').length,requestsBefore+1,'Switching back uses the cached language.');
 deferredSummary={}; setLanguage('fr'); await flush();
 const lateSummary=deferredSummary; deferredSummary=null;
 setLanguage('de'); await flush();

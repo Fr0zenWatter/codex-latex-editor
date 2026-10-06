@@ -17,10 +17,11 @@ history-tabs.mjs.LEGAL.txt. Rebuild with `npm ci` and `npm run build` in fronten
 
 Included: lib/codemirror.{js,css}, theme/{cobalt,dracula,monokai,nord,eclipse,idea,neo,base16-light,solarized,
 material-darker,material-palenight,ayu-dark,gruvbox-dark}.css,
-mode/stex/stex.js, keymap/vim.js, addon/runmode/runmode.node.js (test-only),
-addon/search/searchcursor.js, addon/edit/matchbrackets.js, addon/comment/comment.js,
+mode/stex/stex.js, keymap/{vim,emacs}.js, addon/runmode/runmode.node.js (test-only),
+addon/search/{searchcursor,search}.js, addon/edit/matchbrackets.js, addon/comment/comment.js,
 addon/dialog/dialog.{js,css}, addon/hint/show-hint.{js,css}, LICENSE.
-The show-hint files use the same 5.65.20 release from jsDelivr's npm mirror.
+The Emacs keymap and search addon come from the same archive, verified against
+the npm registry SHA-512 integrity value. The show-hint files use the same 5.65.20 release from jsDelivr's npm mirror.
 The nine additional theme CSS files come from the same 5.65.20 archive,
 verified against the npm registry SHA-512 integrity value. Solarized supplies
 both light and dark variants. Theme author comments and the MIT LICENSE are

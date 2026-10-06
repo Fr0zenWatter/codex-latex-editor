@@ -34,7 +34,7 @@ with tempfile.TemporaryDirectory() as directory:
     assert activity.list(language='zh-CN')['revisions'][0]['summary'].startswith('将稳定性')
     assert activity.list(language='en')['revisions'][0]['summary'] == ''
     assert activity.summary_context([current], 'zh-CN') == [], 'Legacy Chinese summaries must remain cached.'
-    for language, summary in [('en','Changed the square to a cube.'), ('ja','二乗を三乗に変更。'),
+    for language, summary in [('en','Changed the square to a cube.'), ('zh-TW','將平方改為立方。'), ('ja','二乗を三乗に変更。'),
                               ('fr','Remplacement du carré par un cube.'), ('de','Quadrat durch Kubus ersetzt.'),
                               ('es','Se cambió el cuadrado por un cubo.')]:
         items = activity.summary_context([current], language)
@@ -43,7 +43,7 @@ with tempfile.TemporaryDirectory() as directory:
         reopened = History(Path(directory)/'main.tex')
         assert reopened.list(language=language)['revisions'][0]['summary'] == summary
         assert reopened.summary_context([current],language) == [], 'Cached languages must not invoke the model again.'
-    assert len(activity.list()['revisions'][0]['summaries']) == 6
+    assert len(activity.list()['revisions'][0]['summaries']) == 7
     assert activity.list(language='invalid')['revisions'][0]['summary'] == 'Changed the square to a cube.'
     for invalid in ([],[{'id':current,'summary':'x'}]*2,[{'id':True,'summary':'x'}]):
         try: activity.save_summaries(context,invalid)

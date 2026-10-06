@@ -38,7 +38,7 @@ Edits are saved automatically. Compare source changes and the PDF before and aft
 
 ### Editing and personalization
 
-- **Editor features:** Standard editing by default, with an optional Vim mode, syntax highlighting, command completion, and inline formula previews.
+- **Editor features:** Standard editing by default, with optional Vim and Emacs modes, syntax highlighting, command completion, and inline formula previews.
 - **Interface language:** Supports multiple languages and follows your system language, falling back to English. Choose a language manually via **gear → Language**.
 - **Themes:** Switch between built-in light and dark themes, or upload or paste a screenshot to generate and save a custom color theme.
 

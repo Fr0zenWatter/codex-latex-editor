@@ -28,13 +28,14 @@ function element(id) {
 }
 const actions = {}, mappings = [], options = {}, editorEvents = {};
 const stored = new Map([['latex-codex-editor-mode','default']]);
-let vimEscapes=0;
+let vimEscapes=0,emacsQuits=0;
 let selected=false,commentCalls=0,cursorChanges=0;
 const chatOpened=[];
 const editor = {
   getWrapperElement:()=>element('.CodeMirror'),
   refreshes:0,
   state:{},closeHint(){this.closedHint=true;},showHint(config){this.hint=config;},swapDoc(doc){this.doc=doc;},
+  setExtending(value){this.extending=value;},openDialog(template,callback,config){this.dialog=config;},
   lastLine:()=>99,lineCount:()=>100,addLineClass(line,where,name){this.marks??=new Set();this.marks.add(where+':'+name);return {line};},
   removeLineClass(line,where,name){this.marks.delete(where+':'+name);},
   scrollIntoView(cursor,margin){this.jump={...cursor,margin};},
@@ -73,7 +74,8 @@ const context = vm.createContext({
   ResizeObserver:class{constructor(callback){this.callback=callback;}observe(target){resizeObservers.push({target,callback:this.callback});}},MutationObserver:class{observe(){}},Uint8Array,
   requestAnimationFrame(fn){animationFrames.set(++animationFrameId,fn);return animationFrameId;},cancelAnimationFrame(id){animationFrames.delete(id);},
   document: {querySelector: element, createElement: () => element(Symbol()), documentElement: {dataset: {}}},
-  CodeMirror: {Doc:class{constructor(source,mode){this.source=source;this.mode=mode;}},hint:{latex:()=>({list:['\\begin']})},fromTextArea: (_,configuration) => {Object.assign(options,configuration);return editor;}, commands: {}, Vim: {
+  CodeMirror: {Doc:class{constructor(source,mode){this.source=source;this.mode=mode;}},hint:{latex:()=>({list:['\\begin']})},fromTextArea: (_,configuration) => {Object.assign(options,configuration);return editor;},
+    keyName:event=>event.key,e_stop:event=>{event.stopped=true;},signal(){},emacs:{repeated:fn=>fn},commands: {clearSearch(){},keyboardQuit(){emacsQuits++;}}, Vim: {
     handleKey(cm,key){assert.equal(key,'<Esc>');vimEscapes++;},
     defineAction: (name, fn) => actions[name] = fn,
     mapCommand: (...args) => mappings.push(args),
@@ -107,7 +109,26 @@ options.keyMap='vim-insert';vm.runInContext('completeLatex(editor)',context);
 editor.hint.extraKeys.Esc(editor,{close(){}});assert.equal(vimEscapes,1);
 modeSelect.value='default';modeSelect.onchange();assert.equal(stored.get('latex-codex-editor-mode'),'default');
 assert.equal(options.showCursorWhenSelecting,true);
+modeSelect.value='emacs';modeSelect.onchange();
+assert.equal(options.keyMap,'emacs');assert.equal(stored.get('latex-codex-editor-mode'),'emacs');
+assert.equal(options.showCursorWhenSelecting,true);assert.equal(editor.extending,false);
+for(const key of ['Ctrl-S','Ctrl-Space','Ctrl-/']) assert(!Object.hasOwn(options.extraKeys,key),`${key} must reach the Emacs keymap.`);
+assert.equal(typeof options.extraKeys['Cmd-S'],'function');
+options.extraKeys['Alt-/'](editor);assert.equal(editor.hint.hint,context.CodeMirror.hint.latex);
+options.extraKeys['Alt-;'](editor);assert.equal(commentCalls,1);commentCalls=0;
+const beforeEmacsEscape=vimEscapes;editor.hint.extraKeys.Esc(editor,{close(){}});
+assert.equal(vimEscapes,beforeEmacsEscape,'Emacs completion must not enter Vim.');
+editor.hint.extraKeys['Ctrl-G'](editor,{close(){}});assert.equal(emacsQuits,1);
+vm.runInContext("display({source:'loaded source',version:'v',name:'paper.tex',path:'paper.tex'})",context);
+assert.equal(options.keyMap,'emacs','Opening/reloading/restoring must preserve Emacs editing.');
+let dialogClosed=0,dialogForwarded=0;
+editor.openDialog('Search',()=>{}, {onKeyDown(){dialogForwarded++;return 'forwarded';}});
+const quit={key:'Ctrl-G'};
+assert.equal(editor.dialog.onKeyDown(quit,'query',()=>dialogClosed++),true);
+assert(quit.stopped);assert.equal(dialogClosed,1);assert.equal(emacsQuits,2);
+assert.equal(editor.dialog.onKeyDown({key:'Ctrl-S'},'query',()=>{}),'forwarded');assert.equal(dialogForwarded,1);
 modeSelect.value='vim';modeSelect.onchange();assert.equal(options.keyMap,'vim');
+assert.equal(typeof options.extraKeys['Ctrl-S'],'function');assert.equal(typeof options.extraKeys['Ctrl-Space'],'function');
 const splitter=element('#splitter');element('main').clientWidth=1006;
 const sourceShare=()=>Number(element('main').style.gridTemplateColumns.match(/minmax\(0,([\d.]+)fr\)/)[1]);
 const resizePreview=resizeObservers.find(item=>item.target===element('#preview')).callback;

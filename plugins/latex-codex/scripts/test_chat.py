@@ -158,7 +158,7 @@ with patch('chat.codex_executable',return_value='codex.exe'), patch('chat.subpro
     process = Mock(returncode=0)
     process.communicate.return_value=(json.dumps({'type':'item.completed','item':{'type':'agent_message','text':json.dumps({'summaries':summaries})}}).encode(),b'')
     spawn.return_value=process
-    for language, name in [('en','English'),('zh-CN','Simplified Chinese'),('ja','Japanese'),
+    for language, name in [('en','English'),('zh-CN','Simplified Chinese'),('zh-TW','Traditional Chinese'),('ja','Japanese'),
                            ('fr','French'),('de','German'),('es','Spanish'),('invalid','English')]:
         memory=Mock()
         job=ChatJob({'task':'history-summary','items':items,'effort':'low','language':language},memory); job.run()
