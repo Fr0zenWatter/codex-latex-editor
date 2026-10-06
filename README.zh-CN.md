@@ -16,7 +16,7 @@
 
 [![观看原对话框批注演示](docs/media/04-native-comments.gif)](docs/media/04-native-comments.mp4)
 
-### 圈选内容，说出修改要求
+### 临时批注（不占主对话框）
 
 在 PDF 中选中一个词、一段话，或带公式的段落，添加批注让 Codex 修改对应内容，源码与 PDF 一起更新。
 

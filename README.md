@@ -16,7 +16,7 @@ Select source text, click the annotation icon, and save your requests. Send them
 
 [![Watch the main chat annotation demo](docs/media/04-native-comments.gif)](docs/media/04-native-comments.mp4)
 
-### Select a passage and ask for a change
+### Temporary annotations (kept out of the main chat)
 
 Select a word, a paragraph, or text with equations in the PDF. Add comments and let Codex revise those passages, with the source and PDF updating together.
 
