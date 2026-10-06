@@ -10,9 +10,9 @@ Once installed, just ask: **“Use latex-codex to open main.tex.”** Edit direc
 
 Click a preview to watch the full video. All demos include English and Chinese subtitles.
 
-### Send annotations to your Codex conversation
+### Annotations (main chat)
 
-Select source text, click the annotation icon, and save your requests. Send them together in the main Codex chat, then review changes across files in History.
+Select source text, click the annotation icon, and save your requests. Send them together in the main Codex chat.
 
 [![Watch the main chat annotation demo](docs/media/04-native-comments.gif)](docs/media/04-native-comments.mp4)
 
