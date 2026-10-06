@@ -2,7 +2,7 @@
 
 **Interface language:** Follows your system language, falling back to **English**. Switch manually via **gear → Language**.
 
-# LaTeX Codex
+# LaTeX Codex — AI LaTeX Editor with PDF Preview
 
 Write LaTeX in the **Codex sidebar**, with source and PDF side by side. Compile with **your local TeX engine** and ask Codex for precise edits where you need them.
 
