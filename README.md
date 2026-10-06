@@ -4,15 +4,7 @@
 
 **Keep your paper beside your Codex conversation.** LaTeX Codex opens your source and PDF in the Codex app's right sidebar. Collect annotations, send them together in the main chat, and review the results beside the conversation.
 
-Once installed, just ask: **“Use latex-codex to open main.tex.”** Edit directly or tell Codex what to change; your files save automatically and the PDF updates using your local TeX engine.
-
-## Get started
-
-1. Download this repository and open its folder in Codex.
-2. Ask Codex: **“Install latex-codex following [AGENTS.md](AGENTS.md).”**
-3. Start a new chat and say: **“Use latex-codex to open main.tex.”** You can also provide your document's path.
-
-Edits save directly to your original `.tex` files.
+Once installed, just ask: **“Use latex-codex to open main.tex.”** Edit directly or tell Codex what to change; your files save automatically and the PDF updates using your local TeX engine. Built-in history snapshots let you restore earlier versions and compare source and PDF changes.
 
 ## Demos
 
@@ -45,3 +37,11 @@ Edits are saved automatically. Compare source changes and the PDF before and aft
 Vim shortcuts, command completion, and inline formula previews are also included.
 
 **Interface language:** Follows your system language, falling back to **English**. Switch manually via **gear → Language**.
+
+## Get started
+
+1. Download this repository and open its folder in Codex.
+2. Ask Codex: **“Install latex-codex following [AGENTS.md](AGENTS.md).”**
+3. Start a new chat and say: **“Use latex-codex to open main.tex.”** You can also provide your document's path.
+
+Edits save directly to your original `.tex` files.
