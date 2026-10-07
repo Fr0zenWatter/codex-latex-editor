@@ -6,15 +6,7 @@
 
 安装后，只需说：**“用 latex-codex 打开 main.tex。”** 可以直接编辑，也可以告诉 Codex 怎么改；文件自动保存，PDF 通过本地 TeX 编译更新。内置历史快照系统，支持回溯历史版本、对比源码与 PDF 改动。
 
-## Markdown 与 Obsidian
-
-支持 `.md` 和 `.markdown` 笔记。只需说：**“用 latex-codex 打开 my-note.md。”**
-
-- **实时预览：** 公式、列表与待办、表格、代码块和本地图片，包括 Obsidian 的 `![[image.png]]` 引用。
-- **编辑：** 自动保存、源码历史和 AI 选区修改；Markdown 修改不会插入 LaTeX 颜色命令。
-- **PDF 预览：** 用本地 XeLaTeX 渲染定理框、提示框和 TikZ，沿用 PDF 目录、双向跳转、批注与历史对比。点击**实时预览**可切回 HTML。
-
-查看 [0.2.7 更新记录](CHANGELOG.md)。
+支持 `.md` 和 `.markdown` 笔记。只需说：**“$Latex codex  打开 xx”即可**。
 
 ## 功能演示
 
