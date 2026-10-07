@@ -46,6 +46,12 @@ Edits are saved automatically. Compare source changes and the PDF before and aft
 - **Interface language:** Supports multiple languages and follows your system language, falling back to English. Choose a language manually via **gear → Language**.
 - **Themes:** Switch between built-in light and dark themes, or upload or paste a screenshot to generate and save a custom color theme.
 
+### Markdown → PDF
+
+Open `.md` or `.markdown` notes with live preview. Click **PDF preview** to compile tables, equations and TikZ diagrams using your local TeX engine. Markdown also supports source ↔ PDF navigation, AI annotations and history comparisons.
+
+[![Watch the Markdown compilation demo](docs/media/05-markdown.gif)](docs/media/05-markdown.mp4)
+
 ## Get started
 
 1. Download this repository and open its folder in Codex.
