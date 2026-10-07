@@ -76,16 +76,25 @@ export function attachHistory(editor, request, getState, restore) {
   const dialog = $('dialog'), list = $('list'), code = $('code'), target = $('target'), pdf = $('pdf-view');
   let context, revisions = [], selected = null, detail = null, next = null, serial = 0, mode = 'diff', working = false;
   let pdfSerial = 0, pdfTasks = [], pdfRequest = null, summaryJob = null, summaryLoading = false, summarySerial = 0;
-  let menuId = null, editingId = null;
-  const comparison = () => target.value === 'previous' ? {compare:'previous'} : target.value === 'current' ? {source:context.source} : {target_id:Number(target.value)};
+  let menuId = null, editingId = null, currentFile = null;
+  const comparison = () => target.value === 'previous' ? {compare:'previous'} : target.value === 'current'
+    ? {compare:'current', ...(revisions.find(row=>row.id===selected)?.file === currentFile ? {source:context.source} : {})}
+    : {target_id:Number(target.value)};
   const time = historyTime;
-  const title = row => row.label || row.sections?.slice(0,2).map(section=>t(section)).join(' · ') || t('正文');
+  const title = row => row.label || (row.annotation_count ? t('AI 批注 · {count}',{count:row.annotation_count}) : '') || row.sections?.slice(0,2).map(section=>t(section)).join(' · ') || t('正文');
   const needsSummary = row => row.baseline && !row.summaries?.[language] && !['调整空白或换行','内容与上一版相同'].includes(row.description);
   const post = (route, data, options={}) => request('/history/' + route, {...options, method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({path:context.path, ...data})});
   const notice = (text='') => { $('status').textContent = text; $('status').hidden = !text; };
+  function renderTargets() {
+    const previous = target.value, file = revisions.find(row=>row.id===selected)?.file;
+    target.replaceChildren(new Option(t('与上一版比较'), 'previous'), new Option(t(file === currentFile ? '当前编辑内容' : '文件当前内容'), 'current'));
+    for (const row of revisions.filter(row=>row.file === file)) target.append(new Option(time(row.created) + ' · ' + title(row), String(row.id)));
+    target.value = [...target.options].some(option => option.value === previous) ? previous : 'previous';
+    $('file').textContent = file || currentFile || ''; $('file').title = file || currentFile || '';
+  }
   function controls() {
-    $('restore').disabled = working || !detail;
-    $('confirm').disabled = working || !detail;
+    $('restore').disabled = working || !detail?.current_version;
+    $('confirm').disabled = working || !detail?.current_version;
     $('cancel').disabled = working;
     $('label-save').disabled = working;
     $('label').disabled = working;
@@ -198,7 +207,25 @@ export function attachHistory(editor, request, getState, restore) {
       if (ticket === pdfSerial) $('recompile').disabled = false;
     }
   }
+  function renderAnnotations() {
+    const panel = $('annotations'), items = detail?.annotations || [], body = $('annotation-list');
+    panel.hidden = !items.length; body.replaceChildren();
+    $('annotation-title').textContent = t('批注与 AI 回复 · {count}',{count:items.length});
+    for (const item of items) {
+      const entry = document.createElement('article'), label = document.createElement('strong'), request = document.createElement('p');
+      label.textContent = '#' + item.id + ' · ' + t('第 {first}–{last} 行',{first:item.first_line,last:item.last_line});
+      request.textContent = item.request;
+      const selection = document.createElement('details'), summary = document.createElement('summary'), source = document.createElement('pre');
+      summary.textContent = t('原选区'); source.textContent = item.selection;
+      selection.append(summary,source); entry.append(label,request,selection); body.append(entry);
+    }
+    if (items.length && detail.annotation_reply) {
+      const reply = document.createElement('article'), label = document.createElement('strong'), text = document.createElement('p');
+      label.textContent = t('AI 回复'); text.textContent = detail.annotation_reply; reply.append(label,text); body.append(reply);
+    }
+  }
   function renderCode() {
+    renderAnnotations();
     clearPdf(); code.replaceChildren(); code.hidden = mode === 'pdf'; pdf.hidden = mode !== 'pdf';
     dialog.dataset.historyView = mode;
     $('recompile').hidden = mode !== 'pdf'; $('recompile').disabled = !detail;
@@ -232,7 +259,8 @@ export function attachHistory(editor, request, getState, restore) {
   async function select(id) {
     const ticket = ++serial;
     if ($('confirmation').open) $('confirmation').close(); notice();
-    selected = id; detail = null; clearPdf(); controls(); code.textContent = t('正在读取版本…'); $('next').hidden = true;
+    selected = id; detail = null; renderAnnotations(); clearPdf(); controls(); code.textContent = t('正在读取版本…'); $('next').hidden = true;
+    renderTargets();
     for (const button of list.querySelectorAll('button')) button.setAttribute('aria-pressed', String(Number(button.dataset.id) === id));
     try {
       const data = await post('diff', {id, ...comparison()});
@@ -244,8 +272,6 @@ export function attachHistory(editor, request, getState, restore) {
   function renderList() {
     const scroll = list.scrollTop || 0;
     list.replaceChildren();
-    const previous = target.value;
-    target.replaceChildren(new Option(t('与上一版比较'), 'previous'), new Option(t('当前编辑内容'), 'current'));
     for (const row of revisions) {
       const button = document.createElement('button'); button.type = 'button'; button.dataset.id = row.id;
       button.className = 'history-entry'; button.setAttribute('aria-pressed', String(row.id === selected));
@@ -254,18 +280,18 @@ export function attachHistory(editor, request, getState, restore) {
       const text = document.createElement('span'); text.className = 'history-entry-text';
       const heading = document.createElement('strong'); heading.textContent = title(row); heading.title = (row.sections || []).join(' · ');
       const summary = document.createElement('span'); summary.className = 'history-entry-summary';
+      const file = document.createElement('small'); file.className = 'history-entry-file'; file.textContent = row.file; file.title = row.file;
       summary.textContent = row.summaries?.[language] || t(row.description || '更新正文');
       if (row.summaries?.[language]) { const badge = document.createElement('small'); badge.className = 'history-ai-badge'; badge.textContent = 'AI'; text.append(badge); }
-      text.append(heading, summary);
+      text.append(heading, file, summary);
       const stamp = document.createElement('time'); stamp.textContent = time(row.created); stamp.setAttribute('datetime',row.created);
       button.append(icon,text,stamp);
       button.onclick = () => select(row.id); list.append(button);
       button.setAttribute('aria-haspopup','menu');
       button.oncontextmenu = event => { if (!event.shiftKey) showActions(row,event); };
       button.onkeydown = event => { if (event.key === 'ContextMenu' || event.key === 'F10' && event.shiftKey) showActions(row,event); };
-      target.append(new Option(time(row.created) + ' · ' + title(row), String(row.id)));
     }
-    target.value = [...target.options].some(option => option.value === previous) ? previous : 'previous';
+    renderTargets();
     list.scrollTop = scroll;
     $('more').hidden = !next; controls();
   }
@@ -324,13 +350,14 @@ export function attachHistory(editor, request, getState, restore) {
     const ticket = ++serial;
     working = true; controls(); notice();
     if (!more) { context = getState(); detail = null; revisions = []; next = null; renderCode(); renderList(); }
-    $('file').textContent = context.path.split(/[\\/]/).at(-1); $('file').title = context.path;
     try {
       const data = await request('/history?path=' + encodeURIComponent(context.path) + (more && next ? '&before=' + next : ''));
       if (ticket !== serial || !dialog.open) return;
       working = false;
-      revisions.push(...data.revisions); next = data.next; renderList();
+      currentFile = data.file;
+      revisions.push(...data.revisions); next = data.next;
       if (!more && (!keepSelection || !revisions.some(row=>row.id===selected))) selected = revisions[0]?.id ?? null;
+      renderList();
       if (selected !== null) await select(selected);
       else code.textContent = t('暂时没有历史记录。');
     } catch (error) { if (ticket === serial) { working = false; notice(t('历史读取失败：') + error.message); controls(); } }
@@ -370,14 +397,15 @@ export function attachHistory(editor, request, getState, restore) {
     if (working || !detail) return;
     const id = menuId ?? selected; menuId = null; $('actions').hidePopover();
     if (id !== selected) await select(id);
-    if (!detail || working || !dialog.open) return;
+    if (!detail?.current_version || working || !dialog.open) return;
+    $('confirm-title').textContent = t('确定恢复？') + ' · ' + detail.file;
     $('confirmation').showModal(); $('confirm').focus();
   };
   $('cancel').onclick = () => $('confirmation').close();
   $('confirm').onclick = async () => {
-    if (working || !detail) return;
+    if (working || !detail?.current_version) return;
     working = true; controls(); notice(t('正在保留当前内容并恢复…'));
-    try { await restore({...context, id:selected}); }
+    try { await restore({...context, id:selected, ...(detail.file !== currentFile ? {target_version:detail.current_version} : {})}); }
     catch (error) { notice(t('恢复失败：') + error.message); }
     finally { working = false; controls(); }
   };

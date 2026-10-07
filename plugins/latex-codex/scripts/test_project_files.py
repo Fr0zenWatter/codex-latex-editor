@@ -108,11 +108,13 @@ with tempfile.TemporaryDirectory(prefix='latex project ') as directory:
         assert first_history.database == second_history.database
         assert first_history.file != second_history.file
         assert first_history.get(first_history.list()['revisions'][0]['id'])['source'] == after
-        assert second_history.get(second_history.list()['revisions'][0]['id'])['source'] != after
+        assert first_history.list() == second_history.list(), 'Every source opens the unified project timeline.'
+        nested_row = next(row for row in second_history.list()['revisions'] if row['file'] == second_history.file)
+        assert second_history.get(nested_row['id'])['source'] != after
         first_history.chat_append(0, 'Shared project question', {'answer':'Shared answer'}, str(appendix), 'text')
         switch(nested)
         assert request('/chat/history')[1]['messages'][0]['content'] == 'Shared project question'
-        print('PASS: child saves compile main; same-name histories remain separate in one project database and chat stays shared')
+        print('PASS: child saves compile main; unified history retains distinct same-name files and shared project chat')
 
         switch(appendix)
         live_pdf = server.pdf

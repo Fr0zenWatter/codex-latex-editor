@@ -9,14 +9,14 @@ export function colorReplacement(text, color, segments) {
   }).join('');
 }
 
-export function attachSelectionChat(editor, request, paintAnnotations = () => {}) {
+export function attachSelectionChat(editor, request, paintAnnotations = () => {}, recordAnnotations = async () => {}) {
   const $ = id => document.querySelector('#' + id);
   const panel = $('chat-panel'), input = $('chat-input'), messages = $('chat-messages'), status = $('chat-status');
   let memoryRevision=null,memoryLoading=null,memoryEpoch=0;
   let history = [], marker = null, job = null, generation = 0, sending = false, proposal = null;
   const quick = $('chat-quick'), quickInput = $('chat-quick-input');
   let quickMarker = null, quickDoc = null, quickOriginal = '', quickPdf = null, editingAnnotation = null;
-  let annotations = [], annotationId = 0, annotationSending = false;
+  let annotations = [], annotationId = 0, annotationSending = false, annotationCommitting = false;
   let color = '';
   let models = [], modelsLoaded = false, modelsLoading = false;
   const modelSelect = $('chat-model'), effortSelect = $('chat-effort');
@@ -257,7 +257,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     const question = batch.map(item => '#' + item.id + '\n' + item.request).join('\n\n');
     return send(question, null, batch);
   };
-  $('annotations-stop').onclick = () => { stop(); annotationNotice(t('已停止，批注保留，可重新发送。')); };
+  $('annotations-stop').onclick = () => { if (annotationCommitting) return; stop(); annotationNotice(t('已停止，批注保留，可重新发送。')); };
   const range = () => marker?.find();
   const selectedText = () => { const pos = range(); return pos ? editor.getRange(pos.from, pos.to) : ''; };
   function message(who, text) {
@@ -323,6 +323,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     input.focus();
   }
   async function stop() {
+    if (annotationCommitting) return;
     generation++; const id = job; job = null; annotationSending = false; setSending(false);
     if (id) { try { await request('/chat/cancel', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})}); } catch(e) { notice(e.message); } }
   }
@@ -459,7 +460,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
         history = [...conversation, {role:'assistant',content:JSON.stringify({reply:result.reply,replacement:result.replacement,...(batch ? {replacements:result.replacements} : {})})}];
         message('Codex', result.reply);
         if (batch) {
-          applyAnnotations(batch, result.replacements);
+          await applyAnnotations(batch, result.replacements, result.reply);
           annotationNotice(result.reply);
         } else if (result.replacement !== null) {
           proposal = {doc, original:selection, replacement:result.replacement, segments:result.segments};
@@ -475,7 +476,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
       if (token === generation) { if(e.conflict)memoryRevision=null;notice(e.message); if (batch) annotationNotice(e.message, true); if(draftInput)draftInput.value = question; }
     } finally { if (token === generation) { annotationSending = false; job = null; setSending(false); } }
   }
-  function applyAnnotations(batch, replacements) {
+  async function applyAnnotations(batch, replacements, reply) {
     if (!Array.isArray(replacements) || replacements.length !== batch.length
         || new Set(replacements.map(item => item?.id)).size !== batch.length)
       throw new Error(t('批注修改返回不完整，未应用。请重试。'));
@@ -484,8 +485,18 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
       if (!pos || editor.getOption('readOnly')) throw new Error(t('批注选区已变化，未应用任何修改。批注已保留。'));
       if (!result || !(result.replacement === null || typeof result.replacement === 'string'))
         throw new Error(t('批注修改返回不完整，未应用。请重试。'));
-      return {item, pos, start:editor.indexFromPos(pos.from), replacement:result.replacement === null ? null : colorReplacement(result.replacement, color, result.segments)};
+      return {item, pos, start:editor.indexFromPos(pos.from), end:editor.indexFromPos(pos.to), replacement:result.replacement === null ? null : colorReplacement(result.replacement, color, result.segments)};
     }).sort((a,b) => b.start - a.start);
+    const before = editor.getValue();
+    let after = before;
+    for (const edit of edits) if (edit.replacement !== null) after = after.slice(0,edit.start) + edit.replacement + after.slice(edit.end);
+    const change = {id:crypto.randomUUID().replaceAll('-',''), before, reply,
+      items:[...edits].reverse().map(({item,start,end,replacement}) => ({id:item.id,
+        start:Array.from(before.slice(0,start)).length, end:Array.from(before.slice(0,end)).length,
+        selection:item.original, request:item.request, replacement}))};
+    annotationCommitting = true; $('annotations-stop').disabled = true; $('chat-stop').disabled = true; $('chat-end').disabled = true;
+    try { await recordAnnotations(after, change); }
+    finally { annotationCommitting = false; $('annotations-stop').disabled = false; $('chat-stop').disabled = false; $('chat-end').disabled = false; }
     if (editor.getOption('keyMap').startsWith('vim')) CodeMirror.Vim.handleKey(editor, '<Esc>');
     editor.operation(() => {
       edits.forEach(({item,pos,replacement}) => {
@@ -495,7 +506,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     });
     annotations = annotations.filter(item => !batch.includes(item));
     refreshAnnotations();
-    notice(t('批注已处理，修改将自动保存。'));
+    notice(t('批注与修改已保存到历史。'));
   }
   function applyProposal() {
     const pos = range();

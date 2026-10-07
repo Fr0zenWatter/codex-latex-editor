@@ -61,14 +61,15 @@ assert.deepEqual([...written.data.slice(0,8)],[220,38,38,255,255,255,255,255]);
 assert(written.data[8]>written.data[9] && written.data[11]===255,'Keep antialiasing and alpha while tinting changed glyphs red.');
 const events = {};
 const context = {path:'paper.tex', source:'unsaved draft', version:'current-version'};
-const rows = [{id:2, created:'2026-10-01T00:01:00Z', kind:'save', label:'',sections:['2.1 Stability'],baseline:1,summaries:{},description:'调整公式与论述'}, {id:1, created:'2026-10-01T00:00:00Z', kind:'open', label:'初稿'}];
+const rows = [{id:2, file:'paper.tex', created:'2026-10-01T00:01:00Z', kind:'save', label:'',sections:['2.1 Stability'],baseline:1,summaries:{},description:'调整公式与论述'}, {id:1, file:'paper.tex', created:'2026-10-01T00:00:00Z', kind:'open', label:'初稿'}];
 const calls = [];
 let restorePayload, deferred, deferredSummary, pdfError=false, pdfImages=false;
+let annotations=[];
 const localizedSummaries = {'zh-CN':'更新稳定性估计。','zh-TW':'更新穩定性估計。',en:'Updated the stability estimate.',fr:'Estimation de stabilité révisée.',de:'Stabilitätsabschätzung aktualisiert.'};
 const flush = () => new Promise(resolve => setImmediate(resolve));
 async function request(route, options) {
   const data = options ? JSON.parse(options.body) : null; calls.push({route, data, signal:options?.signal});
-  if (route.startsWith('/history?')) return {revisions:structuredClone(rows), next:null};
+  if (route.startsWith('/history?')) return {revisions:structuredClone(rows), file:'paper.tex', next:null};
   if (route === '/history/label') {rows.find(row=>row.id===data.id).label=data.label.trim();return {ok:true};}
   if (route === '/history/summaries') {
     if (deferredSummary) return new Promise(resolve=>{deferredSummary.resolve=resolve;});
@@ -78,7 +79,7 @@ async function request(route, options) {
   if (route === '/history/summaries/cancel') return {ok:true};
   if (deferred) return new Promise(resolve => { deferred.resolve = resolve; });
   if (route === '/history/pdf') { if(pdfError)throw new Error('compile failed'); return pdfImages ? {images:true, changes:[{kind:'replace', before:[{page:1,image:'/before.png'},{page:2,image:'/before-continuation.png'}], after:[{page:2,image:'/after.png'},{page:3,image:'/after-continuation.png'}]}]} : {changes:[]}; }
-  return {...rows.find(row=>row.id===data.id), source:'old source', changes:[{kind:'equal',text:'same\n'.repeat(10)},{kind:'delete',text:'old'},{kind:'insert',text:'new'},{kind:'equal',text:'\nend'}], same:false};
+  return {...rows.find(row=>row.id===data.id), annotations:data.id===2?annotations:[],annotation_reply:'Updated the selected passage.', current_version:'child-version', source:'old source', changes:[{kind:'equal',text:'same\n'.repeat(10)},{kind:'delete',text:'old'},{kind:'insert',text:'new'},{kind:'equal',text:'\nend'}], same:false};
 }
 attachHistory({on:(name, fn)=>events[name]=fn}, request, ()=>({...context}), async data=>{restorePayload=data;});
 $('open').onclick(); await flush();
@@ -86,6 +87,21 @@ assert($('dialog').open && !$('restore').disabled);
 assert.equal(calls.at(-1).data.compare, 'previous');
 assert($('status').hidden,'Successful browsing must not show the removed status strip.');
 assert.equal($('list').children[0].children[1].children[0].textContent,'2.1 Stability');
+annotations=[{id:7,first_line:3,last_line:4,request:'<img onerror="alert(1)"> Rewrite clearly.',selection:'$x^2$\nOriginal passage.'}];
+rows[0].annotation_count=1;
+await $('refresh').onclick();await flush();
+assert.equal($('list').children[0].children[1].children[0].textContent,'AI 批注 · 1');
+assert.equal($('annotations').hidden,false);
+assert.equal($('annotation-title').textContent,'批注与 AI 回复 · 1');
+const note=$('annotation-list').children[0];
+assert.equal(note.children[0].textContent,'#7 · 第 3–4 行');
+assert.equal(note.children[1].textContent,annotations[0].request);
+assert.equal(note.children[1].innerHTML,undefined,'Render user comments as inert text.');
+assert.equal(note.children[2].children[1].textContent,annotations[0].selection);
+assert.equal($('annotation-list').children[1].children[1].textContent,'Updated the selected passage.');
+await $('list').children[1].onclick();
+assert($('annotations').hidden);assert.equal($('annotation-list').children.length,0);
+annotations=[];delete rows[0].annotation_count;await $('list').children[0].onclick();
 $('sidebar').onpointerenter(); await flush();
 assert.equal($('sidebar-toggle').attributes['aria-expanded'],'true');
 assert.equal(calls.at(-1).route,'/history/summaries');
@@ -185,3 +201,26 @@ old.resolve({...rows[1], source:'STALE', diff:[], same:true}); await pending;
 $('source').onclick(); assert.equal($('code').children[0].children[1].children[0].textContent, 'old source');
 events.swapDoc(); assert(!$('dialog').open);
 console.log('PASS: word markup/line numbers, next-change navigation, previous/current comparison, naming, draft-safe restore, stale responses and file switch');
+
+rows.unshift({id:4,file:'parts/input.tex',created:'2026-10-01T00:03:00Z',kind:'save',label:'Child update'},
+  {id:3,file:'parts/input.tex',created:'2026-10-01T00:02:00Z',kind:'open',label:'Child initial'});
+$('open').onclick(); await flush();
+assert.equal($('list').children.length,4,'All project sources share one timeline.');
+assert.equal($('file').textContent,'parts/input.tex');
+assert.equal($('list').children[0].children[1].children[1].textContent,'parts/input.tex');
+assert.deepEqual($('target').options.map(option=>option.value),['previous','current','4','3'],'Only versions of the selected file can be compared.');
+$('target').value='current'; $('target').onchange(); await flush();
+assert.equal(calls.at(-1).data.compare,'current');
+assert(!('source' in calls.at(-1).data),'A child comparison must not send the active main-file draft as that child.');
+assert.equal(context.source,'unsaved draft');
+await $('restore').onclick();
+assert($('confirm-title').textContent.includes('parts/input.tex'));
+await $('confirm').onclick();
+assert.deepEqual(restorePayload,{...context,id:4,target_version:'child-version'},'Restore captures the child version as well as the active editor draft.');
+$('confirmation').close();
+$('target').value='3';await $('list').children[2].onclick();
+assert.equal($('target').value,'previous','Switching files resets an incompatible comparison version.');
+assert.equal($('file').textContent,'paper.tex');
+assert.deepEqual($('target').options.map(option=>option.value),['previous','current','2','1']);
+$('dialog').close();
+console.log('PASS: project file labels, same-file comparisons, preserved active drafts and version-safe child restore');

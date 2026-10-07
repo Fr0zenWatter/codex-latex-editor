@@ -181,7 +181,7 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 <div id="editor-menu" popover="auto" role="menu" aria-label="源码操作" data-i18n-aria-label="源码操作"><button id="toggle-comment" role="menuitem" aria-keyshortcuts="Alt+/ Control+/ Meta+/"><span data-i18n="注释 / 取消注释">注释 / 取消注释</span><kbd>Alt+/</kbd></button><button id="chat-quick-menu" role="menuitem" data-i18n="添加批注">添加批注</button></div>
 <div id="pdf-menu" popover="auto" role="menu" aria-label="PDF 选区操作" data-i18n-aria-label="PDF 选区操作"><button id="pdf-chat-quick-menu" role="menuitem" data-i18n="添加批注">添加批注</button></div>
 <dialog id="history-dialog" aria-labelledby="history-title"><header><strong id="history-title" data-i18n="版本历史">版本历史</strong><span id="history-file"></span><button id="history-refresh" data-i18n="刷新">刷新</button><button id="history-close" aria-label="关闭历史" data-i18n-aria-label="关闭历史">×</button></header><div id="history-status" role="status" aria-live="polite" hidden></div>
-<div class="history-body"><section class="history-content"><div class="history-toolbar"><div id="history-tabs"><button id="history-diff" aria-pressed="true" data-i18n="改动对比">改动对比</button><button id="history-pdf" aria-pressed="false" data-i18n="PDF 改动">PDF 改动</button><button id="history-source" aria-pressed="false" data-i18n="此版本源码">此版本源码</button></div><label for="history-target" data-i18n="对比">对比</label><select id="history-target"><option value="previous" data-i18n="与上一版比较">与上一版比较</option><option value="current" data-i18n="当前编辑内容">当前编辑内容</option></select><button id="history-recompile" hidden data-i18n="重新编译">重新编译</button></div><div id="history-panes" class="history-code-shell" role="tabpanel" aria-labelledby="history-diff"><div id="history-code" tabindex="0" aria-label="历史源码与差异" data-i18n-aria-label="历史源码与差异"></div><div id="history-pdf-view" hidden tabindex="0" aria-label="改动附近的 PDF 对比" data-i18n-aria-label="改动附近的 PDF 对比"></div><button id="history-next" hidden><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16m-6-6 6 6 6-6"/></svg><span id="history-next-label"></span></button></div></section><aside id="history-sidebar" class="history-sidebar" aria-label="按时间排列的版本" data-i18n-aria-label="按时间排列的版本"><div class="history-sidebar-head"><button id="history-sidebar-toggle" aria-label="展开改动记录" data-i18n-aria-label="展开改动记录" aria-expanded="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span data-i18n="改动记录">改动记录</span></button><button id="history-sidebar-pin" aria-label="固定记录栏" title="固定记录栏" data-i18n-aria-label="固定记录栏" data-i18n-title="固定记录栏" aria-pressed="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 9V3H8v6l-3 4v2h14v-2zM12 15v7"/></svg></button></div><div class="history-activity"><small id="history-summary-status" role="status"></small><div id="history-list"></div><button id="history-more" hidden data-i18n="加载更早版本">加载更早版本</button></div></aside></div>
+<div class="history-body"><section class="history-content"><div class="history-toolbar"><div id="history-tabs"><button id="history-diff" aria-pressed="true" data-i18n="改动对比">改动对比</button><button id="history-pdf" aria-pressed="false" data-i18n="PDF 改动">PDF 改动</button><button id="history-source" aria-pressed="false" data-i18n="此版本源码">此版本源码</button></div><label for="history-target" data-i18n="对比">对比</label><select id="history-target"><option value="previous" data-i18n="与上一版比较">与上一版比较</option><option value="current" data-i18n="当前编辑内容">当前编辑内容</option></select><button id="history-recompile" hidden data-i18n="重新编译">重新编译</button></div><details id="history-annotations" hidden><summary id="history-annotation-title"></summary><div id="history-annotation-list"></div></details><div id="history-panes" class="history-code-shell" role="tabpanel" aria-labelledby="history-diff"><div id="history-code" tabindex="0" aria-label="历史源码与差异" data-i18n-aria-label="历史源码与差异"></div><div id="history-pdf-view" hidden tabindex="0" aria-label="改动附近的 PDF 对比" data-i18n-aria-label="改动附近的 PDF 对比"></div><button id="history-next" hidden><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16m-6-6 6 6 6-6"/></svg><span id="history-next-label"></span></button></div></section><aside id="history-sidebar" class="history-sidebar" aria-label="按时间排列的版本" data-i18n-aria-label="按时间排列的版本"><div class="history-sidebar-head"><button id="history-sidebar-toggle" aria-label="展开改动记录" data-i18n-aria-label="展开改动记录" aria-expanded="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span data-i18n="改动记录">改动记录</span></button><button id="history-sidebar-pin" aria-label="固定记录栏" title="固定记录栏" data-i18n-aria-label="固定记录栏" data-i18n-title="固定记录栏" aria-pressed="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 9V3H8v6l-3 4v2h14v-2zM12 15v7"/></svg></button></div><div class="history-activity"><small id="history-summary-status" role="status"></small><div id="history-list"></div><button id="history-more" hidden data-i18n="加载更早版本">加载更早版本</button></div></aside></div>
 <div id="history-actions" popover="auto" role="menu" aria-label="历史记录操作" data-i18n-aria-label="历史记录操作"><button id="history-rename" role="menuitem" data-i18n="重命名">重命名</button><button id="history-restore" role="menuitem" disabled data-i18n="恢复此版本">恢复此版本</button></div>
 <dialog id="history-name-dialog" class="history-small-dialog" aria-labelledby="history-name-title"><h3 id="history-name-title" data-i18n="重命名版本">重命名版本</h3><form id="history-label-form"><label for="history-label" data-i18n="版本名称">版本名称</label><input id="history-label" maxlength="120" placeholder="例如：投稿前定稿" data-i18n-placeholder="例如：投稿前定稿"><p id="history-label-error" role="alert"></p><div class="history-dialog-actions"><button id="history-label-cancel" type="button" data-i18n="取消">取消</button><button id="history-label-save" type="submit" data-i18n="保存名称">保存名称</button></div></form></dialog>
 <dialog id="history-confirmation" class="history-small-dialog" aria-labelledby="history-confirm-title"><h3 id="history-confirm-title" data-i18n="确定恢复？">确定恢复？</h3><div class="history-dialog-actions"><button id="history-cancel" data-i18n="取消">取消</button><button id="history-confirm" data-i18n="确认恢复">确认恢复</button></div></dialog></dialog>
@@ -264,7 +264,7 @@ sourceWrapper.addEventListener('wheel',event=>{
   editor.scrollTo(scroll.left,scroll.top+editor.charCoords(anchor,'window').top-top);
 },{passive:false});
 document.querySelector('main').append(document.querySelector('#chat-panel'));
-const selectionChat=attachSelectionChat(editor,request,paintPdfAnnotations);
+const selectionChat=attachSelectionChat(editor,request,paintPdfAnnotations,saveAnnotationChange);
 pdfEvents.on('pagerendered',()=>selectionChat.refreshAnnotations());
 const historyDialog=document.querySelector('#history-dialog');
 attachHistory(editor,request,()=>({path:document.querySelector('#filename').title,source:editor.getValue(),version}),restoreHistory);
@@ -445,7 +445,7 @@ function showCompileError(error){
 }
 function updateSyncControls(){forwardButton.disabled=busy||syncBusy||editor.getOption('readOnly');compileButton.disabled=forwardButton.disabled;openButton.disabled=busy||syncBusy;sourcePicker.setDisabled(!!forwardButton.disabled);document.querySelector('#project-open').disabled=!!forwardButton.disabled;document.querySelector('#history-open').disabled=!!forwardButton.disabled;}
 async function request(url,options){
-  const retry=!options||!options.method||options.method==='GET'||(url==='/chat'&&options.method==='POST'&&/^[0-9a-f]{32}$/.test(JSON.parse(options.body).request_id));
+  const retry=!options||!options.method||options.method==='GET'||(options.method==='POST'&&/^[0-9a-f]{32}$/.test(url==='/chat'?JSON.parse(options.body).request_id:url==='/save'?JSON.parse(options.body).annotation_change?.id:''));
   for(let attempt=0;;attempt++){
     let r,data;
     try{r=await fetch(url,options);data=await r.json();}
@@ -456,6 +456,21 @@ async function request(url,options){
     }
     if(!r.ok){const e=new Error(data.error||t('请求失败'));e.conflict=r.status===409;e.status=r.status;throw e;}return data;
   }
+}
+async function saveAnnotationChange(source,change){
+  if(busy||syncBusy||conflict||editor.getOption('readOnly')||editor.getValue()!==change.before)throw new Error(t('批注选区已变化，未应用任何修改。批注已保留。'));
+  clearTimeout(timer);busy=true;editor.setOption('readOnly',true);updateSyncControls();
+  try{
+    const data=await request('/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:document.querySelector('#filename').title,source,version,annotation_change:change})});
+    version=data.version;saved=source;
+    if(pdfVersion!==version){pdfVersion='';compiledLabels={};compiledCitations={};}
+    setText(status,'批注与修改已保存到历史。');
+    if(autoCompile.checked&&pdfVersion!==version)scheduleSave();
+  }catch(e){
+    if(e.conflict||!e.status||e.status>=500){conflict=true;setText(status,e.conflict?'文件已被外部修改，请先重新读取':'保存状态待确认，请重新读取');}
+    else if(editor.getValue()!==saved)scheduleSave();
+    throw e;
+  }finally{busy=false;editor.setOption('readOnly',false);updateSyncControls();}
 }
 function display(data,preservePdf=false){
   showCompileError(null);showCompileLog(false);
@@ -534,6 +549,7 @@ async function compile(compilePdf=true){
 }
 async function restoreHistory(data){
   if(busy||syncBusy||editor.getValue()!==data.source||version!==data.version)throw new Error(t('编辑内容已变化，请刷新历史后重试。'));
+  if(selectionChat.busy)throw new Error(t('Codex 正在回复，请稍后发送。'));
   if(selectionChat.hasAnnotations)throw new Error(t('请先发送或删除批注，再恢复历史。'));
   clearTimeout(timer);busy=true;editor.setOption('readOnly','nocursor');updateSyncControls();
   try{
@@ -1091,7 +1107,7 @@ preview.ondblclick=e=>{
   if(spacePan)spaceLocked=true;
   synchronize('backward',pdfPoint(element,e.clientX,e.clientY));
 };
-editor.on('change',()=>{showCompileError(null);setText(status,conflict?'请先处理文件冲突':'尚未保存…');clearTimeout(timer);scheduleSave();});
+editor.on('change',(instance,change)=>{showCompileError(null);const recorded=change?.origin==='codex-chat'&&editor.getValue()===saved;setText(status,conflict?'请先处理文件冲突':recorded?'批注与修改已保存到历史。':'尚未保存…');clearTimeout(timer);if(!recorded||(autoCompile.checked&&pdfVersion!==version))scheduleSave();});
 document.querySelector('#compile').onclick=compile;
 openButton.onclick=openFile;
 document.querySelector('#reload').onclick=()=>load(true);
@@ -1109,11 +1125,11 @@ class FileConflict(ValueError):
     pass
 
 
-def project_source(root, filename):
+def project_source(root, filename, *, must_exist=True):
     if not isinstance(filename, str) or not filename:
         raise ValueError('请选择项目中的 .tex 文件。')
     target = (root / filename).resolve()
-    if not target.is_relative_to(root) or not target.is_file() or target.suffix.lower() != '.tex':
+    if not target.is_relative_to(root) or (must_exist and not target.is_file()) or target.suffix.lower() != '.tex':
         raise ValueError('源码必须位于项目根目录内；请在项目设置中选择包含主文件和附录的文件夹。')
     return target
 
@@ -1156,16 +1172,60 @@ def project_digest(files):
     return digest.hexdigest()
 
 
-def save_source(path, source, version, history, kind='save', draft=None):
+def validate_annotation_change(change, source):
+    if (not isinstance(change, dict) or not isinstance(change.get('id'), str)
+            or not re.fullmatch(r'[0-9a-f]{32}', change['id'])
+            or not isinstance(change.get('before'), str) or not isinstance(change.get('reply'), str)
+            or not isinstance(change.get('items'), list) or not 1 <= len(change['items']) <= 100):
+        raise ValueError('批注历史格式无效。')
+    before, items, ids, end = change['before'], [], set(), 0
+    for item in change['items']:
+        if (not isinstance(item, dict) or type(item.get('id')) is not int or item['id'] < 1 or item['id'] in ids
+                or type(item.get('start')) is not int or type(item.get('end')) is not int
+                or not end <= item['start'] < item['end'] <= len(before)
+                or item.get('selection') != before[item['start']:item['end']]
+                or not isinstance(item.get('request'), str) or not item['request'].strip()
+                or 'replacement' not in item or not (item['replacement'] is None or isinstance(item['replacement'], str))):
+            raise ValueError('批注历史选区无效或重叠。')
+        ids.add(item['id']); end = item['end']
+        items.append({key:item[key] for key in ('id','start','end','selection','request','replacement')})
+        items[-1].update(first_line=before.count('\n',0,item['start'])+1,
+                         last_line=before.count('\n',0,item['end']-1)+1)
+    after = before
+    for item in reversed(items):
+        if item['replacement'] is not None:
+            after = after[:item['start']] + item['replacement'] + after[item['end']:]
+    if after != source:
+        raise ValueError('批注历史与修改后的源码不一致。')
+    return {**change, 'items':items}
+
+
+def save_source(path, source, version, history, kind='save', draft=None, annotation_change=None):
+    change = validate_annotation_change(annotation_change, source) if annotation_change is not None else None
     before = snapshot(path)
     # CodeMirror uses LF internally; merely opening a CRLF child must not rewrite it.
     if '\r\n' in before['source'] and '\r\n' not in source:
         source = source.replace('\n', '\r\n')
+    if change and '\r\n' in source and '\r\n' not in change['before']:
+        # Compare snapshots in the same newline style; annotation offsets refer to the editor's LF text.
+        change = {**change, 'before':change['before'].replace('\n','\r\n')}
+    if change:
+        recorded = history.annotation_record(change['id'])
+        if recorded:
+            if (recorded['file'] != history.file or recorded['before'].replace('\r\n','\n') != change['before'].replace('\r\n','\n')
+                    or recorded['source'].replace('\r\n','\n') != source.replace('\r\n','\n') or recorded['annotations'] != change['items']
+                    or recorded['annotation_reply'] != change['reply']):
+                raise ValueError('批注历史请求编号已用于另一处修改。')
+            if before['source'] != recorded['source']:
+                raise FileConflict('批注修改后文件已更新，请先重新读取。')
+            return before
     history.record(before['source'])
     if version != before['version']:
         raise FileConflict('文件已被外部修改，请先重新读取。')
     if draft is not None:
         history.record(draft, 'before-restore')
+    if change:
+        history.record(change['before'], 'before-annotation')
     if source != before['source']:
         temporary = None
         try:
@@ -1178,7 +1238,10 @@ def save_source(path, source, version, history, kind='save', draft=None):
         finally:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)
-    history.record(source, kind, force=kind == 'restore')
+    if change:
+        history.record_annotations(source, change)
+    else:
+        history.record(source, kind, force=kind == 'restore')
     return snapshot(path)
 
 
@@ -1855,6 +1918,7 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
     compiler(snapshot(main_file)['source'])
     history = History(path, root)
     history.record(snapshot(path)['source'], 'open')
+    history.record_sources({file.relative_to(root).as_posix(): snapshot(file)['source'] for file in project_files(root)}, 'open')
     build = tempfile.TemporaryDirectory(prefix='latex-codex-')
     state_lock = threading.Lock()
     history_pdf_lock = threading.Lock()
@@ -1862,6 +1926,7 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
     def project_state():
         state = snapshot(path)
         files = project_files(root)
+        history.record_sources({file.relative_to(root).as_posix(): state['source'] if file == path else snapshot(file)['source'] for file in files})
         dependencies = project_dependencies(root, main_file, server.build.name) | server.dependencies
         fingerprint = project_digest(dependencies)
         synced = bool(server.sync_version) and fingerprint == server.project_version
@@ -1945,7 +2010,6 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
             elif route == '/state':
                 try:
                     state = project_state()
-                    history.record(state['source'])
                     self.reply(200, state)
                 except (OSError, UnicodeError, sqlite3.Error) as error:
                     self.reply(500, {'error': str(error)})
@@ -1954,10 +2018,10 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
                     query = parse_qs(parsed.query)
                     if query.get('path', [''])[0] != str(path):
                         raise FileConflict('当前文件已切换，请重新打开历史。')
-                    state = snapshot(path)
-                    history.record(state['source'])
+                    project_state()
                     before = query.get('before', [None])[0]
-                    self.reply(200, {**history.list(int(before) if before is not None else None, query.get('language',['en'])[0]), 'path': str(path)})
+                    self.reply(200, {**history.list(int(before) if before is not None else None, query.get('language',['en'])[0]),
+                                     'path': str(path), 'file': history.file})
                 except FileConflict as error:
                     self.reply(409, {'error': str(error)})
                 except ValueError as error:
@@ -2048,7 +2112,7 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
                 return
             try:
                 size = int(self.headers.get('Content-Length', '0'))
-                limit = 32 * 1024 * 1024 if self.path in ('/history/pdf-cache', '/history/pdf') else 1_000_000
+                limit = 32 * 1024 * 1024 if self.path in ('/history/pdf-cache', '/history/pdf') else 8_000_000 if self.path == '/save' else 1_000_000
                 if self.headers.get('Content-Type') != 'application/json' or not 0 < size <= limit:
                     raise ValueError('JSON request exceeds the size limit.')
                 payload = self.rfile.read(size)
@@ -2123,10 +2187,20 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
                         history.label(revision['id'], data.get('label'))
                         self.reply(200, {'ok': True})
                         return
+                    revision_path = project_source(root, revision['file'], must_exist=False)
+                    current = snapshot(revision_path) if revision_path.is_file() else None
                     if self.path in ('/history/diff', '/history/pdf', '/history/pdf-cache'):
                         baseline = history.previous(revision['id']) if data.get('compare') == 'previous' else revision
                         old = (baseline or revision)['source']
-                        target = revision['source'] if data.get('compare') == 'previous' else history.get(data['target_id'])['source'] if 'target_id' in data else data.get('source')
+                        if data.get('compare') == 'previous':
+                            target = revision['source']
+                        elif 'target_id' in data:
+                            target_revision = history.get(data['target_id'])
+                            if target_revision['file'] != revision['file']:
+                                raise ValueError('请选择同一源码文件的版本进行对比。')
+                            target = target_revision['source']
+                        else:
+                            target = data.get('source') if revision_path == path else (current or {}).get('source')
                         if not isinstance(target, str):
                             raise ValueError('缺少用于对比的源码。')
                         if self.path == '/history/pdf':
@@ -2137,15 +2211,26 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
                             if previous: previous[1].set()
                             cancellation = threading.Event()
                             self.server.history_pdf_request = request_id, cancellation
-                            return path, old, target, data.get('recompile') is True, data.get('analysis'), cancellation
+                            return revision_path, old, target, data.get('recompile') is True, data.get('analysis'), cancellation
                         if self.path == '/history/pdf-cache':
-                            self.reply(200, {'cache_error': save_history_pdf_images(history_pdf_cache_file(path, old, target, root, history_pdf_context(self.server, path)), data.get('images'))})
+                            self.reply(200, {'cache_error': save_history_pdf_images(history_pdf_cache_file(revision_path, old, target, root, history_pdf_context(self.server, revision_path)), data.get('images'))})
                             return
                         self.reply(200, {**revision, 'diff': difference(old, target), 'changes': word_changes(old, target),
-                                         'same': old == target, 'first': baseline is None})
+                                         'same': old == target, 'first': baseline is None, 'current_version': (current or {}).get('version')})
                         return
                     if not isinstance(data.get('source'), str) or not isinstance(data.get('version'), str):
                         raise ValueError('Expected source and version strings.')
+                    if revision_path != path:
+                        if not isinstance(data.get('target_version'), str):
+                            raise ValueError('缺少恢复文件的版本信息，请刷新历史后重试。')
+                        if current is None or current['version'] != data['target_version']:
+                            raise FileConflict('文件已被外部修改，请先重新读取。')
+                        # Save the active draft before switching, then restore only the selected file.
+                        save_source(path, data['source'], data['version'], history)
+                        save_source(revision_path, revision['source'], data['target_version'], History(revision_path, root), 'restore')
+                        self.server.sync_version = ''
+                        self.reply(200, switch_source(revision_path))
+                        return
                     # Preserve even an unsaved editor draft before restoring a snapshot.
                     save_source(path, revision['source'], data['version'], history, 'restore', data['source'])
                     self.server.sync_version = ''
@@ -2261,7 +2346,9 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
                 if not isinstance(data.get('source'), str) or not isinstance(data.get('version'), str):
                     raise ValueError('Expected source and version strings.')
                 if self.path == '/save':
-                    state = save_source(path, data['source'], data['version'], history)
+                    if 'annotation_change' in data and data.get('path') != str(path):
+                        raise FileConflict('当前源码文件已切换，请重新读取。')
+                    state = save_source(path, data['source'], data['version'], history, annotation_change=data.get('annotation_change'))
                     if state['version'] != self.server.sync_version:
                         self.server.sync_version = ''
                     self.reply(200, state)

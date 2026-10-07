@@ -1,5 +1,12 @@
 // Interface messages keyed by their English fallback. Keep placeholders unchanged.
 export const translations = {
+  "AI comments · {count}": {"zh-TW":"AI 批註 · {count}","ja":"AI 注釈 · {count}","fr":"Annotations IA · {count}","de":"KI-Kommentare · {count}","es":"Comentarios de IA · {count}"},
+  "Comments and AI reply · {count}": {"zh-TW":"批註與 AI 回覆 · {count}","ja":"注釈と AI の回答 · {count}","fr":"Annotations et réponse IA · {count}","de":"Kommentare und KI-Antwort · {count}","es":"Comentarios y respuesta de IA · {count}"},
+  "Lines {first}–{last}": {"zh-TW":"第 {first}–{last} 行","ja":"{first}–{last} 行","fr":"Lignes {first}–{last}","de":"Zeilen {first}–{last}","es":"Líneas {first}–{last}"},
+  "Original selection": {"zh-TW":"原選取範圍","ja":"元の選択範囲","fr":"Sélection d’origine","de":"Ursprüngliche Auswahl","es":"Selección original"},
+  "AI reply": {"zh-TW":"AI 回覆","ja":"AI の回答","fr":"Réponse IA","de":"KI-Antwort","es":"Respuesta de IA"},
+  "Comments and changes saved to history.": {"zh-TW":"批註與修改已儲存到歷史。","ja":"注釈と変更を履歴に保存しました。","fr":"Annotations et modifications enregistrées dans l’historique.","de":"Kommentare und Änderungen im Verlauf gespeichert.","es":"Comentarios y cambios guardados en el historial."},
+  "Current file contents": {"zh-TW":"檔案目前內容","ja":"ファイルの現在の内容","fr":"Contenu actuel du fichier","de":"Aktueller Dateiinhalt","es":"Contenido actual del archivo"},
   "Find and replace": {"zh-TW":"尋找與取代","ja":"検索と置換","fr":"Rechercher et remplacer","de":"Suchen und Ersetzen","es":"Buscar y reemplazar"},
   "Search for": {"zh-TW":"搜尋內容","ja":"検索する文字列","fr":"Rechercher","de":"Suchen nach","es":"Buscar"},
   "Replace with": {"zh-TW":"取代為","ja":"置換する文字列","fr":"Remplacer par","de":"Ersetzen durch","es":"Reemplazar con"},

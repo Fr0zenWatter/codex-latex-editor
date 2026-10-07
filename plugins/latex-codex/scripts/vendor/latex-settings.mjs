@@ -1,6 +1,10 @@
 import {translations} from './latex-locales.mjs';
 
 export const english = {
+  'AI 批注 · {count}':'AI comments · {count}',
+  '批注与 AI 回复 · {count}':'Comments and AI reply · {count}',
+  '第 {first}–{last} 行':'Lines {first}–{last}', '原选区':'Original selection', 'AI 回复':'AI reply',
+  '批注与修改已保存到历史。':'Comments and changes saved to history.',
   '搜索与替换':'Find and replace', '搜索内容':'Search for', '替换为':'Replace with',
   '上一个匹配':'Previous match', '下一个匹配':'Next match', '关闭搜索':'Close search',
   '区分大小写':'Match case', '正则表达式':'Regular expression', '整词匹配':'Whole word', '仅在选区搜索':'Search in selection',
@@ -94,7 +98,7 @@ export const english = {
   'Cobalt · 深蓝':'Cobalt · Deep blue', 'Dracula · 紫灰':'Dracula · Purple', 'Monokai · 炭黑':'Monokai · Charcoal', 'Nord · 冷灰':'Nord · Cool gray',
   '浅色':'Light', '深色':'Dark', 'Eclipse · 白底':'Eclipse · White', 'IDEA · 白底':'IDEA · White', 'Neo · 简洁白':'Neo · Clean white', 'Base16 · 浅灰':'Base16 · Light gray', 'Solarized · 暖白':'Solarized · Warm light', 'Material · 深灰':'Material · Dark gray', 'Palenight · 蓝紫':'Palenight · Blue violet', 'Ayu · 深夜':'Ayu · Night', 'Gruvbox · 暖黑':'Gruvbox · Warm dark', 'Solarized · 深青':'Solarized · Dark cyan',
   '版本历史':'Version history', '刷新':'Refresh', '关闭历史':'Close history', '改动对比':'Changes', '此版本源码':'Source', '对比':'Compare',
-  '与上一版比较':'Previous snapshot', '当前编辑内容':'Current editor contents', '历史源码与差异':'Historical source and changes',
+  '与上一版比较':'Previous snapshot', '当前编辑内容':'Current editor contents', '文件当前内容':'Current file contents', '历史源码与差异':'Historical source and changes',
   '版本名称':'Version name', '例如：投稿前定稿':'e.g. Before submission', '保存名称':'Save name', '加载更早版本':'Load earlier versions',
   '按时间排列的版本':'Versions by date', '恢复此版本':'Restore this version', '确定恢复？':'Restore this version?', '取消':'Cancel', '确认恢复':'Confirm restore',
   '自动记录按 5 分钟合并显示；命名版本单独保留。':'Automatic saves are grouped every 5 minutes; named versions remain separate.',

@@ -198,7 +198,8 @@ with tempfile.TemporaryDirectory() as directory:
         other = path.with_name('other.tex')
         other.write_text('other file', encoding='utf-8')
         other_id = History(other).record('other file', 'open')
-        assert request('/history/diff', {**data, 'id':other_id, 'source':''})[0] == 400
+        assert request('/history/diff', {**data, 'id':other_id, 'source':''})[1]['same'], 'A child history compares with that child, not the active editor.'
+        assert request('/history/diff', {**data, 'id':other_id, 'target_id':first})[0] == 400
         assert request('/history/restore', {**data, 'path':str(other), 'version':state()['version'], 'source':draft})[0] == 409
         assert request('/history/diff', {**data, 'id':True, 'source':''})[0] == 400
         assert request('/history/label', {**data, 'label':'x' * 121})[0] == 400
@@ -242,4 +243,158 @@ with tempfile.TemporaryDirectory() as directory:
     restarted.server_close(); restarted.build.cleanup()
     assert History(path).get(first)['label'] == '投稿前'
     assert History(path).get(second)['source'] == edited
-    print('PASS: five-minute grouping, protected checkpoints, immutable backups, grouped pagination, history persistence, deduplication, diff, labels, failed compile, draft-safe restore, conflicts, file isolation, pagination and failed writes')
+    print('PASS: five-minute grouping, protected checkpoints, immutable backups, grouped pagination, history persistence, deduplication, diff, labels, failed compile, draft-safe restore, conflicts, file guards, pagination and failed writes')
+
+
+with tempfile.TemporaryDirectory() as directory:
+    root = Path(directory)
+    main, child = root / 'main.tex', root / 'parts' / 'input.tex'
+    child.parent.mkdir()
+    main.write_text('Main initial.', encoding='utf-8')
+    child.write_text('Child initial.', encoding='utf-8')
+    with patch('editor.compiler', return_value=('xelatex', 'unused')), patch('editor.shutil.which', return_value='unused'):
+        server = make_server(main, main_thread='')
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    base = f'http://127.0.0.1:{server.server_port}'
+    try:
+        initial = request('/history?path=' + quote(str(main)))[1]
+        ids = {row['file']: row['id'] for row in initial['revisions']}
+        assert set(ids) == {'main.tex', 'parts/input.tex'}, 'Include sources not yet opened in the editor.'
+        main.write_text('Main changed.', encoding='utf-8')
+        child.write_text('Child changed.', encoding='utf-8')
+        current = state()
+        listing = request('/history?path=' + quote(str(main)))[1]['revisions']
+        assert len(listing) == 4 and {row['file'] for row in listing} == set(ids)
+        history = History(main)
+        assert History(child, root).list() == history.list(), 'Every source sees the same project timeline.'
+        latest = {file: next(row for row in listing if row['file'] == file) for file in ids}
+        history.label(latest['parts/input.tex']['id'], 'Child edit checkpoint')
+        for file, row in latest.items():
+            assert row['baseline'] == ids[file] and history.previous(row['id'])['file'] == file
+        assert {item['file'] for item in history.summary_context([row['id'] for row in latest.values()])} == set(ids)
+        assert request('/history/label', {'path':str(main),'id':ids['parts/input.tex'],'label':'Child checkpoint'})[0] == 200
+        payload = {'path':str(main), 'id':ids['parts/input.tex'], 'compare':'current', 'source':'Active main draft.'}
+        code, compared = request('/history/diff', payload)
+        assert code == 200 and compared['file'] == 'parts/input.tex'
+        assert ''.join(run['text'] for run in compared['changes'] if run['kind'] != 'delete') == 'Child changed.'
+        assert request('/history/diff', {**payload,'target_id':ids['main.tex']})[0] == 400
+        with patch('editor.history_pdf_changes', return_value={'changes':[]}) as render:
+            assert request('/history/pdf', {**payload,'compare':'previous'})[0] == 200
+            assert render.call_args.args[1:4] == (child, 'Child initial.', 'Child initial.')
+        restore = {**payload, 'source':'Main unsaved draft.', 'version':current['version'], 'target_version':compared['current_version']}
+        child.write_text('Concurrent child edit.', encoding='utf-8')
+        assert request('/history/restore', restore)[0] == 409
+        assert main.read_text() == 'Main changed.' and child.read_text() == 'Concurrent child edit.'
+        restore['target_version'] = snapshot(child)['version']
+        main.write_text('Concurrent main edit.', encoding='utf-8')
+        assert request('/history/restore', restore)[0] == 409
+        assert child.read_text() == 'Concurrent child edit.'
+        restore['version'] = snapshot(main)['version']
+        code, restored = request('/history/restore', restore)
+        assert code == 200 and restored['path'] == str(child) and restored['source'] == 'Child initial.', restored
+        assert main.read_text() == 'Main unsaved draft.', 'Save the active draft before switching to the restored child.'
+        assert child.read_text() == 'Child initial.'
+        assert any(history.get(row['id'])['source'] == 'Concurrent child edit.' for row in history.list()['revisions']), 'Keep the child backup.'
+        assert request('/history?path=' + quote(str(child)))[1]['file'] == 'parts/input.tex'
+        retired = root / 'retired.tex'; retired.write_text('Retired content.', encoding='utf-8')
+        state()
+        retired_id = next(row['id'] for row in history.list()['revisions'] if row['file'] == 'retired.tex')
+        retired.unlink()
+        code, retired_diff = request('/history/diff', {'path':str(child),'id':retired_id,'compare':'previous'})
+        assert code == 200 and retired_diff['source'] == 'Retired content.' and retired_diff['current_version'] is None, 'Deleted files retain browsable source history.'
+        other_root = root / 'separate-project'; other_root.mkdir()
+        assert History(other_root / 'main.tex').list()['revisions'] == [], 'Other projects remain isolated.'
+        # More than a page of another file must not erase this file's older comparison baseline.
+        for i in range(105):
+            with patch('history.datetime') as clock:
+                clock.now.return_value = start + timedelta(minutes=5*i)
+                history.record(str(i), 'save')
+        top = history.list()
+        older = history.list(top['next'])
+        assert not {row['id'] for row in top['revisions']} & {row['id'] for row in older['revisions']}
+        assert top['revisions'][-1]['baseline'] == history.previous(top['revisions'][-1]['id'])['id'], 'The page boundary keeps its full comparison baseline.'
+        child_row = next(row for row in older['revisions'] if row['id'] == latest['parts/input.tex']['id'])
+        assert child_row['baseline'] == ids['parts/input.tex'], 'Pagination uses the preceding revision of the same file.'
+    finally:
+        server.shutdown(); worker.join(); server.server_close(); server.build.cleanup()
+    print('PASS: unified project timeline, inactive source capture, per-file baselines, project isolation, cross-file PDF routing and conflict-safe child restoration')
+
+
+with tempfile.TemporaryDirectory() as directory:
+    root = Path(directory)
+    main, child = root / 'main.tex', root / 'input.tex'
+    main.write_text('Main source.', encoding='utf-8')
+    child.write_bytes('😀 original\r\nOther line.\r\n'.encode('utf-8'))
+    with patch('editor.compiler', return_value=('xelatex', 'unused')), patch('editor.shutil.which', return_value='unused'):
+        server = make_server(main, main_thread='')
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    base = f'http://127.0.0.1:{server.server_port}'
+    try:
+        active = state()
+        assert request('/source', {'path':str(child),'version':active['version']})[0] == 200
+        version = snapshot(child)['version']
+        before = '😀 original\nOther unsaved edit.\n'
+        change = {'id':'a'*32, 'before':before, 'reply':'Clarified the passage.', 'items':[
+            {'id':1,'start':2,'end':10,'selection':'original','request':'Make precise.','replacement':'revised'}]}
+        after = before.replace('original','revised')
+        payload = {'path':str(child),'source':after,'version':version,'annotation_change':change}
+        assert request('/save', {**payload,'path':str(main)})[0] == 409
+        code, saved = request('/save', payload)
+        assert code == 200, saved
+        assert child.read_bytes() == after.replace('\n','\r\n').encode('utf-8'), 'Preserve the source newline style.'
+        history = History(main)
+        row = history.list()['revisions'][0]
+        assert row['file']=='input.tex' and row['annotation_count']==1 and row['kind']=='annotation'
+        note_id = row['id']
+        baseline = history.previous(note_id)
+        assert baseline['source']==before.replace('\n','\r\n') and baseline['id']==row['baseline'], 'Use the exact editor draft before applying AI, including unrelated edits, with consistent disk newlines.'
+        detail = request('/history/diff', {'path':str(child),'id':note_id,'compare':'previous'})[1]
+        assert detail['annotations'][0]['request']=='Make precise.' and detail['annotation_reply']==change['reply']
+        assert detail['annotations'][0]['first_line']==1 and detail['annotations'][0]['last_line']==1
+        assert ''.join(run['text'] for run in detail['changes'] if run['kind']!='insert') == baseline['source']
+        assert ''.join(run['text'] for run in detail['changes'] if run['kind']!='delete') == saved['source']
+        assert [run for run in detail['changes'] if run['kind']!='equal'] == [{'kind':'delete','text':'original'},{'kind':'insert','text':'revised'}], 'CRLF normalization must not falsely mark every line as changed.'
+        assert all(item['kind']!='before-annotation' for item in history.list()['revisions'])
+        with closing(history.connect()) as db:
+            count = db.execute('SELECT COUNT(*) FROM revisions').fetchone()[0]
+        assert request('/save', payload)[0] == 200, 'Retry after a lost response succeeds despite the original version.'
+        with closing(history.connect()) as db:
+            assert db.execute('SELECT COUNT(*) FROM revisions').fetchone()[0] == count
+        altered = {**change,'reply':'Different reply.'}
+        assert request('/save', {**payload,'annotation_change':altered})[0] == 400
+        # A second batch in the same save window stays distinct, even without source changes.
+        current_before = after
+        second = {**change,'id':'b'*32,'before':current_before,'reply':'No further edit needed.', 'items':[
+            {'id':2,'start':2,'end':9,'selection':'revised','request':'Check this.','replacement':None}]}
+        assert request('/save', {**payload,'source':current_before,'version':saved['version'],'annotation_change':second})[0] == 200
+        rows = history.list()['revisions']
+        assert len([item for item in rows if item['annotation_count']]) == 2
+        second_id = rows[0]['id']
+        assert History(child,root).get(second_id)['annotations'][0]['replacement'] is None
+        assert History(child,root).get(note_id)['annotation_reply']==change['reply'], 'Metadata survives reopening.'
+        child.write_text('External newer edit.',encoding='utf-8')
+        assert request('/save', payload)[0] == 409
+        assert child.read_text()=='External newer edit.', 'Never replay a saved annotation over newer disk content.'
+        # Validation failures cannot write a file, record a revision, or lose comments.
+        invalid_base = {'id':'c'*32,'before':'😀 original','reply':'x','items':change['items']}
+        for invalid in ({**invalid_base,'id':'bad'}, {**invalid_base,'items':[]},
+                        {**invalid_base,'items':[dict(change['items'][0],start=True)]},
+                        {**invalid_base,'items':[dict(change['items'][0],selection='wrong')]},
+                        {**invalid_base,'items':change['items']*2},
+                        {**invalid_base,'items':[dict(change['items'][0],replacement=12)]}):
+            assert request('/save', {**payload,'version':snapshot(child)['version'],'source':'😀 revised','annotation_change':invalid})[0] == 400
+            assert child.read_text()=='External newer edit.'
+        fresh = {**invalid_base,'id':'d'*32}
+        # Failing the mandatory exact-before backup must prevent the file write.
+        real_record = History.record
+        def fail_backup(self, source, kind='external', force=False):
+            if kind=='before-annotation': raise sqlite3.OperationalError('backup unavailable')
+            return real_record(self,source,kind,force)
+        with patch.object(History,'record',fail_backup):
+            assert request('/save', {**payload,'version':snapshot(child)['version'],'source':'😀 revised','annotation_change':fresh})[0] == 500
+        assert child.read_text()=='External newer edit.'
+    finally:
+        server.shutdown();worker.join();server.server_close();server.build.cleanup()
+    print('PASS: persisted annotation requests/selections/replies, exact draft baselines, independent batches, Unicode, CRLF, idempotent retries, file guards and failure-safe saves')

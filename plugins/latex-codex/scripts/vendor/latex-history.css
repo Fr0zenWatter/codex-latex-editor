@@ -17,6 +17,15 @@
 .history-body{display:grid;grid-template-columns:minmax(0,1fr) 36px;flex:1;min-height:0;border-top:1px solid var(--border);transition:grid-template-columns .32s cubic-bezier(.22,1,.36,1)}
 .history-body:has(.history-sidebar:hover),.history-body:has(.history-sidebar :focus-visible),#history-dialog[data-sidebar-open=true] .history-body,#history-dialog:has(#history-actions:popover-open) .history-body{grid-template-columns:minmax(0,1fr) min(330px,45vw)}
 .history-content{display:flex;flex-direction:column;min-width:0;min-height:0}
+#history-annotations{flex:none;padding:0;margin:0;border:0;border-bottom:1px solid var(--border);font:13px/1.6 system-ui}
+#history-annotations>summary{padding:8px 14px;cursor:pointer;color:#526575}
+#history-annotation-list{max-height:min(210px,30vh);overflow:auto;padding:0 14px 12px}
+#history-annotation-list article+article{border-top:1px solid var(--border);padding-top:10px;margin-top:10px}
+#history-annotation-list strong{font-size:13px}
+#history-annotation-list details{padding:0;margin:6px 0;border:0}
+#history-annotation-list p{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0}
+#history-annotation-list pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f5f5;padding:8px;border-radius:5px;margin:6px 0;font:12px/1.6 Consolas,monospace}
+#history-annotation-list summary{cursor:pointer;color:var(--muted)}
 .history-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px;border-bottom:1px solid var(--border)}
 .history-toolbar label{padding:0}
 .history-toolbar select{max-width:230px}
@@ -58,6 +67,7 @@
 .history-entry-text{position:relative;display:flex;flex-direction:column;gap:6px;min-width:0}
 .history-entry-text strong{font:500 13px/1.5 system-ui;color:#171717}
 .history-entry-summary{font:12px/1.5 system-ui;color:#52525b}
+.history-entry-file{font:11px/1.4 system-ui;color:#71717a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .history-entry time{font:11px/1.5 system-ui;color:#71717a;white-space:normal;width:68px;text-align:right}
 .history-ai-badge{align-self:flex-start;font:10px/1.1 system-ui;color:#8876a6;order:3}
 #history-more{margin:8px 12px;flex:none}

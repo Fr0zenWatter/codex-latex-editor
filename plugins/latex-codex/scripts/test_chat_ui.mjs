@@ -45,7 +45,13 @@ const request=async(url,options)=>{
   return {};
 };
 let painted=[];
-const chat=attachSelectionChat(editor,request,items=>painted=[...items]);
+let annotationSaves=[],saveFailure=false;
+const chat=attachSelectionChat(editor,request,items=>painted=[...items],async(after,change)=>{
+  assert.equal(source,change.before,'Persist before changing the editor or clearing markers.');
+  assert(painted.length);
+  if(saveFailure)throw new Error('History unavailable');
+  annotationSaves.push({after,change});
+});
 assert.equal(el('#annotations-send').hidden,true);
 // A closed popover has zero width; pin its right edge without measuring it.
 el('#annotations-review').offsetWidth=0;
@@ -176,6 +182,12 @@ assert.match(batchBody.request_id,/^[0-9a-f]{32}$/);
 assert.equal(batchBody.messages.at(-1).content,'#1\nUse precise language\n\n#2\nRewrite the ending');
 assert.equal(batchBody.annotations[0].selection,'chosen','The selection remains request context, separate from the conversation.');
 assert.equal(source,'extra before {\\color{blue}revised} {\\color{blue}ending}');
+assert.equal(annotationSaves[0].change.before,'extra before chosen after');
+assert.equal(annotationSaves[0].after,source);
+assert.equal(annotationSaves[0].change.reply,'Both updated.');
+assert.deepEqual(annotationSaves[0].change.items.map(item=>[item.selection,item.request,item.replacement]),[
+  ['chosen','Use precise language','{\\color{blue}revised}'],['after','Rewrite the ending','{\\color{blue}ending}']]);
+assert.match(annotationSaves[0].change.id,/^[0-9a-f]{32}$/);
 assert.equal(operations,1,'Apply the complete batch in one undoable editor operation.');
 assert.equal(el('#chat-input').value,'Keep my full-panel draft.');assert.equal(el('#chat-panel').hidden,true);
 assert.equal(painted.length,0);assert.equal(el('#annotations-send').disabled,true);
@@ -205,6 +217,13 @@ assert.equal(painted.length,2);assert.match(el('#annotations-status').textConten
 const beforeStaleSend=calls.filter(call=>call.url==='/chat').length;
 await el('#annotations-send').onclick();assert.equal(calls.filter(call=>call.url==='/chat').length,beforeStaleSend);
 source='😀 chosen gap chosen after';
+// A history failure must preserve every comment, marker and the complete source.
+saveFailure=true;
+await el('#annotations-send').onclick();
+assert.equal(source,'😀 chosen gap chosen after');assert.equal(painted.length,2);
+assert.equal(operations,1);assert.equal(annotationSaves.length,1);
+assert.match(el('#annotations-status').textContent,/History unavailable/);
+assert.equal(el('#annotations-stop').disabled,false);saveFailure=false;
 // Cancelling a late-starting batch keeps all notes, including after its job id arrives.
 deferred=new Promise(resolve=>release=resolve);const cancelledBatch=el('#annotations-send').onclick();
 el('#annotations-stop').onclick();release({id:'cancelled-batch'});await cancelledBatch;deferred=null;
@@ -217,6 +236,10 @@ assert.match(el('#chat-quick-status').textContent,/重叠/);el('#chat-quick-canc
 el('#annotations-list').children[0].onclick();el('#chat-quick-delete').onclick();assert.equal(painted.length,1);
 answer={status:'done',reply:'An explanation.',replacement:null,replacements:[{id:4,replacement:null}]};
 await el('#annotations-send').onclick();assert.equal(source,'😀 chosen gap chosen after');assert.equal(painted.length,0);
+assert.equal(annotationSaves.length,2);
+assert.equal(annotationSaves[1].change.items[0].start,13);
+assert.equal(annotationSaves[1].change.items[0].replacement,null,'Keep explanation-only batches in history too.');
+assert.equal(annotationSaves[1].after,annotationSaves[1].change.before);
 // Dismissing a populated composer saves it locally; draft protection warns before leaving.
 source='before chosen after';selection={from:{line:0,ch:7},to:{line:0,ch:13}};
 chat.openQuick({left:100,top:100});el('#chat-quick-input').value='Save on dismiss';el('#chat-quick').hidePopover();
