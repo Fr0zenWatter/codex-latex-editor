@@ -20,7 +20,9 @@ export function pdfTextRect(item, styles) {
   const size = Math.hypot(c,d) || item.height || 1;
   const advance = Math.hypot(a,b) || size;
   const style = styles[item.fontName] || {};
-  const ascent = style.ascent ?? .9, descent = style.descent ?? -.25;
+  let ascent = style.ascent ?? .9, descent = style.descent ?? -.25;
+  // TeX extension fonts can report zero metrics for visible radicals/delimiters.
+  if (ascent <= descent) { ascent = .9; descent = -.25; }
   const ux = a/advance, uy = b/advance, vx = c/size, vy = d/size;
   const points = [
     [x+vx*size*descent, y+vy*size*descent],

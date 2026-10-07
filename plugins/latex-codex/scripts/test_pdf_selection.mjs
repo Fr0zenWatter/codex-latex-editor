@@ -16,6 +16,14 @@ assert.equal(boxedPdfContent(content,1,[0,0,1,1]),null);
 assert.equal(boxedPdfContent(content,1,[20,70,20.5,80]),null,'A slight edge touch must not select a neighboring glyph.');
 assert.equal(boxedPdfContent(content,1,[0,50,85,95],[[0,60,15,85]]).text,'A Bnd2','Exclude margin line numbers without excluding formula digits.');
 assert.deepEqual(pdfTextRect({...glyph('r',30,40),transform:[0,10,-10,0,30,40]},content.styles),[20,40,30,45],'Use rotated glyph geometry.');
+const wrapped = {styles:{...content.styles,extension:{ascent:0,descent:0}},items:[
+  glyph('condi-',20,70,10,30),{...glyph('',20,55),width:0,height:0,hasEOL:true},
+  glyph('tion ',20,55,10,24),{...glyph('√',44,55,10,8),fontName:'extension'},glyph('k',52,55),
+]};
+const wrappedBox = boxedPdfContent(wrapped,1,[18,50,60,85]);
+assert.equal(wrappedBox.text,'condi-\ntion √k','Zero-size EOL markers and zero-metric math fonts must survive extraction.');
+assert.equal(wrappedBox.fragments.map(fragment=>fragment.text).join(''),wrappedBox.text,'Formula/prose runs retain actual line breaks between glyphs.');
+assert(wrappedBox.rectangles.every(({rect})=>rect[3]>rect[1]),'Fallback font metrics give radical glyphs a selectable rectangle.');
 
 const tick = async () => { for(let i=0;i<8;i++) await Promise.resolve(); };
 let reads=0, requests=0, deferred=null, fail=false;

@@ -385,6 +385,9 @@ CodeMirror.commands.save=compile;
 const openEditorDialog=editor.openDialog;
 editor.openDialog=function(template,callback,options={}){
   return openEditorDialog.call(this,template,callback,{...options,onKeyDown:(event,value,close)=>{
+    if(editorMode.value==='vim'&&CodeMirror.keyName(event)==='Ctrl-C'){
+      event.stopPropagation();return true;
+    }
     if(this.getOption('keyMap')==='emacs'&&CodeMirror.keyName(event)==='Ctrl-G'){
       CodeMirror.e_stop(event);close();CodeMirror.commands.keyboardQuit(this);return true;
     }
@@ -404,6 +407,7 @@ function setEditorMode(){
   editor.state.keySeq=null;
   editor.closeHint();editor.setExtending(false);editor.setOption('keyMap',editorMode.value);
   const keys={'Cmd-S':compile,'Cmd-/':toggleSourceComment,'Ctrl-F':sourceSearch.open,'Cmd-F':sourceSearch.open};
+  if(editorMode.value==='vim')keys['Ctrl-C']=false;
   Object.assign(keys,editorMode.value==='emacs'
     ? {'Alt-/':completeLatex,'Alt-;':toggleSourceComment}
     : {'Ctrl-S':compile,'Ctrl-Space':completeLatex,'Alt-/':toggleSourceComment,'Ctrl-/':toggleSourceComment});
@@ -608,6 +612,11 @@ async function synchronize(direction,position,quiet=false){
     const results=direction==='selection'?await Promise.allSettled(position.points.map(locate)):null;
     const data=results?results.filter(result=>result.status==='fulfilled').map(result=>result.value):await locate(position);
     if(busy||version!==revision||pdfBuild!==build||editor.getValue()!==saved)throw new Error(t('PDF 或源码已变化，请重新选择 PDF 文字。'));
+    if(results){
+      const fatal=results.find(result=>result.status==='rejected'&&result.reason.status!==400);
+      if(fatal)throw fatal.reason;
+      if(!data.length)throw results.find(result=>result.status==='rejected').reason;
+    }
     if(direction!=='forward'){
       const paths=[...new Set((direction==='selection'?data:[data]).map(point=>point.path||document.querySelector('#filename').title))];
       if(paths.length>1)throw new Error(t('选区跨越多个源码文件，请分别选择。'));
@@ -616,9 +625,6 @@ async function synchronize(direction,position,quiet=false){
     }
     if(direction==='selection'){
       if(selectionChat.busy)throw new Error(t('Codex 正在回复，请稍后发送。'));
-      const fatal=results.find(result=>result.status==='rejected'&&result.reason.status!==400);
-      if(fatal)throw fatal.reason;
-      if(!data.length)throw results.find(result=>result.status==='rejected').reason;
       const locations=data.map(point=>point.line);
       const mathRange=()=>sourcePdfMathRange(saved,locations,position,compiledLabels,compiledCitations,
         (first,last)=>syncRequest({direction:'range',version:revision,pdf_revision:build,first,last}),mainSource||saved);
@@ -726,6 +732,8 @@ function sourcePdfTextRange(source,locations,text,labels={},citations={},macroSo
           const tex=formula.tex.replace(/\\(begin|end)\s*\{(equation|align|alignat|gather)\}/g,'\\$1{$2*}');
           katex.render(tex,rendered,{output:'mathml',displayMode:formula.display,throwOnError:true,trust:false,strict:'ignore',maxExpand:1000,maxSize:20,macros:{...macros}});
           rendered.querySelectorAll('annotation').forEach(node=>node.remove());
+          // MathML sqrt is structural; textContent alone omits its visible radical.
+          rendered.querySelectorAll('msqrt').forEach(node=>node.prepend('√'));
           const key=formula.tex.match(/\\label\{([^{}]+)\}/)?.[1],number=Object.hasOwn(labels,key)?labels[key]:'';
           append((number?'('+number+')':'')+rendered.textContent,formula.from,formula.to);
         }catch(e){append('\0',formula.from,formula.to);}
@@ -746,6 +754,19 @@ function sourcePdfTextRange(source,locations,text,labels={},citations={},macroSo
       }
     }
     found=haystack.indexOf(needle);
+    if(found<0){
+      const original=normalize(text),match=haystack.indexOf(original);
+      if(match>=0){needle=original;length=needle.length;found=match;}
+    }
+    if(found<0&&box&&/^\s*\d+[.)]\s+/.test(text)){
+      // Ignore an automatic enumerate label only at an actual source item boundary.
+      for(const candidate of [needle,normalize(text)]){
+        const body=candidate.replace(/^\d+[.)]/,''),match=haystack.indexOf(body);
+        if(match>=0&&/\\item(?:\[[^\]]*\])?\s*$/.test(source.slice(start,offsets[match][0]))){
+          needle=body;length=needle.length;found=match;break;
+        }
+      }
+    }
     if(found<0&&citationSpans.length){
       // ponytail: bracketed numeric citations only; other generated text remains a barrier.
       const anchoredNeedle=needle.replace(/\[[0-9]+(?:[,\-–][0-9]+)*\]/g,'\x01');
@@ -866,7 +887,7 @@ async function sourcePdfMathRange(source,locations,selection,labels,citations,re
     if(run.formula){intervals.push([run.formula.from,run.formula.to]);continue;}
     try{
       const context=[Math.max(1,Math.min(...locations)-1),Math.min(lineStarts.length,Math.max(...locations)+1)];
-      const range=sourcePdfTextRange(source,context,run.text.join('\n'),labels,citations,macroSource,selection.kind==='box');
+      const range=sourcePdfTextRange(source,context,run.text.join(selection.kind==='box'?'':'\n'),labels,citations,macroSource,selection.kind==='box');
       intervals.push([offset(range.from),offset(range.to)]);
     }catch(error){return null;}
   }

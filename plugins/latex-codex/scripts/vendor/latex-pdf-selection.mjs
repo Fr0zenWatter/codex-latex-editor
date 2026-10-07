@@ -3,8 +3,14 @@ import {pdfTextRect} from './latex-pdf-analysis.mjs';
 // Keep PDF content order for source matching, but select by geometry, not DOM order.
 export function boxedPdfContent(content, page, box, excluded = []) {
   const fragments = [], parts = [];
+  const lineBreak = () => {
+    if (!parts.length || parts.at(-1) === '\n') return;
+    parts.push('\n');if (fragments.length) fragments.at(-1).text += '\n';
+  };
   for (const item of content.items) {
     if (typeof item.str !== 'string') continue;
+    // PDF.js emits line breaks as empty items with zero-size geometry.
+    if (!item.str) { if (item.hasEOL) lineBreak();continue; }
     const rect = pdfTextRect(item, content.styles);
     const [left,bottom,right,top] = rect, width = right-left, height = top-bottom;
     if (!(width > 0 && height > 0)) continue;
@@ -14,7 +20,7 @@ export function boxedPdfContent(content, page, box, excluded = []) {
     const overlapY = Math.max(0, Math.min(top,box[3])-Math.max(bottom,box[1]));
     if (overlapX*overlapY < width*height*.25) continue;
     if (item.str.trim()) fragments.push({page,rect,text:item.str});
-    parts.push(item.str, item.hasEOL ? '\n' : '');
+    parts.push(item.str);if (item.hasEOL) lineBreak();
   }
   if (!fragments.length) return null;
   const anchor = fragment => ({page,x:(fragment.rect[0]+fragment.rect[2])/2,y:(fragment.rect[1]+fragment.rect[3])/2});
