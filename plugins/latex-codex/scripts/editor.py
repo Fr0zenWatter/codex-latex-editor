@@ -35,8 +35,8 @@ HISTORY_PDF_CACHE_DAYS = 30
 VENDOR = Path(__file__).with_name('vendor')
 ASSETS = {name: 'text/css' if name.endswith('.css') else 'text/javascript'
           for name in ('codemirror.js', 'codemirror.css', 'cobalt.css', 'dracula.css', 'monokai.css', 'nord.css', 'stex.js', 'vim.js', 'emacs.js', 'search.js', 'searchcursor.js', 'matchbrackets.js', 'comment.js', 'dialog.js', 'dialog.css', 'show-hint.js', 'show-hint.css', 'latex-hint.js', 'latex-hover.mjs', 'latex-chat.mjs', 'latex-history.mjs', 'latex-settings.mjs', 'latex-locales.mjs', 'latex-themes.mjs', 'latex-history.css')}
-ASSETS.update({'history-tabs.mjs':'text/javascript','history-tabs.css':'text/css','latex-native-annotations.mjs':'text/javascript','latex-pdf-analysis.mjs':'text/javascript'})
-ASSETS.update({'latex-outline.mjs':'text/javascript','latex-outline.css':'text/css','latex-zoom.mjs':'text/javascript','latex-zoom.css':'text/css'})
+ASSETS.update({'history-tabs.mjs':'text/javascript','history-tabs.css':'text/css','latex-native-annotations.mjs':'text/javascript','latex-pdf-analysis.mjs':'text/javascript','latex-pdf-selection.mjs':'text/javascript'})
+ASSETS.update({'latex-outline.mjs':'text/javascript','latex-outline.css':'text/css','latex-zoom.mjs':'text/javascript','latex-zoom.css':'text/css','latex-search.mjs':'text/javascript','latex-search.css':'text/css'})
 ASSETS.update({name + '.css':'text/css' for name in ('eclipse', 'idea', 'neo', 'base16-light', 'solarized', 'material-darker', 'material-palenight', 'ayu-dark', 'gruvbox-dark')})
 ASSETS.update({file.relative_to(VENDOR).as_posix(): {
     '.mjs': 'text/javascript', '.css': 'text/css', '.wasm': 'application/wasm',
@@ -58,6 +58,7 @@ PAGE = r'''<!doctype html>
 <link rel="stylesheet" href="/vendor/pdfjs/web/pdf_viewer.css">
 <link rel="stylesheet" href="/vendor/latex-outline.css">
 <link rel="stylesheet" href="/vendor/latex-zoom.css">
+<link rel="stylesheet" href="/vendor/latex-search.css">
 <link rel="stylesheet" href="/vendor/katex/katex.min.css">
 <style>
 :root{--quick-accent:#ff9d00;color-scheme:dark;--environment-command:#fff44f;--bg:#002240;--panel:#00172b;--border:#35516d;--text:#e4edf6;--muted:#93aeca;--math:#a5ff90;--operator:#ff80e1;--reference:#ff9d00;--command:#9effff;--environment:#c3a6ff;--number:#ffee80}
@@ -98,6 +99,7 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 #log-toggle{margin-right:auto;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:4px}#log-toggle[aria-pressed=true]{background:var(--border);color:var(--command)}.pdf-toolbar[data-log-view=true] :is(#pan-mode,#pan-hint,#zoom-fit){display:none}
 .preview-shell{position:relative;flex:1;min-height:0}#preview{position:absolute;inset:0;overflow:auto;background:var(--panel)}
 #preview.hand-tool{cursor:grab;user-select:none}#preview.hand-tool .textLayer{pointer-events:none}#preview.dragging{cursor:grabbing}
+#preview.box-selecting,#preview.box-selecting *{cursor:crosshair!important;user-select:none!important}.pdf-box-frame{position:absolute;z-index:6;pointer-events:none;border:1px solid #2563eb;background:#2563eb15;box-sizing:border-box}.pdf-box-highlight{position:absolute;z-index:5;pointer-events:none;background:#2563eb40;mix-blend-mode:multiply}
 .CodeMirror{flex:1;min-height:0;height:100%;border-top:1px solid var(--border);font:14px/1.65 Consolas,monospace}.CodeMirror.CodeMirror{background:var(--bg);color:var(--text);line-height:1.65}.CodeMirror .CodeMirror-gutters{background:var(--bg);border-right-color:var(--border)}.CodeMirror .CodeMirror-cursor{border-left:1px solid var(--text)}.CodeMirror-lines{padding:12px 0}.CodeMirror-focused{outline:2px solid var(--border);outline-offset:-2px}
 .CodeMirror .compile-error-line{background:#ef444440;box-shadow:inset 3px 0 #ff6262}.CodeMirror .compile-error-gutter{background:#9f2525;color:#fff}
 .CodeMirror-hints{background:var(--panel);border-color:var(--border);font:14px/1.6 Consolas,monospace;max-height:260px;padding:4px}.CodeMirror-hints .CodeMirror-hint{color:var(--text);padding:3px 12px}.CodeMirror-hints .CodeMirror-hint-active{background:var(--border);color:var(--command)}
@@ -189,8 +191,10 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 <script type="module">
 import * as pdfjsLib from '/vendor/pdfjs/build/pdf.mjs';
 import {pdfPageBoxes} from '/vendor/latex-pdf-analysis.mjs';
+import {attachPdfBoxSelection} from '/vendor/latex-pdf-selection.mjs';
 import {attachPdfOutline} from '/vendor/latex-outline.mjs';
 import {attachPdfZoom} from '/vendor/latex-zoom.mjs';
+import {attachSourceSearch} from '/vendor/latex-search.mjs';
 import {EventBus, PDFViewer, PDFLinkService} from '/vendor/pdfjs/web/pdf_viewer.mjs';
 import katex from '/vendor/katex/katex.mjs';
 import {attachMathHover,findMathRanges,documentMacros} from '/vendor/latex-hover.mjs';
@@ -227,12 +231,13 @@ const pdfOutline=attachPdfOutline({container:document.querySelector('#pdf-outlin
 window.addEventListener('latex-outline-change',()=>pdfOutline.setStyle(document.querySelector('#outline-style').value));
 let pdfTask=null,pdfBuild='',panMode=true,panHintTimer;
 document.querySelector('#pan-mode').onclick=()=>{
-  endSpacePan();panMode=!panMode;preview.classList.toggle('hand-tool',panMode);
+  endSpacePan();pdfBoxSelection.clear();panMode=!panMode;preview.classList.toggle('hand-tool',panMode);
   const button=document.querySelector('#pan-mode');setText(document.querySelector('#pan-label'),panMode?'拖动':'选字');button.setAttribute('aria-pressed',String(panMode));
   const hint=document.querySelector('#pan-hint');clearTimeout(panHintTimer);hint.hidden=panMode;
   if(!panMode)panHintTimer=setTimeout(()=>{hint.hidden=true;},2500);
 };
 const editor=CodeMirror.fromTextArea(source,{mode:'text/x-stex',theme:'cobalt',keyMap:'default',lineNumbers:true,lineWrapping:true,tabSize:2,indentUnit:2,readOnly:'nocursor',screenReaderLabel:t('LaTeX 源码')});
+const sourceSearch=attachSourceSearch(editor,t);
 attachNativeAnnotations(editor,setText);
 window.addEventListener('latex-language-change',()=>{editor.setOption('screenReaderLabel',t('LaTeX 源码'));setText(document.querySelector('#pan-label'),panMode?'拖动':'选字');});
 const mathHover=attachMathHover(editor,katex);
@@ -398,7 +403,7 @@ function setEditorMode(){
   }
   editor.state.keySeq=null;
   editor.closeHint();editor.setExtending(false);editor.setOption('keyMap',editorMode.value);
-  const keys={'Cmd-S':compile,'Cmd-/':toggleSourceComment};
+  const keys={'Cmd-S':compile,'Cmd-/':toggleSourceComment,'Ctrl-F':sourceSearch.open,'Cmd-F':sourceSearch.open};
   Object.assign(keys,editorMode.value==='emacs'
     ? {'Alt-/':completeLatex,'Alt-;':toggleSourceComment}
     : {'Ctrl-S':compile,'Ctrl-Space':completeLatex,'Alt-/':toggleSourceComment,'Ctrl-/':toggleSourceComment});
@@ -553,7 +558,7 @@ async function refreshPreview(data){
       await pdfViewer.pagesPromise;
     }
     restorePreviewPosition(position);
-    pdfTask=task;pdfBuild=data.pdf_revision;
+    pdfBoxSelection.clear();pdfTask=task;pdfBuild=data.pdf_revision;
     void pdfOutline.load(pdf,data.outline||[]);
   }catch(error){
     pdfLinks.setDocument(oldDocument);pdfViewer.setDocument(oldDocument);
@@ -615,11 +620,13 @@ async function synchronize(direction,position,quiet=false){
       if(fatal)throw fatal.reason;
       if(!data.length)throw results.find(result=>result.status==='rejected').reason;
       const locations=data.map(point=>point.line);
-      let range;
-      try{range=sourcePdfTextRange(saved,locations,position.text,compiledLabels,compiledCitations,mainSource||saved);}
+      const mathRange=()=>sourcePdfMathRange(saved,locations,position,compiledLabels,compiledCitations,
+        (first,last)=>syncRequest({direction:'range',version:revision,pdf_revision:build,first,last}),mainSource||saved);
+      // A geometric box can select only part of a fraction: prefer its intact math environment.
+      let range=position.kind==='box'?await mathRange():null;
+      try{range??=sourcePdfTextRange(saved,locations,position.text,compiledLabels,compiledCitations,mainSource||saved,position.kind==='box');}
       catch(error){
-        range=await sourcePdfMathRange(saved,locations,position,compiledLabels,compiledCitations,
-          (first,last)=>syncRequest({direction:'range',version:revision,pdf_revision:build,first,last}),mainSource||saved);
+        range=position.kind==='box'?null:await mathRange();
         if(!range)throw error;
       }
       if(busy||version!==revision||pdfBuild!==build||editor.getValue()!==saved)throw new Error(t('PDF 或源码已变化，请重新选择 PDF 文字。'));
@@ -672,7 +679,7 @@ function sourceParagraphRange(source,locations){
   if(!lines.slice(from,to+1).join('').trim())throw new Error(t('无法确定对应段落，请在源码中选择。'));
   return {from:{line:from,ch:0},to:{line:to,ch:lines[to].length}};
 }
-function sourcePdfTextRange(source,locations,text,labels={},citations={},macroSource=source){
+function sourcePdfTextRange(source,locations,text,labels={},citations={},macroSource=source,box=false){
   const fail=()=>{throw new Error(t('无法唯一匹配选中的 PDF 文字，请在源码中选择。'));};
   if(typeof text!=='string'||!text.trim())fail();
   const nearby=sourceParagraphRange(source,locations),lines=source.split('\n');
@@ -755,6 +762,8 @@ function sourcePdfTextRange(source,locations,text,labels={},citations={},macroSo
       }
     }
     if(found<0){
+      // A rectangle can omit text between rows. Never guess across those gaps.
+      if(box)fail();
       // ponytail: rolling edit distance is bounded to 12k × 3k; larger selections need chunking.
       const limit=proseAnchored?Math.min(12,Math.floor(needle.length*.05)):Math.floor(needle.length*.2);
       let costs=new Uint16Array(haystack.length+1),starts=new Uint16Array(haystack.length+1);
@@ -807,7 +816,11 @@ function sourcePdfTextRange(source,locations,text,labels={},citations={},macroSo
     else if(token[0]==='}'&&--braces<0)fail();
   }
   if(braces)fail();
-  return approximate?{from:position(from),to:position(to),approximate:true}:{from:position(from),to:position(to)};
+  let mathBlock=false;
+  if(box)for(const range of mathRanges){
+    if(range.from<to&&range.to>from){from=Math.min(from,range.from);to=Math.max(to,range.to);approximate=true;mathBlock=true;}
+  }
+  return {from:position(from),to:position(to),...(approximate?{approximate:true}:{}),...(mathBlock?{mathBlock:true}:{})};
 }
 async function sourcePdfMathRange(source,locations,selection,labels,citations,regionsForLines,macroSource=source){
   // PDF math reading order is not TeX order. Verify its compiled position instead.
@@ -853,7 +866,7 @@ async function sourcePdfMathRange(source,locations,selection,labels,citations,re
     if(run.formula){intervals.push([run.formula.from,run.formula.to]);continue;}
     try{
       const context=[Math.max(1,Math.min(...locations)-1),Math.min(lineStarts.length,Math.max(...locations)+1)];
-      const range=sourcePdfTextRange(source,context,run.text.join('\n'),labels,citations,macroSource);
+      const range=sourcePdfTextRange(source,context,run.text.join('\n'),labels,citations,macroSource,selection.kind==='box');
       intervals.push([offset(range.from),offset(range.to)]);
     }catch(error){return null;}
   }
@@ -967,14 +980,30 @@ async function locatePdfAnnotation(item){
 }
 const pdfMenu=document.querySelector('#pdf-menu');
 let pdfSelection=null;
+const pdfBoxSelection=attachPdfBoxSelection({preview,viewer:pdfViewer,
+  capture:()=>({version,pdf_revision:pdfBuild,source:editor.getValue()}),
+  onSelect:selected=>{
+    if(selected&&(selected.version!==version||selected.pdf_revision!==pdfBuild||selected.source!==editor.getValue())){
+      setText(status,'PDF 或源码已变化，请重新选择 PDF 文字。');return false;
+    }
+    pdfSelection=selected;
+  },
+  message:(key,values)=>setText(status,key,values),
+  excludedRects:page=>[...pdfMarginNumbers(Array.from(page.querySelectorAll('.textLayer span')))].map(span=>{
+    const box=span.getBoundingClientRect(),a=pdfPoint(page,box.left,box.top),b=pdfPoint(page,box.right,box.bottom);
+    return [Math.min(a.x,b.x),Math.min(a.y,b.y),Math.max(a.x,b.x),Math.max(a.y,b.y)];
+  }),
+});
+pdfEvents.on('scalechanging',()=>pdfBoxSelection.clear());
 preview.oncontextmenu=event=>{
   if(panMode||spacePan||event.shiftKey||editor.getOption('readOnly'))return;
-  const selected=selectedPdfPoints();if(!selected)return;
+  const selected=pdfBoxSelection.selection||selectedPdfPoints();if(!selected)return;
   event.preventDefault();
-  const selectionBox=window.getSelection().getRangeAt(0).getBoundingClientRect();
-  pdfSelection={...selected,version,pdf_revision:pdfBuild,source:editor.getValue(),selectionTop:selectionBox.top,selectionBottom:selectionBox.bottom};
+  const selectionBox=selected.kind==='box'?pdfBoxSelection.bounds():window.getSelection().getRangeAt(0).getBoundingClientRect();
+  if(!selectionBox)return;
+  pdfSelection={...selected,...(selected.kind==='box'?{}:{version,pdf_revision:pdfBuild,source:editor.getValue()}),selectionTop:selectionBox.top,selectionBottom:selectionBox.bottom};
   const keyboard=event.clientX===0&&event.clientY===0;
-  const box=keyboard?window.getSelection().getRangeAt(0).getBoundingClientRect():{left:event.clientX,bottom:event.clientY};
+  const box=keyboard?selectionBox:{left:event.clientX,bottom:event.clientY};
   pdfMenu.showPopover();
   pdfMenu.style.left=Math.max(8,Math.min(box.left,window.innerWidth-pdfMenu.offsetWidth-8))+'px';
   pdfMenu.style.top=Math.max(8,Math.min(box.bottom,window.innerHeight-pdfMenu.offsetHeight-8))+'px';
@@ -990,6 +1019,10 @@ async function askPdfSelection(selection=pdfSelection,anchor=pdfMenu.getBounding
 }
 document.querySelector('#pdf-chat-quick-menu').onclick=()=>askPdfSelection();
 preview.addEventListener('scroll',()=>pdfMenu.hidePopover());
+preview.addEventListener('copy',event=>{
+  if(!pdfBoxSelection.selection||panMode||spacePan)return;
+  event.clipboardData.setData('text/plain',pdfBoxSelection.selection.text);event.preventDefault();
+});
 let pdfPan=null,pdfDragged=false,spacePan=false,spaceLocked=false;
 function endSpacePan(){
   if(!spacePan)return;
@@ -998,23 +1031,25 @@ function endSpacePan(){
   preview.classList.toggle('hand-tool',panMode);
 }
 preview.onkeydown=e=>{
+  if(e.key==='Escape'){pdfBoxSelection.clear();pdfMenu.hidePopover();return;}
   if(e.code!=='Space'||panMode||e.ctrlKey||e.metaKey||e.altKey||e.target.closest('input,textarea,select,button,a,[contenteditable]'))return;
-  e.preventDefault();spacePan=true;preview.classList.add('hand-tool');pdfMenu.hidePopover();
+  e.preventDefault();pdfBoxSelection.clear();spacePan=true;preview.classList.add('hand-tool');pdfMenu.hidePopover();
 };
 // Keep suppressing this held key after inverse lookup moves focus to the source.
 window.addEventListener('keydown',e=>{if(e.code==='Space'&&spaceLocked){e.preventDefault();e.stopImmediatePropagation();}},true);
 window.addEventListener('keyup',e=>{if(e.code==='Space'){if(spacePan||spaceLocked)e.preventDefault();spaceLocked=false;endSpacePan();}},true);
-window.addEventListener('blur',()=>{spaceLocked=false;endSpacePan();});
+window.addEventListener('blur',()=>{spaceLocked=false;endSpacePan();pdfBoxSelection.clear();});
 preview.addEventListener('blur',endSpacePan);
 preview.onpointerdown=e=>{
   pdfDragged=false;
   if(e.button!==0||e.pointerType!=='mouse'||!e.target.closest('.page')||e.target.closest('a,input,textarea,select,button,[contenteditable]'))return;
   preview.focus({preventScroll:true});
-  if(!panMode&&!spacePan)return;
+  if(!panMode&&!spacePan){if(!editor.getOption('readOnly'))pdfBoxSelection.start(e);return;}
   if(spacePan)e.preventDefault();
   pdfPan={id:e.pointerId,x:e.clientX,y:e.clientY,left:preview.scrollLeft,top:preview.scrollTop};
 };
 preview.onpointermove=e=>{
+  if(pdfBoxSelection.move(e))return;
   if(!pdfPan||e.pointerId!==pdfPan.id)return;
   if(!(e.buttons&1)){preview.onpointerup(e);return;}
   const dx=e.clientX-pdfPan.x,dy=e.clientY-pdfPan.y;
@@ -1025,6 +1060,7 @@ preview.onpointermove=e=>{
   preview.scrollLeft=pdfPan.left-dx;preview.scrollTop=pdfPan.top-dy;e.preventDefault();
 };
 preview.onpointerup=preview.onpointercancel=preview.onlostpointercapture=e=>{
+  if(pdfBoxSelection.end(e))return;
   if(!pdfPan||e.pointerId!==pdfPan.id)return;
   pdfPan=null;preview.classList.remove('dragging');
   if(preview.hasPointerCapture(e.pointerId))preview.releasePointerCapture(e.pointerId);
@@ -1504,7 +1540,7 @@ def history_pdf_snapshot(server, path, source):
         main_source = source if main_file == path else snapshot(main_file)['source']
         if main_file != path:
             main_entry.parent.mkdir(parents=True, exist_ok=True)
-            main_entry.write_text(main_source, encoding='utf-8')
+            main_entry.write_bytes(main_source.encode('utf-8'))
         # Explicit ../ inputs must exist beside the temporary main file on MiKTeX.
         dependencies = set(project_files(root)) | getattr(server, 'dependencies', set())
         for dependency in dependencies - {path, main_file}:

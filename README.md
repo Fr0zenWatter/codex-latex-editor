@@ -20,6 +20,8 @@ Select source text, click the annotation icon, and save your requests. Send them
 
 Select a word, a paragraph, or text with equations in the PDF. Add comments and let Codex revise those passages, with the source and PDF updating together.
 
+In **Select text** mode, drag from a blank area of the PDF page to box-select text or formulas, then right-click to add a comment. Dragging on text keeps ordinary text selection; **Esc** clears the box selection.
+
 Choose a color under **gear → Replacement color** to mark actual annotation edits with LaTeX `\color`, making changes easy to spot in the PDF. Select **None** to turn color marking off.
 
 [![Watch the annotation editing demo](docs/media/03-pdf-comments.gif)](docs/media/03-pdf-comments.mp4)

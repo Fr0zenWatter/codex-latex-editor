@@ -1,6 +1,18 @@
 import {translations} from './latex-locales.mjs';
 
 export const english = {
+  '搜索与替换':'Find and replace', '搜索内容':'Search for', '替换为':'Replace with',
+  '上一个匹配':'Previous match', '下一个匹配':'Next match', '关闭搜索':'Close search',
+  '区分大小写':'Match case', '正则表达式':'Regular expression', '整词匹配':'Whole word', '仅在选区搜索':'Search in selection',
+  '不区分大小写':'Ignore case', '普通文本':'Plain text',
+  '替换':'Replace', '全部替换':'Replace All', '无匹配':'No matches', '请先选择源码范围。':'Select a source range first.',
+  '正则表达式无效：{message}':'Invalid regular expression: {message}',
+  'PDF 第 {page} 页，共 {total} 页':'PDF page {page} of {total}',
+  '拖动滚动 PDF':'Drag to scroll PDF', '方向键滚动 PDF':'Arrow keys scroll PDF',
+  '正在读取框选区域…':'Reading the boxed selection…',
+  '框内没有可选择的文字，请扩大选框。':'No selectable text inside the box. Enlarge the selection.',
+  '已框选 PDF 内容，右键添加批注 · Esc 取消':'PDF content selected. Right-click to add a comment · Esc to clear',
+  '框选失败：{message}':'Box selection failed: {message}',
   '源码字号':'Source font size', '保存设置':'Save settings',
   '设置更改会自动保存，并在下次打开时恢复。':'Settings are saved automatically and restored next time.',
   '正在保存设置…':'Saving settings…', '设置已保存，下次打开会恢复。':'Settings saved. They will be restored next time.',

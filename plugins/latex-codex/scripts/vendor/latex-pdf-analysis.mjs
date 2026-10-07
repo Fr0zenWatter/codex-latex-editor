@@ -15,6 +15,23 @@ export async function pdfPageBoxes(pdf) {
   return geometryCache.get(pdf);
 }
 
+export function pdfTextRect(item, styles) {
+  const [a,b,c,d,x,y] = item.transform;
+  const size = Math.hypot(c,d) || item.height || 1;
+  const advance = Math.hypot(a,b) || size;
+  const style = styles[item.fontName] || {};
+  const ascent = style.ascent ?? .9, descent = style.descent ?? -.25;
+  const ux = a/advance, uy = b/advance, vx = c/size, vy = d/size;
+  const points = [
+    [x+vx*size*descent, y+vy*size*descent],
+    [x+vx*size*ascent, y+vy*size*ascent],
+    [x+ux*item.width+vx*size*descent, y+uy*item.width+vy*size*descent],
+    [x+ux*item.width+vx*size*ascent, y+uy*item.width+vy*size*ascent],
+  ];
+  return [Math.min(...points.map(p=>p[0])),Math.min(...points.map(p=>p[1])),
+    Math.max(...points.map(p=>p[0])),Math.max(...points.map(p=>p[1]))];
+}
+
 export function pdfWords(content, page) {
   const words = [];
   let previous = null;
@@ -26,16 +43,8 @@ export function pdfWords(content, page) {
     const size = Math.hypot(c,d) || item.height || 1;
     const advance = Math.hypot(a,b) || size;
     const style = content.styles[item.fontName] || {};
-    const ascent = style.ascent ?? .9, descent = style.descent ?? -.25;
     const ux = a/advance, uy = b/advance, vx = c/size, vy = d/size;
-    const points = [
-      [x+vx*size*descent, y+vy*size*descent],
-      [x+vx*size*ascent, y+vy*size*ascent],
-      [x+ux*item.width+vx*size*descent, y+uy*item.width+vy*size*descent],
-      [x+ux*item.width+vx*size*ascent, y+uy*item.width+vy*size*ascent],
-    ];
-    const rect = [Math.min(...points.map(p=>p[0])),Math.min(...points.map(p=>p[1])),
-      Math.max(...points.map(p=>p[0])),Math.max(...points.map(p=>p[1]))];
+    const rect = pdfTextRect(item, content.styles);
     if (!(rect[2] > rect[0] && rect[3] > rect[1])) continue;
     // The opt-in glyph stream keeps actual glyph advances, including ligatures.
     // Join only adjacent glyphs on the same baseline, never across a space/row.

@@ -19,10 +19,12 @@ with tempfile.TemporaryDirectory(prefix='latex project ') as directory:
     nested = root / 'chapters' / 'deep' / 'body.tex'
     for file in (chapter, appendix, nested):
         file.parent.mkdir(parents=True, exist_ok=True)
-    main.write_text('\n'.join([
-        '% !TeX program = pdflatex', r'\documentclass{article}', r'\begin{document}',
+    main.write_bytes('\r\n'.join([
+        '% !TeX program = pdflatex', r'\documentclass{article}', r'\usepackage{hyperref}',
+        r'\hypersetup{', 'pdftitle={Historical project test},', 'pdfauthor={Test author}', '}',
+        r'\begin{document}',
         r'\section{Main document}', 'Main document text.', r'\input{chapters/first}',
-        r'\include{appendices/body}', r'\end{document}']), encoding='utf-8')
+        r'\include{appendices/body}', r'\end{document}']).encode('utf-8'))
     chapter.write_text('\n'.join([r'\section{Chapter}', r'Chapter text to navigate.\par',
                                   r'\input{chapters/deep/body}']), encoding='utf-8')
     nested.write_text('\n'.join([r'\subsection{Nested input}', r'Nested input text to navigate.\par']), encoding='utf-8')
@@ -115,6 +117,7 @@ with tempfile.TemporaryDirectory(prefix='latex project ') as directory:
         switch(appendix)
         live_pdf = server.pdf
         key, historical = history_pdf_snapshot(server, appendix, before)
+        assert (historical['root'] / 'main.tex').read_bytes() == original_main, 'History must preserve CRLF in the copied main source without adding paragraph breaks.'
         inspection = subprocess.run(['node', str(Path(__file__).with_name('pdf_analysis_test.mjs'))],
                                      input=json.dumps({'path':str(historical['pdf'])}),
                                      text=True, encoding='utf-8', capture_output=True, check=True)

@@ -1,5 +1,6 @@
 """Run: python test_editor.py (requires local XeLaTeX)."""
 import json
+import re
 import subprocess
 import hashlib
 from pathlib import Path
@@ -51,6 +52,8 @@ with tempfile.TemporaryDirectory() as directory:
     try:
         code, page = request('/')
         assert code == 200
+        for name in re.findall(rb"from ['\"]/vendor/([^'\"]+)['\"]", page):
+            assert name.decode() in ASSETS, 'Every boot module must be served, or the editor cannot initialize.'
         for name, mime in ASSETS.items():
             if '/' not in name:
                 assert ('/vendor/' + name).encode() in page, 'Asset must also be loaded by the editor.'

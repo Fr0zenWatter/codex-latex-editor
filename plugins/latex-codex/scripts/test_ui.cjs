@@ -68,7 +68,9 @@ const context = vm.createContext({
   attachMathHover(){return {setMainSource(){}};},attachNativeAnnotations(){},attachSelectionChat(){return {open(){chatOpened.push('full');},openQuick(anchor){chatOpened.push(anchor);},refreshAnnotations(){},busy:false};},attachHistory(){},mountHistoryTabs(){},katex:{},
   mountSourceWheel({button}){return {update(data){button.textContent=data.files.find(file=>file.path===data.path)?.name;button.files=data.files;button.mainFile=data.mainFile;},setDisabled(value){button.disabled=value;}};},
   pdfPageBoxes:async()=>[[0,0,600,800],[0,0,600,800]],
+  attachPdfBoxSelection(config){context.boxConfig=config;return {selection:null,clear(){this.selection=null;config.onSelect(null);},start(){return false;},move(){return false;},end(){return false;},bounds(){return {left:20,top:30,bottom:70};}};},
   attachPdfOutline(){return {clear(){},load:async()=>{}};},
+  attachSourceSearch(){return {open(){context.searchOpened=true;},close(){}};},
   pdfjsLib:{GlobalWorkerOptions:{},getDocument:()=>({promise:Promise.resolve(pdf),async destroy(){destroyed++;}})},
   EventBus:class{on(){}},PDFLinkService:class{setViewer(){} setDocument(){}},PDFViewer:function(){return viewer;},
   ResizeObserver:class{constructor(callback){this.callback=callback;}observe(target){resizeObservers.push({target,callback:this.callback});}},MutationObserver:class{observe(){}},Uint8Array,
@@ -93,6 +95,7 @@ for(const [value,cmTheme] of [['neo','neo'],['solarized-light','solarized light'
   assert.equal(stored.get('latex-codex-theme'),value);
 }
 assert.equal(options.keyMap,'default','Load the remembered non-Vim mode.');
+for(const key of ['Ctrl-F','Cmd-F']) { options.extraKeys[key](); assert(context.searchOpened); context.searchOpened=false; }
 element('#log').hidden=true;const logPosition=element('#preview').scrollTop;
 element('#log-toggle').onclick();assert(!element('#log').hidden);assert(element('#preview').inert);
 assert.equal(element('#log-toggle').attributes['aria-pressed'],'true');assert.equal(element('#preview').style.visibility,'hidden');
@@ -729,6 +732,25 @@ After.`;
   assert.deepEqual(routes,['/save','/source'],'Navigation saves the active child before switching.');
   assert.equal(vm.runInContext('pdfVersion',context),'','Unsynced child edits disable old PDF synchronization.');
   assert.equal(vm.runInContext('mainSource',context),'','Opening the main source must discard the previous child preamble snapshot.');
+  assert.throws(()=>context.sourcePdfTextRange('alpha missing beta',[1],'alpha beta',{}, {},'alpha missing beta',true),/唯一匹配/,'Rectangular prose selections cannot guess across omitted words.');
+  assert.deepEqual(JSON.parse(JSON.stringify(context.sourcePdfTextRange('Before $x_1$ after.',[1],'x',{}, {},'Before $x_1$ after.',true))),{from:{line:0,ch:7},to:{line:0,ch:12},approximate:true,mathBlock:true},'Even a literal boxed inline symbol expands to its intact formula.');
+  const boxSource='A short selectable sentence.';
+  source=boxSource;context.boxSource=boxSource;
+  vm.runInContext("panMode=false;busy=false;syncBusy=false;conflict=false;version=pdfVersion='box-v';saved=boxSource;pdfBuild='box-pdf'",context);
+  const boxData={kind:'box',text:'short selectable',points:[{page:1,x:30,y:50}],fragments:[{page:1,rect:[20,40,100,60],text:'short selectable'}],rectangles:[{page:1,rect:[20,40,100,60]}],source:boxSource,version:'box-v',pdf_revision:'box-pdf'};
+  context.boxData=boxData;context.boxConfig.onSelect(boxData);vm.runInContext('pdfBoxSelection.selection=boxData',context);
+  pdfSelected=false;preview.oncontextmenu(pdfClick);assert(element('#pdf-menu').open,'Box selection has a comment menu without any native DOM Range.');
+  context.fetch=async(url,options)=>{assert.equal(JSON.parse(options.body).direction,'backward');return {ok:true,json:async()=>({line:1,column:1})};};
+  await element('#pdf-chat-quick-menu').onclick();
+  assert.deepEqual(JSON.parse(JSON.stringify(editor.selection)),{from:{line:0,ch:2},to:{line:0,ch:18}},'Boxed prose uses the existing source/comment flow.');
+  let copied;preview.events.copy({clipboardData:{setData(type,text){assert.equal(type,'text/plain');copied=text;}},preventDefault(){}});
+  assert.equal(copied,'short selectable');
+  vm.runInContext("version='changed'",context);preview.oncontextmenu(pdfClick);
+  assert.equal(vm.runInContext('pdfSelection.version',context),'box-v','Opening the box menu never restamps a stale selection as current.');
+  const boxesOpened=chatOpened.length;await element('#pdf-chat-quick-menu').onclick();assert.equal(chatOpened.length,boxesOpened);
+  preview.onkeydown({key:'Escape'});assert.equal(vm.runInContext('pdfBoxSelection.selection',context),null);
+  assert.equal(vm.runInContext('pdfSelection',context),null);assert(!element('#pdf-menu').open);
+  console.log('PASS: rectangular selection context menu/copy, exact prose mapping, intact inline formulas, omitted-text rejection and stale-box protection');
   console.log('PASS: inverse source switching, fixed main download, shared metadata, pending-comment protection and save-before-switch');
   console.log('PASS: slow state polling stays single-flight and resumes after completion');
   console.log('PASS: transient connection recovery, safe Send retry and no duplicate saves');

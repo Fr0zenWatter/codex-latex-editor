@@ -78,7 +78,7 @@ export async function readPdfOutline(pdf, fallback = []) {
 }
 
 export function attachPdfOutline({container, preview, viewer, eventBus, t, style: initialStyle = 'wheel'}) {
-  let generation = 0, entries = [], active = -1, selected = -1, position = 0, target = 0;
+  let generation = 0, pageCount = 0, entries = [], active = -1, selected = -1, position = 0, target = 0;
   let style = initialStyle === 'cards' ? 'cards' : 'wheel', items = [], sections = [], subsections = [];
   let subSelected = -1, subPosition = 0, subTarget = 0;
   let opened = false, inside = false, keyboardFocus = false, drag = null, suppressClick = false, pressedIndex = null;
@@ -93,7 +93,8 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
   // Put the entry first in Tab order; opening it makes the dial the next stop.
   const handle = element('button', 'pdf-dial-handle', container); handle.type = 'button';
   handle.setAttribute('aria-controls', 'pdf-outline-drawer'); handle.setAttribute('aria-expanded', 'false');
-  const grip = element('span', 'pdf-dial-grip', handle); grip.setAttribute('aria-hidden', 'true');
+  const pageNumber = element('span', 'pdf-dial-page', handle); pageNumber.setAttribute('aria-hidden', 'true');
+  const pageTotal = element('span', 'pdf-dial-total', handle); pageTotal.setAttribute('aria-hidden', 'true');
   const interaction = element('div', 'pdf-dial-interaction', container);
   const drawer = element('div', 'pdf-dial-drawer', interaction);
   drawer.id = 'pdf-outline-drawer'; drawer.inert = true;
@@ -129,8 +130,8 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
     selected = subSelected = -1; subsections = [];
     cells.clear(); rotor.replaceChildren(); subCells.clear(); subRotor.replaceChildren();
     position = target = positionFor(active); subPosition = subTarget = 0;
-    container.dataset.outlineStyle = style; container.hidden = !items.length;
-    preview.classList.toggle('outline-scrollbar', !!items.length);
+    container.dataset.outlineStyle = style; container.hidden = !pageCount;
+    preview.classList.toggle('outline-scrollbar', !!pageCount);
   }
   function refreshSubsections() {
     subsections = style === 'cards' ? children.get(selected) || [] : [];
@@ -145,9 +146,8 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
   }
   function language() {
     container.setAttribute('aria-label', t('章节目录'));
-    handle.setAttribute('aria-label', t('拖动滚动 PDF，悬停或点击打开章节目录'));
-    handle.title = t('拖动滚动 PDF，悬停或点击打开章节目录');
-    handle.setAttribute('aria-description', t('方向键滚动 PDF，Enter 打开章节目录'));
+    updatePageCaption();
+    handle.setAttribute('aria-description', t(items.length ? '方向键滚动 PDF，Enter 打开章节目录' : '方向键滚动 PDF'));
     dial.setAttribute('aria-label', t(style === 'cards' ? '章节卡片：方向键浏览，Enter 跳转' : '章节拨轮：方向键浏览，Enter 跳转'));
     subdial.setAttribute('aria-label', t('小节轮盘：方向键浏览，Enter 跳转'));
     for (const cell of [...cells.values(), ...subCells.values()]) cell.setAttribute('aria-label', t('跳转到章节') + ' ' + name(entries[Number(cell.dataset.index)]));
@@ -196,6 +196,7 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
   });
 
   function updateScrollHandle(anchor = false) {
+    updatePageCaption();
     const viewport = preview.clientHeight, documentHeight = preview.scrollHeight || viewport;
     scrollRange = Math.max(0, documentHeight - viewport);
     const thumbHeight = Math.min(viewport, scrollRange ? Math.max(36, Math.min(72, viewport * viewport / documentHeight)) : 52);
@@ -206,6 +207,14 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
       const half = height * scale / 2 + 8;
       interaction.style.top = `${Math.max(half, Math.min(viewport - half, thumbCenter))}px`;
     }
+  }
+  function updatePageCaption() {
+    const current = Math.max(1, Math.min(pageCount, viewer.currentPageNumber || 1));
+    pageNumber.textContent = pageCount ? String(current) : '';
+    pageTotal.textContent = pageCount ? `/ ${pageCount}` : '';
+    const caption = pageCount ? t('PDF 第 {page} 页，共 {total} 页', {page: current, total: pageCount}) + ' · ' : '';
+    const action = t(items.length ? '拖动滚动 PDF，悬停或点击打开章节目录' : '拖动滚动 PDF');
+    handle.title = caption + action; handle.setAttribute('aria-label', handle.title);
   }
   handle.onpointerdown = event => {
     if (event.button !== 0 || drag || scrollDrag) return;
@@ -457,13 +466,13 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
   new ResizeObserver(resize).observe(preview);
   new ResizeObserver(scheduleTrack).observe(viewer.viewer || preview.firstElementChild || preview);
   preview.addEventListener('scroll', scheduleTrack, {passive: true});
-  eventBus.on('pagesinit', scheduleTrack); eventBus.on('pagerendered', scheduleTrack); eventBus.on('updateviewarea', scheduleTrack);
+  eventBus.on('pagesinit', scheduleTrack); eventBus.on('pagerendered', scheduleTrack); eventBus.on('updateviewarea', scheduleTrack); eventBus.on('pagechanging', scheduleTrack);
   window.addEventListener('latex-language-change', language);
   function clear() {
     generation++; clearTimers(); setOpen(false); if (drag) endDrag({}, true);
     if (scrollDrag) endScrollDrag({}, true);
     clearTimers(); cancelAnimationFrame(animation); cancelAnimationFrame(tracking); animation = tracking = 0;
-    entries = []; items = sections = subsections = []; children.clear();
+    pageCount = 0; updatePageCaption(); entries = []; items = sections = subsections = []; children.clear();
     cells.clear(); rotor.replaceChildren(); subCells.clear(); subRotor.replaceChildren(); subdial.hidden = true;
     active = selected = subSelected = -1; position = target = subPosition = subTarget = 0; clickedPosition = null;
     suppressClick = false; pressedIndex = null; suppressHandleClick = false;
@@ -483,13 +492,13 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
     async load(pdf, fallback) {
       clear(); const revision = generation;
       try {
-        const result = await readPdfOutline(pdf, fallback);
-        // Do not enable jumps while PDF.js is still installing page geometry.
         await viewer.pagesPromise;
         if (revision !== generation || viewer.pdfDocument !== pdf) return;
-        entries = result; buildItems(); resize(); track();
+        pageCount = pdf.numPages; buildItems(); resize(); track(); language();
+        const result = await readPdfOutline(pdf, fallback);
+        if (revision !== generation || viewer.pdfDocument !== pdf) return;
+        entries = result; buildItems(); resize(); track(); language();
       } catch (error) {
-        if (revision === generation) clear();
         console.warn('PDF outline unavailable', error);
       }
     },

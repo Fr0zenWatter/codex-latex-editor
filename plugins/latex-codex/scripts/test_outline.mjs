@@ -75,12 +75,18 @@ const event = extra => ({preventDefault() {}, stopPropagation() {}, ...extra});
 const container = new Element(), preview = new Element(), shell = new Element(); shell.append(preview, container);
 preview.scrollTop = 900; preview.scrollHeight = 2400;
 const jumps = [];
-const viewer = {pdfDocument: pdf, getPageView: i => ({div: {offsetTop: i * 800}, viewport: {convertToViewportPoint: (x, y) => [x, 800 - y]}}),
+const viewer = {pdfDocument: pdf, currentPageNumber: 2, getPageView: i => ({div: {offsetTop: i * 800}, viewport: {convertToViewportPoint: (x, y) => [x, 800 - y]}}),
   scrollPageIntoView: target => jumps.push(target)};
-const outline = attachPdfOutline({container, preview, viewer, eventBus: {on() {}}, t: s => s});
+const pdfEvents = {};
+const outline = attachPdfOutline({container, preview, viewer, eventBus: {on(name, fn) {pdfEvents[name] = fn;}}, t: (s, values = {}) => s.replace(/\{(\w+)\}/g, (_, key) => values[key])});
 await outline.load(pdf, []); flush();
 const interaction = find(container, 'pdf-dial-interaction'), drawer = find(container, 'pdf-dial-drawer');
 const handle = find(container, 'pdf-dial-handle'), dial = find(container, 'pdf-dial'), rotor = find(container, 'pdf-dial-rotor');
+const pageNumber = find(container, 'pdf-dial-page'), pageTotal = find(container, 'pdf-dial-total');
+assert.equal(pageNumber.textContent, '2'); assert.equal(pageTotal.textContent, `/ ${pdf.numPages}`);
+viewer.currentPageNumber = 3; pdfEvents.pagechanging(); flush();
+assert.equal(pageNumber.textContent, '3'); assert(handle.title.includes(`PDF 第 3 页，共 ${pdf.numPages} 页`));
+viewer.currentPageNumber = 2;
 const selectedCell = () => rotor.children.find(cell => cell.classes.has('is-selected'));
 const currentTick = () => rotor.children.find(cell => cell.classes.has('is-current'))?.dataset.index;
 assert.equal(handle.attributes['aria-expanded'], 'false'); assert(drawer.inert);
@@ -241,7 +247,17 @@ assert.equal(jumps.length, beforeCardDrag, 'Switching styles keeps the PDF at it
 let resolve;
 const slow = {...pdf, getOutline: () => new Promise(done => { resolve = done; })};
 viewer.pdfDocument = slow; const pending = outline.load(slow, []);
+await Promise.resolve();
 outline.clear(); resolve(await pdf.getOutline()); await pending; flush();
 assert.equal(container.hidden, true); assert.equal(rotor.children.length, 0);
 assert(!preview.classes.has('outline-scrollbar'), 'Without an available outline, keep the native scrollbar as a fallback.');
+assert.equal(pageNumber.textContent, '', 'Clearing the document must clear its page count.');
+const noOutline = {...pdf, numPages: 12, getOutline: async () => [], getPageLabels: async () => null};
+viewer.pdfDocument = noOutline; viewer.currentPageNumber = 7;
+await outline.load(noOutline, []); flush();
+assert.equal(container.hidden, false, 'Page scrolling must remain available in PDFs without headings.');
+assert(preview.classes.has('outline-scrollbar'));
+assert.equal(pageNumber.textContent, '7'); assert.equal(pageTotal.textContent, '/ 12');
+handle.onclick(); assert.equal(handle.attributes['aria-expanded'], 'false', 'A page-only handle cannot open an empty outline.');
+outline.clear();
 console.log('PASS: merged scrollbar/outline handle, captured scrolling, keyboard scrolling, delayed hover/leave, continuous region, angular browsing, independent PDF state, click-only navigation, density, resize, reduced motion and stale loads');

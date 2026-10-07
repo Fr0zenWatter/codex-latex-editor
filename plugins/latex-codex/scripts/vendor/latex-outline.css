@@ -24,9 +24,10 @@
 .is-selected .pdf-dial-title{max-height:64px;overflow:hidden;text-overflow:clip;white-space:normal;overflow-wrap:anywhere}
 .pdf-dial-tick.is-current .pdf-dial-number{color:#388879;opacity:1}
 .pdf-dial-indicator{position:absolute;top:50%;width:7px;height:7px;transform:translateY(-50%);border-radius:50%;background:#2c6bff;box-shadow:0 0 12px #2c6bff26;pointer-events:none}
-#pdf-outline .pdf-dial-handle{position:absolute;right:0;top:50%;z-index:2;display:grid;place-items:center;width:18px;height:52px;transform:translateY(-50%);padding:0;border:1px solid #cbd0d5;border-right:0;border-radius:10px 0 0 10px;background:#fafbfbea;color:#91979d;box-shadow:-2px 1px 8px #18232f0d;pointer-events:auto;touch-action:none;cursor:grab;transition:opacity 200ms ease,background 200ms ease}
+#pdf-outline .pdf-dial-handle{position:absolute;right:0;top:50%;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;box-sizing:border-box;min-width:26px;width:max-content;height:52px;transform:translateY(-50%);padding:0 3px;border:1px solid #cbd0d5;border-right:0;border-radius:8px 0 0 8px;background:#fafbfbea;color:#565e66;box-shadow:-2px 1px 8px #18232f0d;pointer-events:auto;touch-action:none;cursor:grab;transition:opacity 200ms ease,background 200ms ease;font-variant-numeric:tabular-nums}
 #pdf-outline.is-scroll-dragging .pdf-dial-handle{cursor:grabbing;opacity:1}
-.pdf-dial-grip{height:18px;width:3px;border-radius:3px;background:currentColor}
+.pdf-dial-page{font:600 12px/1 system-ui;white-space:nowrap}
+.pdf-dial-total{font:500 9px/1 system-ui;color:#737b84;white-space:nowrap}
 #pdf-outline .pdf-dial-handle:hover{background:#fff;color:#565e66}
 .is-open .pdf-dial-handle{opacity:.45}
 #pdf-outline :is(.pdf-dial-handle,.pdf-dial-tick):focus-visible{outline:2px solid #2c6bff;outline-offset:2px}
