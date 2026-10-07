@@ -52,7 +52,7 @@ export function pdfWords(content, page) {
     // Join only adjacent glyphs on the same baseline, never across a space/row.
     const gap = previous ? (x-previous.endX)*ux+(y-previous.endY)*uy : Infinity;
     const rowGap = previous ? Math.abs((x-previous.endX)*vx+(y-previous.endY)*vy) : Infinity;
-    if (previous && !/^\s/.test(item.str) && rowGap < Math.max(.5,size*.08) &&
+    if (previous && !/[。！？][”’」』）)\]}]*$/u.test(words.at(-1)[2]) && !/^\s/.test(item.str) && rowGap < Math.max(.5,size*.08) &&
         gap > -size*.2 && gap < Math.max(.5,size*.16) && !style.vertical) {
       const word = words.at(-1);
       word[1] = [Math.min(word[1][0],rect[0]),Math.min(word[1][1],rect[1]),

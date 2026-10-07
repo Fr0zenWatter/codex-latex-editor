@@ -33,7 +33,7 @@ const hint = document.getElementById('native-annotation-status'), status = docum
 assert.equal(hint.hidden, true);
 assert.equal(status.hidden, false);
 assert.equal(button['aria-pressed'], 'false');
-assert.equal(button['aria-label'], '原生批注选区');
+assert.equal(button['aria-label'], 'Annotate selection in Codex');
 assert(button.disabled);
 assert(document.getElementById('native-annotation-preview').removed, 'Remove the drawer even from an older server page.');
 assert.equal(document.getElementById('wrapper')['oai-annotation-container-text'], '');
@@ -75,8 +75,8 @@ domEvents.oaiannotationmodechange({detail:{active:true}});
 assert.equal(hint.hidden, false);
 assert.equal(status.hidden, true);
 status.textContent = '正在保存并编译…';
-assert.equal(button['aria-label'], '返回编辑');
-assert.equal(button.title, '返回编辑');
+assert.equal(button['aria-label'], 'Return to editing');
+assert.equal(button.title, 'Return to editing');
 assert.equal(button['aria-pressed'], 'true');
 assert.equal(button.textContent, undefined, 'Mode changes must preserve the icon without inserting visible text.');
 assert(!button.disabled, 'Exit remains available even when CodeMirror collapses a selection.');
@@ -84,7 +84,7 @@ button.onclick(); assert(!marks[0].cleared, 'Wait for confirmed mode exit rather
 active = false;
 domEvents.oaiannotationmodechange({detail:{active:false}});
 assert(marks[0].cleared, 'Restore syntax display when leaving native mode.');
-assert.equal(button['aria-label'], '原生批注选区');
+assert.equal(button['aria-label'], 'Annotate selection in Codex');
 assert.equal(button['aria-pressed'], 'false');
 assert.equal(hint.hidden, true, 'Escape/toolbar exit must hide the native-mode instructions.');
 assert.equal(status.hidden, false);

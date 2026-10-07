@@ -1,6 +1,23 @@
 CodeMirror 5.65.20 (MIT), obtained from:
 https://registry.npmjs.org/codemirror/-/codemirror-5.65.20.tgz
 
+Markdown preview uses Marked 16.4.2 (MIT), from
+https://registry.npmjs.org/marked/-/marked-16.4.2.tgz, and DOMPurify 3.3.1
+(Apache-2.0 OR MPL-2.0), from https://registry.npmjs.org/dompurify/-/dompurify-3.3.1.tgz.
+Both archives were verified against npm SHA-512 integrity metadata. Their original
+ES modules and licenses are bundled as marked.mjs / marked.LICENSE.md and
+purify.mjs / dompurify.LICENSE. Authored HTML is sanitized before insertion; math
+uses the existing local KaTeX bundle. Markdown/GFM/XML modes and overlay.js come
+from the same verified CodeMirror 5.65.20 archive. No CDN or runtime install is used.
+
+`multiplex.js` is the CodeMirror 5 multiplex addon (MIT), copied from the
+user-supplied LaTeX Sidecar 16.22.00 archive; its upstream copyright notice and
+the bundled CodeMirror LICENSE are retained. `latex-markdown.js` adapts that
+archive's local Obsidian Markdown/math mode to these CodeMirror assets, adding
+math token styles and code/escaped-delimiter isolation. The associated Python
+converter is adapted in `../obsidian_tex.py`; it is not a third-party runtime
+dependency.
+
 The OpenAI selection-annotation toolbar icon is inlined from Simple Icons
 11.15.0 (CC0-1.0):
 https://github.com/simple-icons/simple-icons/blob/11.15.0/icons/openai.svg

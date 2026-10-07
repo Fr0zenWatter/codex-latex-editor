@@ -6,6 +6,8 @@
 
 Once installed, just ask: **“Use latex-codex to open main.tex.”** Edit directly or tell Codex what to change; your files save automatically and the PDF updates using your local TeX engine. Built-in history snapshots let you restore earlier versions and compare source and PDF changes.
 
+You can also open `.md` and `.markdown` notes, including Obsidian notes, with live previews of formulas, tables and local images, automatic saving and source history. Switch to **PDF preview** to render callouts and TikZ with local XeLaTeX and use the same PDF navigation, annotations and history comparisons. Just ask: **“Use latex-codex to open my-note.md.”**
+
 ## Demos
 
 Click a preview to watch the full video. All demos include English and Chinese subtitles.
@@ -50,4 +52,4 @@ Edits are saved automatically. Compare source changes and the PDF before and aft
 2. Ask Codex: **“Install latex-codex following [AGENTS.md](AGENTS.md).”**
 3. Start a new chat and say: **“Use latex-codex to open main.tex.”** You can also provide your document's path.
 
-Edits save directly to your original `.tex` files.
+Edits save directly to your original `.tex`, `.md` or `.markdown` files.

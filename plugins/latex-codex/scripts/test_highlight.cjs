@@ -41,3 +41,21 @@ tokens('$\\text{first', state);
 const copy = CodeMirror.copyState(mode, state);
 assert.deepEqual(tokens('next}+x$', state), tokens('next}+x$', copy));
 console.log('PASS: math delimiters/letters/operators, references, environments, escapes, text, copied multiline state');
+for (const name of ['xml','markdown','overlay','gfm','multiplex','latex-markdown']) {
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'vendor',name+'.js'), 'utf8'), {CodeMirror});
+}
+function markdownTokens(text) {
+  const result=[];
+  CodeMirror.runMode(text,'text/x-obsidian-md',(text,style)=>result.push([text,style||'']));
+  return result;
+}
+for (const text of ['$x+\\alpha$', '$$\nx+\\alpha\n$$', '\\(x+\\alpha\\)', '\\[\nx+\\alpha\n\\]']) {
+  const result=markdownTokens('# Notes\n\n'+text+'\nprose');
+  assert(result.some(([word,style])=>word==='x'&&style.includes('latex-math')),JSON.stringify(result));
+  assert(result.some(([word,style])=>word.includes('prose')&&!style.includes('latex-math')));
+}
+for (const text of ['`$x$`','```tex\n$x$\n```','~~~tex\n$$x$$\n~~~','\\$50']) {
+  assert(markdownTokens(text).every(([,style])=>!style.includes('latex-math')),text);
+}
+assert(markdownTokens('$unclosed\nordinary prose').some(([word,style])=>word.includes('ordinary')&&!style.includes('latex-math')));
+console.log('PASS: Markdown math highlighting, bracket delimiters, code isolation, escapes and unclosed inline math');

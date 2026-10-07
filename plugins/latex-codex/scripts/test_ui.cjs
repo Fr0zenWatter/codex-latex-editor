@@ -71,11 +71,12 @@ const context = vm.createContext({
   attachPdfBoxSelection(config){context.boxConfig=config;return {selection:null,clear(){this.selection=null;config.onSelect(null);},start(){return false;},move(){return false;},end(){return false;},bounds(){return {left:20,top:30,bottom:70};}};},
   attachPdfOutline(){return {clear(){},load:async()=>{}};},
   attachSourceSearch(){return {open(){context.searchOpened=true;},close(){}};},
+  attachMarkdownPreview(){return {render(source){context.markdownRendered=source;},clear(){},locate(){context.markdownLocated=true;}};},
   pdfjsLib:{GlobalWorkerOptions:{},getDocument:()=>({promise:Promise.resolve(pdf),async destroy(){destroyed++;}})},
   EventBus:class{on(){}},PDFLinkService:class{setViewer(){} setDocument(){}},PDFViewer:function(){return viewer;},
   ResizeObserver:class{constructor(callback){this.callback=callback;}observe(target){resizeObservers.push({target,callback:this.callback});}},MutationObserver:class{observe(){}},Uint8Array,
   requestAnimationFrame(fn){animationFrames.set(++animationFrameId,fn);return animationFrameId;},cancelAnimationFrame(id){animationFrames.delete(id);},
-  document: {querySelector: element, createElement: () => element(Symbol()), documentElement: {dataset: {}}},
+  document: {querySelector: element, createElement: () => element(Symbol()), documentElement: {dataset: {}},body:{dataset:{}}},
   CodeMirror: {Doc:class{constructor(source,mode){this.source=source;this.mode=mode;}},hint:{latex:()=>({list:['\\begin']})},fromTextArea: (_,configuration) => {Object.assign(options,configuration);return editor;},
     keyName:event=>event.key,e_stop:event=>{event.stopped=true;},signal(){},emacs:{repeated:fn=>fn},commands: {clearSearch(){},keyboardQuit(){emacsQuits++;}}, Vim: {
     handleKey(cm,key){assert.equal(key,'<Esc>');vimEscapes++;},
@@ -543,6 +544,15 @@ Following prose.`;
   assert.equal(await mathMatch([3,10],estimatorSelection,async()=>({regions:[{page:1,rect:[0,150,120,185]},{page:2,rect:[0,150,120,185]}]})),null,'Overlapping formula candidates remain ambiguous.');
   assert.equal(await mathMatch([3,10],{fragments:[...estimatorSelection.fragments,fragment('η2',2,80)]}),null,'Never silently skip unselected prose between two formula blocks.');
   assert.equal(await context.sourcePdfMathRange(String.raw`Prose \[\custom{x}\] after.`,[1],{fragments:[fragment('Prose',1,170)]},{},{},mappedRegions),null,'Shared-line geometry cannot turn a prose-only selection into a formula selection.');
+  const calloutMath=String.raw`> [!thm] First isomorphism theorem
+> $$G/\ker\varphi\cong\operatorname{im}\varphi.$$`;
+  const calloutSelection={fragments:[fragment('G ker φ',1,170)]};
+  const calloutRegions=async(first,last)=>{
+    assert.equal(first,2);assert.equal(last,2);
+    return {regions:[{page:1,rect:[0,150,120,185]}]};
+  };
+  assert.deepEqual(JSON.parse(JSON.stringify(await context.sourcePdfMathRange(calloutMath,[2],calloutSelection,{},{},calloutRegions,calloutMath,true))),{from:{line:1,ch:2},to:{line:1,ch:49},approximate:true,mathBlock:true},'Markdown callout markers do not prevent compiled geometry from selecting a complete display formula.');
+  assert.equal(await context.sourcePdfMathRange(calloutMath,[2],calloutSelection,{},{},calloutRegions),null,'LaTeX prose before a formula still prevents geometry-only matching.');
   const macroPreamble=String.raw`\newcommand{\R}{\mathbb R}
 \newcommand{\calB}{\mathcal B}
 \newcommand{\T}{^\top}`;
@@ -619,10 +629,12 @@ After.`;
   assert.deepEqual(JSON.parse(JSON.stringify(chatOpened.at(-1))),{left:120,top:180,selectionTop:30,selectionBottom:790,
     pdf:{pdf_revision:'second',rectangles:[{page:1,rect:[20,670,100,650]},{page:2,rect:[50,650,130,630]}]}});
   const automaticOpened=chatOpened.length,automaticLookups=lookups;
+  element('#pdf-box-auto-comment').checked=true;
   preview.onpointerup({pointerId:1,button:0});
   preview.onkeydown({code:'ArrowRight',key:'ArrowRight',shiftKey:true});
   assert.equal(chatOpened.length,automaticOpened,'Selecting text alone never opens the comment composer.');
   assert.equal(lookups,automaticLookups,'Selection alone makes no synchronization request.');
+  element('#pdf-box-auto-comment').checked=false;
   assert.equal(preview.events.pointerup,undefined);assert.equal(preview.events.keyup,undefined);
   assert.equal(chatOpened.at(-1).pdf.rectangles.length,2,'Keep rectangles across pages for highlights and pins.');
   context.annotationItems=[{id:7,request:'Revise this passage',pdf:chatOpened.at(-1).pdf}];
@@ -783,6 +795,51 @@ After.`;
   assert.equal(vm.runInContext('pdfSelection',context),null);assert(!element('#pdf-menu').open);
   const rejectedRoutes=[];
   vm.runInContext("version=pdfVersion='box-v';busy=syncBusy=false",context);
+  const autoComment=element('#pdf-box-auto-comment');
+  const selectBox=async(data=boxData)=>{
+    context.nextBox=data;vm.runInContext('pdfBoxSelection.selection=nextBox',context);
+    context.boxConfig.onSelect(data);await new Promise(resolve=>setImmediate(resolve));
+  };
+  let automaticBoxLookups=0;
+  context.fetch=async(url,options)=>{
+    assert.equal(url,'/synctex','Automatically opening a comment must never submit an AI request.');
+    assert.equal(JSON.parse(options.body).direction,'backward');automaticBoxLookups++;
+    return {ok:true,json:async()=>({line:1,column:1})};
+  };
+  const beforeBoxAuto=chatOpened.length;
+  autoComment.checked=false;await selectBox();
+  assert.equal(chatOpened.length,beforeBoxAuto);assert.equal(automaticBoxLookups,0);
+  autoComment.checked=true;await selectBox();
+  assert.equal(chatOpened.length,beforeBoxAuto+1);assert.equal(automaticBoxLookups,1);
+  assert.deepEqual(JSON.parse(JSON.stringify(chatOpened.at(-1))),{left:20,top:70,selectionTop:30,selectionBottom:70,
+    pdf:{pdf_revision:'box-pdf',rectangles:boxData.rectangles}});
+  assert(!element('#pdf-menu').open,'Enabled boxes go directly to the comment composer.');
+  const afterBoxAuto=chatOpened.length;
+  options.readOnly=true;await selectBox();options.readOnly=false;
+  assert.equal(chatOpened.length,afterBoxAuto);assert.equal(automaticBoxLookups,1);
+  assert.equal(context.boxConfig.onSelect({...boxData,version:'stale'}),false);
+  assert.equal(chatOpened.length,afterBoxAuto);
+  await selectBox({...boxData,text:'Missing from the source'});
+  assert.equal(chatOpened.length,afterBoxAuto,'Failed source matching must not open a composer.');
+  for(const cancel of [
+    ()=>vm.runInContext('pdfBoxSelection.clear()',context),
+    ()=>{autoComment.checked=false;},
+    ()=>vm.runInContext('pdfBoxSelection.selection={...boxData}',context),
+    ()=>{source+=' edit';}
+  ]){
+    autoComment.checked=true;
+    let resolveLookup;
+    context.fetch=()=>new Promise(resolve=>resolveLookup=resolve);
+    const previousRange=editor.selection;
+    await selectBox();
+    await element('#pdf-chat-quick-menu').onclick();
+    cancel();resolveLookup({ok:true,json:async()=>({line:1,column:1})});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(chatOpened.length,afterBoxAuto,'Canceled, replaced, disabled or stale pending boxes cannot open late.');
+    assert.equal(editor.selection,previousRange,'Invalidated automatic mapping must preserve the source selection.');
+    source=boxSource;
+  }
+  autoComment.checked=false;vm.runInContext('pdfBoxSelection.clear()',context);
   context.fetch=async url=>{rejectedRoutes.push(url);return {ok:false,status:409,json:async()=>({error:'Source and PDF versions differ.'})};};
   await context.synchronize('selection',boxData);
   assert(rejectedRoutes.length>0);assert(rejectedRoutes.every(url=>url==='/synctex'),'Rejected PDF lookups must never open an undefined source path.');
@@ -809,6 +866,37 @@ After.`;
   await assert.rejects(vm.runInContext("saveAnnotationChange('Revised with unrelated edit.',annotationChange)",context),/External change/);
   assert.equal(vm.runInContext('conflict',context),true);assert.equal(options.readOnly,false);
   assert.equal(source,annotationBody.annotation_change.before,'Conflicts keep the draft untouched.');
+  source='# Markdown\n\nA paragraph with $x^2$.\n';context.markdownSource=source;
+  vm.runInContext("busy=syncBusy=conflict=false;display({source:markdownSource,version:'md-v',name:'note.md',path:'/project/note.md',document_type:'markdown'})",context);
+  assert.equal(options.mode,'obsidian-md');assert.equal(options.keyMap,'vim');
+  assert.equal(context.markdownRendered,source);assert.equal(element('#markdown-preview').hidden,false);
+  assert.equal(element('a[download]').href,'/download');assert.equal(element('a[download]').download,'note.md');
+  assert.equal(context.document.body.dataset.documentType,'markdown');
+  const markdownRequests=[];
+  context.fetch=async(url,options)=>{markdownRequests.push(url);assert.equal(JSON.parse(options.body).source,source);return {ok:true,json:async()=>({version:'md-saved'})};};
+  await context.compile();assert.deepEqual(markdownRequests,['/save']);
+  assert.equal(element('#status').textContent,'已保存 · 预览已更新');
+  await context.synchronize('forward');assert(context.markdownLocated);
+  assert.equal(markdownRequests.length,1,'Markdown navigation never calls SyncTeX.');
+  context.fetch=async(url,options)=>{
+    markdownRequests.push(url);
+    if(url.startsWith('/pdf?'))return {ok:true,arrayBuffer:async()=>new ArrayBuffer(8)};
+    assert.equal(url,'/compile');assert.equal(JSON.parse(options.body).preview,'pdf');
+    return {ok:true,json:async()=>({ok:true,version:'md-pdf',pdf_revision:'md-pdf-build',sync:true,log:''})};
+  };
+  await element('#markdown-pdf-toggle').onclick();
+  assert.equal(context.document.body.dataset.previewType,'pdf');assert.equal(element('#markdown-preview').hidden,true);
+  assert.equal(element('a[download]').href,'/pdf');assert.equal(element('a[download]').download,'note.pdf');
+  assert.equal(vm.runInContext('pdfVersion',context),'md-pdf');
+  const count=markdownRequests.length;
+  await element('#markdown-pdf-toggle').onclick();
+  assert.equal(context.document.body.dataset.previewType,'html');assert.equal(element('#markdown-preview').hidden,false);
+  assert.equal(markdownRequests.length,count,'Returning to live preview never invokes TeX or saves.');
+  vm.runInContext("display({source:markdownSource,version:'tex-v',name:'paper.tex',path:'/project/paper.tex'})",context);
+  assert.equal(options.mode,'text/x-stex');assert.equal(element('#markdown-preview').hidden,true);
+  assert.equal(element('a[download]').href,'/pdf');
+  console.log('PASS: Markdown math mode, live/PDF preview switching, save-only behavior, both downloads, navigation and return to LaTeX');
+  console.log('PASS: optional automatic box comments, mapped anchors, no AI submission, cancellation, replacement, stale source and persistence');
   console.log('PASS: durable annotation saves, path/version guards, transient retry, conflict and draft protection');
   console.log('PASS: rectangular selection context menu/copy, exact prose mapping, intact inline formulas, omitted-text rejection and stale-box protection');
   console.log('PASS: inverse source switching, fixed main download, shared metadata, pending-comment protection and save-before-switch');

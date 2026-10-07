@@ -1,7 +1,7 @@
 // Run: node test_pdf_selection.mjs (stdlib only).
 import assert from 'node:assert/strict';
 import {boxedPdfContent,attachPdfBoxSelection} from './vendor/latex-pdf-selection.mjs';
-import {pdfTextRect} from './vendor/latex-pdf-analysis.mjs';
+import {pdfTextRect,pdfWords} from './vendor/latex-pdf-analysis.mjs';
 
 const glyph = (str,x,y,size=10,width=5) => ({str,transform:[size,0,0,size,x,y],width,height:size,fontName:'f'});
 const content = {styles:{f:{ascent:1,descent:0}},items:[
@@ -16,6 +16,8 @@ assert.equal(boxedPdfContent(content,1,[0,0,1,1]),null);
 assert.equal(boxedPdfContent(content,1,[20,70,20.5,80]),null,'A slight edge touch must not select a neighboring glyph.');
 assert.equal(boxedPdfContent(content,1,[0,50,85,95],[[0,60,15,85]]).text,'A Bnd2','Exclude margin line numbers without excluding formula digits.');
 assert.deepEqual(pdfTextRect({...glyph('r',30,40),transform:[0,10,-10,0,30,40]},content.styles),[20,40,30,45],'Use rotated glyph geometry.');
+assert.deepEqual(pdfWords({styles:content.styles,items:[...('旧句。下一句。')].map((text,i)=>glyph(text,20+i*5,70))},1).map(word=>word[2]),
+  ['旧句。','下一句。'],'Keep separate CJK sentences even when their glyphs share one row.');
 const wrapped = {styles:{...content.styles,extension:{ascent:0,descent:0}},items:[
   glyph('condi-',20,70,10,30),{...glyph('',20,55),width:0,height:0,hasEOL:true},
   glyph('tion ',20,55,10,24),{...glyph('√',44,55,10,8),fontName:'extension'},glyph('k',52,55),
@@ -43,6 +45,10 @@ const preview = {ownerDocument:document,classList:{add(){},remove(){}},captured:
 const viewer = {pdfDocument:pdf,getPageView:()=>({viewport})};
 const messages=[], snapshots=[],capture=()=>({version:'v1',pdf_revision:'p1',source:'original'});
 const controller = attachPdfBoxSelection({preview,viewer,capture,onSelect:s=>snapshots.push(s),message:(key)=>messages.push(key)});
+const completedBounds=[];
+const completed = attachPdfBoxSelection({preview,viewer,capture,onSelect:s=>{
+  if(s)completedBounds.push(completed.bounds());
+},message(){}});
 const event = (x=46,y=40,extra={}) => ({button:0,buttons:1,pointerType:'mouse',pointerId:1,clientX:x,clientY:y,
   target:{cursor:'auto',closest:()=>page},preventDefault(){this.prevented=true;},...extra});
 assert(!controller.start(event(46,40,{target:{cursor:'text',closest:()=>page}})),'Keep native I-beam selection.');
@@ -88,4 +94,7 @@ controller.start(event());controller.move(event(600,600));controller.end(event(6
 assert(controller.selection.fragments.every(f=>f.page===1),'A captured drag outside the page stays on its starting page.');
 controller.clear();assert.equal(preview.captured,null);assert.equal(page.children.length,0);
 assert.equal(requests,4);
+completed.start(event());completed.move(event(148,104));completed.end(event(148,104,{type:'pointerup'}));await tick();
+assert.deepEqual(completedBounds,[{left:50,top:42,bottom:100}],'Completed-selection callbacks can anchor the composer to the final glyph highlights.');
+completed.clear();
 console.log('PASS: geometric text/fraction/script selection, margin exclusion, rotated glyphs, native text gestures, reverse drag, page cache, cancellation and failed reads');

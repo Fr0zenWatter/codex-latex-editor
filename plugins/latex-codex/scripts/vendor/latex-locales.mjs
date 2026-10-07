@@ -1,5 +1,17 @@
 // Interface messages keyed by their English fallback. Keep placeholders unchanged.
 export const translations = {
+  "PDF preview": {"zh-TW":"PDF 預覽","ja":"PDF プレビュー","fr":"Aperçu PDF","de":"PDF-Vorschau","es":"Vista previa PDF"},
+  "Live preview": {"zh-TW":"即時預覽","ja":"ライブプレビュー","fr":"Aperçu en direct","de":"Live-Vorschau","es":"Vista previa en vivo"},
+  "Switched to live preview": {"zh-TW":"已切換到即時預覽","ja":"ライブプレビューに切り替えました","fr":"Aperçu en direct activé","de":"Zur Live-Vorschau gewechselt","es":"Vista previa en vivo activada"},
+  "Markdown source": {"zh-TW":"Markdown 原始碼","ja":"Markdown ソース","fr":"Source Markdown","de":"Markdown-Quelltext","es":"Código Markdown"},
+  "Markdown preview": {"zh-TW":"Markdown 預覽","ja":"Markdown プレビュー","fr":"Aperçu Markdown","de":"Markdown-Vorschau","es":"Vista previa de Markdown"},
+  "Save and preview": {"zh-TW":"儲存並預覽","ja":"保存してプレビュー","fr":"Enregistrer et prévisualiser","de":"Speichern und Vorschau","es":"Guardar y previsualizar"},
+  "Download source": {"zh-TW":"下載原始碼","ja":"ソースをダウンロード","fr":"Télécharger la source","de":"Quelltext herunterladen","es":"Descargar código fuente"},
+  "Locate cursor in preview": {"zh-TW":"定位游標到預覽","ja":"カーソル位置をプレビューで表示","fr":"Localiser le curseur dans l’aperçu","de":"Cursor in der Vorschau finden","es":"Localizar cursor en la vista previa"},
+  "Saved · Preview updated": {"zh-TW":"已儲存 · 預覽已更新","ja":"保存済み · プレビュー更新済み","fr":"Enregistré · Aperçu mis à jour","de":"Gespeichert · Vorschau aktualisiert","es":"Guardado · Vista previa actualizada"},
+  "{name} · Autosave and live preview": {"zh-TW":"{name} · 自動儲存與即時預覽","ja":"{name} · 自動保存とライブプレビュー","fr":"{name} · Enregistrement automatique et aperçu en direct","de":"{name} · Automatisches Speichern und Live-Vorschau","es":"{name} · Guardado automático y vista previa en vivo"},
+  "Choose a .tex or .md file in the system dialog…": {"zh-TW":"請在系統視窗中選擇 .tex 或 .md 檔案…","ja":"システムダイアログで .tex または .md ファイルを選択してください…","fr":"Choisissez un fichier .tex ou .md dans la fenêtre système…","de":"Wählen Sie eine .tex- oder .md-Datei im Systemdialog…","es":"Elige un archivo .tex o .md en el diálogo del sistema…"},
+  "Automatically open PDF comments after box selection (no right-click)": {"zh-TW":"框選後自動彈出 PDF 批註對話框（無需右鍵）","ja":"矩形選択後に PDF 注釈ダイアログを自動で開く（右クリック不要）","fr":"Ouvrir les annotations PDF après une sélection rectangulaire (sans clic droit)","de":"PDF-Kommentare nach Rechteckauswahl automatisch öffnen (ohne Rechtsklick)","es":"Abrir comentarios PDF al seleccionar un recuadro (sin clic derecho)"},
   "AI comments · {count}": {"zh-TW":"AI 批註 · {count}","ja":"AI 注釈 · {count}","fr":"Annotations IA · {count}","de":"KI-Kommentare · {count}","es":"Comentarios de IA · {count}"},
   "Comments and AI reply · {count}": {"zh-TW":"批註與 AI 回覆 · {count}","ja":"注釈と AI の回答 · {count}","fr":"Annotations et réponse IA · {count}","de":"Kommentare und KI-Antwort · {count}","es":"Comentarios y respuesta de IA · {count}"},
   "Lines {first}–{last}": {"zh-TW":"第 {first}–{last} 行","ja":"{first}–{last} 行","fr":"Lignes {first}–{last}","de":"Zeilen {first}–{last}","es":"Líneas {first}–{last}"},

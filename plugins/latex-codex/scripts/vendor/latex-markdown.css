@@ -1,0 +1,16 @@
+#markdown-preview{position:absolute;inset:0;overflow:auto;padding:24px clamp(20px,5%,64px);background:var(--bg);color:var(--text);font:15px/1.75 system-ui;overflow-wrap:anywhere}
+#markdown-preview[hidden]{display:none}
+#markdown-preview .markdown-block{max-width:900px;margin:0 auto}
+#markdown-preview h1,#markdown-preview h2,#markdown-preview h3,#markdown-preview h4,#markdown-preview h5,#markdown-preview h6{color:var(--text);line-height:1.35;margin:1.5em 0 .65em}
+#markdown-preview h1{font-size:1.8em;border-bottom:1px solid var(--border);padding-bottom:.3em}
+#markdown-preview h2{font-size:1.45em;border-bottom:1px solid var(--border);padding-bottom:.3em}
+#markdown-preview p{margin:.8em 0}#markdown-preview img{max-width:100%;height:auto;border-radius:6px}
+#markdown-preview blockquote{margin:1em 0;padding:.1em 1em;border-left:4px solid var(--command);color:var(--muted);background:var(--panel)}
+#markdown-preview pre{overflow:auto;padding:16px;background:var(--panel);border:1px solid var(--border);border-radius:8px;line-height:1.5}
+#markdown-preview code{font:13px/1.5 Consolas,monospace;background:var(--panel);padding:.15em .3em;border-radius:4px}
+#markdown-preview pre code{padding:0;background:none}#markdown-preview table{display:block;max-width:100%;overflow:auto;border-collapse:collapse;margin:1em 0}
+#markdown-preview th,#markdown-preview td{border:1px solid var(--border);padding:6px 12px}#markdown-preview th{background:var(--panel)}
+#markdown-preview hr{border:0;border-top:1px solid var(--border);margin:1.5em 0}#markdown-preview .katex-display{overflow-x:auto;overflow-y:hidden;padding:6px 0}
+#markdown-preview .katex{font-size:1.08em}#markdown-preview input{margin-right:6px;accent-color:var(--command)}
+body[data-preview-type=html] :is(#preview,#pdf-outline,#pan-mode,#pan-hint,#zoom-fit,#log-toggle,#compile-menu-button){display:none}
+#markdown-pdf-toggle[hidden]{display:none}

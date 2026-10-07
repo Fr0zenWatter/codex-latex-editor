@@ -49,6 +49,33 @@ assert sentence_marks('See e.g. Eq. 2.1 for the old bound. Unchanged.', 'See e.g
 assert sentence_marks('An old solution u. Use V. Unchanged.', 'An exact solution u. Use V. Unchanged.') == ['An', 'exact', 'solution', 'u.']
 assert sentence_marks('Old problem s.t. x = y. Unchanged.', 'New problem s.t. x = y. Unchanged.') == ['New', 'problem', 's.t.', 'x', '=', 'y.']
 
+# Reflow changes CJK PDF item boundaries without changing the sentence itself.
+old = {'words':[(1, [0, 10, 30, 20], '旧句。'), (1, [0, 40, 40, 50], '另一句话。')]}
+new = {'words':[(1, [0, 10, 30, 20], '新句。'), (1, [0, 40, 20, 50], '另一'), (1, [20, 40, 50, 50], '句话。')],
+       'boxes':[[0, 0, 100, 100]]}
+changes = [{'after':[{'page':1, 'rect':[0, 0, 100, 100]}]}]
+history_pdf_highlights(old, new, changes)
+assert changes[0]['after'][0]['highlights'] == [[0, 10, 30, 20]], 'Unchanged CJK reflow must stay unmarked.'
+
+# Markdown headings, paragraphs and image-separated prose do not share a sentence.
+for action in ('replace', 'delete'):
+    heading = (1, [10, 80, 90, 90], 'Unchanged heading')
+    old_text = (1, [10, 50, 90, 60], 'Old introduction:')
+    new_text = (1, [10, 50, 90, 60], 'New introduction:')
+    following = (2, [10, 80, 90, 90], 'Next paragraph stays.')
+    footer = (1, [45, 10, 55, 20], '1')
+    old = {'words':[heading, old_text, footer, following], 'boxes':[[0, 0, 100, 100]]*2, 'markdown':True,
+           'source':'# Unchanged heading\n\nOld introduction:\n\n![[image.png]]\n\nNext paragraph stays.\n',
+           'line_index':{1:{1:heading[1]}, 3:{1:old_text[1]}, 7:{2:following[1]}}}
+    new = {**old, 'words':[heading, *([new_text] if action == 'replace' else []), footer, following],
+           'source':old['source'].replace('Old introduction:', 'New introduction:' if action == 'replace' else ''),
+           'line_index':{1:{1:heading[1]}, **({3:{1:new_text[1]}} if action == 'replace' else {}), 7:{2:following[1]}}}
+    changes = [{'before':[{'page':1, 'rect':[0, 0, 100, 100]}], 'after':[{'page':1, 'rect':[0, 0, 100, 100]},
+                                                                                 {'page':2, 'rect':[0, 0, 100, 100]}]}]
+    history_pdf_highlights(old, new, changes)
+    marks = [rect for region in changes[0]['after'] for rect in region.get('highlights', [])]
+    assert marks == ([new_text[1]] if action == 'replace' else []), (action, marks)
+
 # Wider context must not cut tall unchanged math at a crop boundary or mark it red.
 context_words = [(1, [10, 20, 20, 43], 'formula.'), (1, [10, 60, 20, 70], 'Old.'),
                  (1, [10, 91, 20, 110], 'Next.')]

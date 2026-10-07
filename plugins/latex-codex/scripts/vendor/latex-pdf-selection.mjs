@@ -77,10 +77,10 @@ export function attachPdfBoxSelection({preview,viewer,capture,onSelect,message,e
       const selected = boxedPdfContent(content,state.page,state.box,excludedRects(state.element));
       if (!selected) { removeMarks();message('框内没有可选择的文字，请扩大选框。');return; }
       selection = {...selected,...state.snapshot};
-      if (onSelect(selection) === false) { clear();return; }
       removeMarks();
       for (const {rect} of selection.rectangles) paint(state,rect,'pdf-box-highlight');
       message('已框选 PDF 内容，右键添加批注 · Esc 取消');
+      if (onSelect(selection) === false) { clear();return; }
     } catch (error) {
       if (token !== epoch) return;
       removeMarks();message('框选失败：{message}',{message:error.message});

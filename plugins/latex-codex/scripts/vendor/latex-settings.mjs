@@ -1,6 +1,13 @@
 import {translations} from './latex-locales.mjs';
 
 export const english = {
+  'Markdown 源码':'Markdown source', 'Markdown 预览':'Markdown preview',
+  'PDF 预览':'PDF preview', '实时预览':'Live preview', '已切换到实时预览':'Switched to live preview',
+  '保存并预览':'Save and preview', '下载源码':'Download source',
+  '定位光标到预览':'Locate cursor in preview',
+  '已保存 · 预览已更新':'Saved · Preview updated',
+  '{name} · 自动保存与实时预览':'{name} · Autosave and live preview',
+  '请在系统窗口中选择 .tex 或 .md 文件…':'Choose a .tex or .md file in the system dialog…',
   'AI 批注 · {count}':'AI comments · {count}',
   '批注与 AI 回复 · {count}':'Comments and AI reply · {count}',
   '第 {first}–{last} 行':'Lines {first}–{last}', '原选区':'Original selection', 'AI 回复':'AI reply',
@@ -17,6 +24,7 @@ export const english = {
   '框内没有可选择的文字，请扩大选框。':'No selectable text inside the box. Enlarge the selection.',
   '已框选 PDF 内容，右键添加批注 · Esc 取消':'PDF content selected. Right-click to add a comment · Esc to clear',
   '框选失败：{message}':'Box selection failed: {message}',
+  '框选后自动弹出 PDF 批注对话框（无需右键）':'Automatically open PDF comments after box selection (no right-click)',
   '源码字号':'Source font size', '保存设置':'Save settings',
   '设置更改会自动保存，并在下次打开时恢复。':'Settings are saved automatically and restored next time.',
   '正在保存设置…':'Saving settings…', '设置已保存，下次打开会恢复。':'Settings saved. They will be restored next time.',
@@ -177,7 +185,7 @@ export const supportedLanguages = ['en', 'zh-CN', 'zh-TW', 'ja', 'fr', 'de', 'es
 export let language = 'en';
 const bindings = new Map();
 const preferenceKeys = ['language','revision-color','outline-style','theme','custom-themes',
-  'editor-mode','source-font-size','chat-color','auto-compile','split'].map(name=>'latex-codex-'+name);
+  'editor-mode','source-font-size','chat-color','auto-compile','pdf-box-auto-comment','split'].map(name=>'latex-codex-'+name);
 let persisted = null, pending = {}, saveTimer, saveQueue = Promise.resolve();
 function preferenceData() {
   if (persisted === null) {
@@ -266,11 +274,17 @@ export function initSettings() {
         preferences.setItem('latex-codex-'+name, $(id).value);
       }
       preferences.setItem('latex-codex-auto-compile', $('auto-compile').checked ? 'on' : 'off');
+      preferences.setItem('latex-codex-pdf-box-auto-comment', $('pdf-box-auto-comment').checked ? 'on' : 'off');
       await savePreferences(true);
     } catch {}
     finally { $('settings-save').disabled = false; }
   };
   window.addEventListener?.('pagehide', () => { savePreferences().catch(() => {}); });
+  const boxAutoComment = $('pdf-box-auto-comment');
+  boxAutoComment.checked = preferences.getItem('latex-codex-pdf-box-auto-comment') === 'on';
+  boxAutoComment.onchange = () => {
+    preferences.setItem('latex-codex-pdf-box-auto-comment', boxAutoComment.checked ? 'on' : 'off');
+  };
   try { languageSelect.value = preferences.getItem('latex-codex-language') || 'system'; colorSelect.value = preferences.getItem('latex-codex-revision-color') || 'orange'; } catch {}
   if (!['system', ...supportedLanguages].includes(languageSelect.value)) languageSelect.value = 'system';
   if (!colors[colorSelect.value]) colorSelect.value = 'orange';

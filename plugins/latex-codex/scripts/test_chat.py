@@ -67,6 +67,12 @@ with patch('chat.shutil.which', return_value='codex.exe'), patch('chat.subproces
     assert 'Hidden instructions' not in prompt and 'tool secret' not in prompt
     assert 'Selected.' not in ' '.join(argv), 'Context belongs on stdin, not command arguments.'
     assert '--model' not in argv and '-c' not in argv, 'Default must preserve the CLI configuration.'
+    markdown_job = ChatJob(chat_context(data, Path('note.md'))); markdown_job.run()
+    assert markdown_job.result == {'status':'done', **answer, 'segments':None}
+    markdown_prompt = process.communicate.call_args.args[0].decode()
+    assert 'project Markdown selection assistant' in markdown_prompt
+    assert 'COMPLETE Markdown text' in markdown_prompt and 'extra code fence' in markdown_prompt
+    assert 'COMPLETE LaTeX text' not in markdown_prompt
     with patch('chat.chat_models', return_value=[{'id':'test-model','efforts':['low','high'],'default_effort':'low'}]) as catalog:
         configured = chat_context({**data, 'model':'test-model','effort':'high'}, Path('paper.tex'))
         ChatJob(configured).run()

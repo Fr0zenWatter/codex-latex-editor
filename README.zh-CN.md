@@ -6,6 +6,8 @@
 
 安装后，只需说：**“用 latex-codex 打开 main.tex。”** 可以直接编辑，也可以告诉 Codex 怎么改；文件自动保存，PDF 通过本地 TeX 编译更新。内置历史快照系统，支持回溯历史版本、对比源码与 PDF 改动。
 
+也支持打开 `.md` 和 `.markdown` 笔记，包括 Obsidian 笔记，实时预览公式、表格和本地图片，并保留自动保存和源码历史。切换到 **PDF 预览**，可用本地 XeLaTeX 渲染定理框和 TikZ，沿用 PDF 目录、双向跳转、批注与历史对比。只需说：**“用 latex-codex 打开 my-note.md。”**
+
 ## 功能演示
 
 点击预览查看完整视频，演示均配有中英字幕。
@@ -50,4 +52,4 @@
 2. 对 Codex 说：**“请按 [AGENTS.md](AGENTS.md) 安装 latex-codex。”**
 3. 安装后新开对话，说：**“用 latex-codex 打开 main.tex。”** 也可指定文稿路径。
 
-编辑会直接保存到原始 `.tex` 文件。
+编辑会直接保存到原始 `.tex`、`.md` 或 `.markdown` 文件。

@@ -1,5 +1,6 @@
 """Local, append-only source snapshots; SQLite and compressed text need no packages."""
 from contextlib import closing
+from pathlib import Path
 from datetime import datetime, timezone
 import difflib
 import hashlib
@@ -130,7 +131,7 @@ class History:
                 activity = db.execute('SELECT sections,description,summary,details FROM revision_activity WHERE revision_id=? AND baseline_id=?', (row['id'],baseline)).fetchone()
                 if activity is None or baseline and not activity['details'] and activity['description'] not in ('调整空白或换行','内容与上一版相同'):
                     source = self.get(row['id'])['source']
-                    data = describe_revision(self.get(baseline)['source'] if baseline else '', source) if baseline else {'sections':['文档初始版本'],'description':'首次保存的版本','details':''}
+                    data = describe_revision(self.get(baseline)['source'] if baseline else '', source, Path(row['file']).suffix.lower() in ('.md', '.markdown')) if baseline else {'sections':['文档初始版本'],'description':'首次保存的版本','details':''}
                     db.execute('INSERT INTO revision_activity(revision_id,baseline_id,sections,details,description) VALUES (?,?,?,?,?) ON CONFLICT(revision_id,baseline_id) DO UPDATE SET sections=excluded.sections,details=excluded.details,description=excluded.description,summary=\'\'',
                                (row['id'],baseline,json.dumps(data['sections'],ensure_ascii=False),data['details'],data['description']))
                     activity = {**data,'summary':''}
@@ -205,12 +206,23 @@ def difference(before, after):
                                      fromfile='所选版本', tofile='对比版本', n=3))
 
 
-def describe_revision(before, after):
+def describe_revision(before, after, markdown=False):
     def headings(source):
         # ponytail: literal entry-file headings determine numbering; custom counters/includes need compiled metadata.
-        found, counts = [(0,'导言区')], [0,0,0,0]
+        found, counts = [(0,'正文' if markdown else '导言区')], [0,0,0,0]
+        fence = None
         commands = {'chapter':0,'section':1,'subsection':2,'subsubsection':3}
         for line, text in enumerate(source.splitlines()):
+            if markdown:
+                marker = re.match(r'^ {0,3}(`{3,}|~{3,})', text)
+                if marker:
+                    if fence is None: fence = marker[1]
+                    elif marker[1][0] == fence[0] and len(marker[1]) >= len(fence): fence = None
+                    continue
+                if fence: continue
+                heading = re.match(r'^ {0,3}#{1,6}\s+(.+?)(?:\s+#+)?\s*$', text)
+                if heading: found.append((line,heading[1][:100]))
+                continue
             text = re.split(r'(?<!\\)%',text,1)[0]
             if r'\begin{document}' in text: found.append((line,'正文'))
             if r'\begin{abstract}' in text: found.append((line,'摘要'))
