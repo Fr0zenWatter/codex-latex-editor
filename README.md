@@ -1,12 +1,20 @@
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-# LaTeX Codex — Your LaTeX Workspace in the Codex Sidebar
+# LaTeX Codex — LaTeX and Markdown in the Codex Sidebar
 
-**Keep your paper beside your Codex conversation.** LaTeX Codex opens your source and PDF in the Codex app's right sidebar. Collect annotations, send them together in the main chat, and review the results beside the conversation.
+**Keep your papers and notes beside your Codex conversation.** LaTeX Codex opens your source and preview in the Codex app's right sidebar. Collect annotations, send them together in the main chat, and review the results beside the conversation.
 
 Once installed, just ask: **“Use latex-codex to open main.tex.”** Edit directly or tell Codex what to change; your files save automatically and the PDF updates using your local TeX engine. Built-in history snapshots let you restore earlier versions and compare source and PDF changes.
 
-You can also open `.md` and `.markdown` notes, including Obsidian notes, with live previews of formulas, tables and local images, automatic saving and source history. Switch to **PDF preview** to render callouts and TikZ with local XeLaTeX and use the same PDF navigation, annotations and history comparisons. Just ask: **“Use latex-codex to open my-note.md.”**
+## Markdown and Obsidian
+
+Open `.md` or `.markdown` notes by asking: **“Use latex-codex to open my-note.md.”**
+
+- **Live preview:** Formulas, lists and tasks, tables, code blocks and local images, including Obsidian `![[image.png]]` embeds.
+- **Editing:** Automatic saving, source history and AI selection edits without adding LaTeX color commands to Markdown.
+- **PDF preview:** Render callouts and TikZ with local XeLaTeX, then use PDF navigation, annotations and history comparisons. Click **Live preview** to return to the HTML view.
+
+See [what's new in 0.2.7](CHANGELOG.md).
 
 ## Demos
 

@@ -1,12 +1,20 @@
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-# LaTeX Codex — Codex 侧栏里的 LaTeX 工作区
+# LaTeX Codex — Codex 侧栏里的 LaTeX 与 Markdown 工作区
 
-**一边与 Codex 对话，一边看论文、改论文。** LaTeX Codex 将源码和 PDF 放进 Codex 应用的右侧栏。积累批注，在主对话中统一提交修改要求，再到旁边查看结果。
+**一边与 Codex 对话，一边写论文和笔记。** LaTeX Codex 将源码和预览放进 Codex 应用的右侧栏。积累批注，在主对话中统一提交修改要求，再到旁边查看结果。
 
 安装后，只需说：**“用 latex-codex 打开 main.tex。”** 可以直接编辑，也可以告诉 Codex 怎么改；文件自动保存，PDF 通过本地 TeX 编译更新。内置历史快照系统，支持回溯历史版本、对比源码与 PDF 改动。
 
-也支持打开 `.md` 和 `.markdown` 笔记，包括 Obsidian 笔记，实时预览公式、表格和本地图片，并保留自动保存和源码历史。切换到 **PDF 预览**，可用本地 XeLaTeX 渲染定理框和 TikZ，沿用 PDF 目录、双向跳转、批注与历史对比。只需说：**“用 latex-codex 打开 my-note.md。”**
+## Markdown 与 Obsidian
+
+支持 `.md` 和 `.markdown` 笔记。只需说：**“用 latex-codex 打开 my-note.md。”**
+
+- **实时预览：** 公式、列表与待办、表格、代码块和本地图片，包括 Obsidian 的 `![[image.png]]` 引用。
+- **编辑：** 自动保存、源码历史和 AI 选区修改；Markdown 修改不会插入 LaTeX 颜色命令。
+- **PDF 预览：** 用本地 XeLaTeX 渲染定理框、提示框和 TikZ，沿用 PDF 目录、双向跳转、批注与历史对比。点击**实时预览**可切回 HTML。
+
+查看 [0.2.7 更新记录](CHANGELOG.md)。
 
 ## 功能演示
 
