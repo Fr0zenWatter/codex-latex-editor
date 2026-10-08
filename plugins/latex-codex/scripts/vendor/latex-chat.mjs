@@ -19,6 +19,18 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   const quick = $('chat-quick'), quickInput = $('chat-quick-input');
   let quickMarker = null, quickDoc = null, quickOriginal = '', quickPdf = null, editingAnnotation = null;
   let annotations = [], annotationId = 0, annotationSending = false, annotationCommitting = false;
+  let mainSend = null, mainLinked = false, mainAvailable = false, mainRequest = null;
+  if (document.documentElement?.dataset?.aiBackend === 'deepseek') {
+    mainSend = document.createElement('button');
+    mainSend.id = 'annotations-main-send'; mainSend.type = 'button'; mainSend.hidden = true;
+    mainSend.textContent = t('发送到 DeepSeek 主对话');
+    $('annotations-send').after(mainSend);
+    request('/main-chat').then(result => {
+      mainLinked = result.linked; mainAvailable = result.available; refreshAnnotations();
+    }).catch(() => {});
+    mainSend.onclick = sendToMainChat;
+    window.addEventListener('latex-language-change', () => { mainSend.textContent = t('发送到 DeepSeek 主对话'); refreshAnnotations(); });
+  }
   let color = '';
   const editorProofread = () => preferences.getItem('latex-codex-proofread-editor') !== 'off';
   const pdfProofread = () => preferences.getItem('latex-codex-proofread-pdf') !== 'off' && !/\.(md|markdown)$/i.test($('filename').title || '');
@@ -117,7 +129,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   window.addEventListener('resize', () => {
     sizeQuick(); fitQuick();
   });
-  const effortNames = {none:'无',minimal:'最低',low:'低',medium:'中',high:'高',xhigh:'很高',max:'最高',ultra:'极高'};
+  const effortNames = {off:'无',none:'无',minimal:'最低',low:'低',medium:'中',high:'高',xhigh:'很高',max:'最高',ultra:'极高'};
   function option(value, label) {
     const node = document.createElement('option'); node.value = value; node.textContent = label; return node;
   }
@@ -225,6 +237,12 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     const waiting = annotations.some(item => !item.review);
     $('annotations-send').hidden = !waiting;
     $('annotations-send').disabled = sending || annotationCommitting || !waiting;
+    if (mainSend) {
+      mainSend.hidden = !waiting;
+      mainSend.disabled = sending || annotationCommitting || !waiting || !mainLinked || !mainAvailable;
+      mainSend.title = t(!mainLinked ? '请从 DeepSeek 主对话启动此编辑器。'
+        : !mainAvailable ? '请先安装 DeepSeek 主对话桥接并刷新页面。' : '发送到 DeepSeek 主对话');
+    }
     $('annotations-list').replaceChildren();
     for (const item of annotations) {
       const button = document.createElement('button'); button.type = 'button';
@@ -313,6 +331,39 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     const question = batch.map(item => '#' + item.id + '\n' + item.request).join('\n\n');
     return send(question, null, batch);
   };
+  async function sendToMainChat() {
+    if (sending || annotationCommitting || !mainLinked || !mainAvailable) return;
+    if (quickInput.value.trim() && !saveAnnotation()) return;
+    const batch = annotations.filter(item => !item.review);
+    if (!batch.length) return;
+    annotationCommitting = true; refreshAnnotations();
+    annotationNotice(t('正在转交主对话…'));
+    try {
+      const doc = editor.getDoc(), source = editor.getValue(), path = $('filename').title;
+      const state = await request('/state');
+      if (editor.getDoc() !== doc || editor.getValue() !== source || state.path !== path
+          || state.source.replaceAll('\r\n', '\n') !== source) {
+        throw new Error(t('请等待自动保存完成后再发送；批注保留。'));
+      }
+      const items = batch.map(item => {
+        const pos = validAnnotation(item);
+        if (!pos) throw new Error(t('批注选区已变化，未发送。请点批注检查并重新选择。'));
+        return {id: item.id, start: Array.from(source.slice(0, editor.indexFromPos(pos.from))).length,
+          end: Array.from(source.slice(0, editor.indexFromPos(pos.to))).length,
+          selection: item.original, request: annotationRequest(item)};
+      }).sort((a, b) => a.start - b.start);
+      const payload = {path, source, version: state.version, selection: items[0].selection, annotations: items};
+      const fingerprint = JSON.stringify(payload);
+      if (mainRequest?.fingerprint !== fingerprint) mainRequest = {fingerprint, id: crypto.randomUUID().replaceAll('-', '')};
+      const result = await request('/main-chat', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({...payload, request_id: mainRequest.id})});
+      if (!result.accepted) throw new Error(t('请求失败'));
+      for (const item of batch) item.marker.clear();
+      annotations = annotations.filter(item => !batch.includes(item)); mainRequest = null;
+      annotationNotice(t('批注已转交 DeepSeek 主对话。'));
+    } catch (error) { annotationNotice(error.message, true); }
+    finally { annotationCommitting = false; refreshAnnotations(); }
+  }
   $('annotations-stop').onclick = () => { if (annotationCommitting) return; stop(); annotationNotice(t('已停止，批注保留，可重新发送。')); };
   const range = () => marker?.find();
   const selectedText = () => { const pos = range(); return pos ? editor.getRange(pos.from, pos.to) : ''; };

@@ -152,7 +152,7 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 
 #chat-quick-brain{flex:1}#chat-quick-effort{flex-shrink:0;max-width:110px}#chat-quick-effort-name{overflow:hidden;text-overflow:ellipsis}#chat-quick-delete,#chat-quick-cancel{display:grid;place-items:center;flex-shrink:0;width:28px;height:28px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted)}#chat-quick-delete[hidden]{display:none}#chat-quick-delete:hover,#chat-quick-cancel:hover{background:color-mix(in srgb,var(--quick-accent) 10%,transparent);color:var(--quick-accent)}#chat-quick-delete svg,#chat-quick-cancel svg{width:15px;height:15px}
 .CodeMirror .chat-annotation{background:#ffc85733;text-decoration:underline;text-decoration-color:#d99a13}#annotations-send{display:flex;align-items:center;gap:6px;background:var(--quick-accent);color:var(--quick-foreground,var(--bg));font-weight:600}#annotations-send[aria-busy=true]::before{content:'';width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:compile-spin .8s linear infinite}#annotations-review{position:fixed;inset:auto;margin:0;width:min(360px,calc(100vw - 16px));max-height:70vh;overflow:auto;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--panel);color:var(--text);box-shadow:0 10px 32px #0004}#annotations-empty{margin:0;color:var(--muted);font-size:12px}#annotations-list{display:flex;flex-direction:column;gap:6px}.annotation-item{text-align:left;padding:8px 10px}.annotation-item b,.annotation-item span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}.annotation-item span{margin-top:4px;color:var(--muted)}#annotations-status{white-space:pre-wrap;font-size:12px;line-height:1.6}#annotations-status:not(:empty){margin-top:10px}#annotations-status[data-error=true]{color:light-dark(#b42318,#f87171)}.pdf-comment-highlight{position:absolute;z-index:5;pointer-events:none;background:#ffc85755;mix-blend-mode:multiply;border-radius:2px}.pdf-comment-pin{position:absolute;z-index:6;display:grid;place-items:center;min-width:22px;height:22px;padding:0 5px;border:1px solid #b87c00;border-radius:11px;background:#ffe09a;color:#5a3b00;font:bold 12px system-ui;box-shadow:0 2px 6px #0003;cursor:pointer}.pdf-comment-pin:hover,.pdf-comment-pin:focus-visible{background:#ffc857;outline:2px solid #b87c00;outline-offset:2px}
-#annotations-send[hidden]{display:none}
+#annotations-send[hidden],#annotations-main-send[hidden],#native-annotation-open[hidden]{display:none}
 @media(prefers-reduced-motion:reduce){#annotations-send::before{animation:none}}
 </style>
 <header id="app-toolbar"><button id="file-menu-button" class="icon-button" aria-label="文件" data-i18n-aria-label="文件" title="文件" data-i18n-title="文件" popovertarget="file-menu" aria-expanded="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H5v20h14V7zM14 2v6h5"/></svg></button><button id="native-annotation-open" class="icon-button" disabled aria-pressed="false" aria-label="原生批注选区" data-i18n-aria-label="原生批注选区" title="原生批注选区" data-i18n-title="原生批注选区"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg></button><span id="status" role="status" aria-live="polite" data-i18n="正在打开…">正在打开…</span>
@@ -2239,8 +2239,13 @@ def history_pdf_highlights(old, new, changes):
             change.get(side, []).sort(key=lambda region: region['page'])
 
 
-def make_server(path, port=0, main_thread=None, project_root=None, preferences_path=None):
-    main_thread = main_thread if main_thread is not None else os.environ.get('CODEX_THREAD_ID')
+def make_server(path, port=0, main_thread=None, project_root=None, preferences_path=None, ai_backend='codex'):
+    if ai_backend not in ('codex', 'deepseek'):
+        raise ValueError('Unknown AI backend.')
+    main_thread = (main_thread if main_thread is not None else os.environ.get('CODEX_THREAD_ID')) if ai_backend == 'codex' else None
+    deepseek_session = os.environ.get('DSH_SESSION_ID') if ai_backend == 'deepseek' else None
+    launch_cwd = str(Path.cwd().resolve())
+    main_chat_requests = {}
     path = Path(path).resolve(strict=True)
     if not path.is_file() or path.suffix.lower() not in SOURCE_EXTENSIONS:
         raise ValueError('Choose an existing UTF-8 .tex, .md or .markdown file.')
@@ -2360,6 +2365,9 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
                 try:
                     saved = json.dumps(self.server.preferences.read(), ensure_ascii=False).replace('<', '\\u003c')
                     page = PAGE.replace('<!--USER_PREFERENCES-->', '<script id="user-preferences" type="application/json">' + saved + '</script>')
+                    page = page.replace('<html ', '<html data-ai-backend="' + ai_backend + '" ', 1)
+                    if ai_backend == 'deepseek':
+                        page = page.replace('<title>LaTeX Codex</title>', '<title>LaTeX · DeepSeek Harness</title>')
                     self.reply(200, page.encode('utf-8'), 'text/html; charset=utf-8')
                 except (OSError, sqlite3.Error) as error:
                     self.reply(500, {'error': str(error)})
@@ -2421,9 +2429,18 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
                     self.reply(500, {'error': '主对话读取失败：' + str(error)})
             elif route == '/chat/models':
                 try:
-                    self.reply(200, {'models': chat_models()})
+                    self.reply(200, {'models': chat_models() if ai_backend == 'codex' else chat_models(ai_backend)})
                 except ValueError as error:
                     self.reply(500, {'error': str(error)})
+            elif route == '/main-chat':
+                available = False
+                if ai_backend == 'deepseek':
+                    from deepseek import main_chat_request
+                    try:
+                        available = main_chat_request({'action': 'status'}).get('available') is True
+                    except (OSError, ValueError):
+                        pass
+                self.reply(200, {'available': available, 'linked': bool(deepseek_session)})
             elif route == '/chat':
                 job = self.server.chat
                 if not job or parse_qs(parsed.query).get('id', [''])[0] != job.id:
@@ -2490,7 +2507,7 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
             nonlocal path, history, root, main_file
             if not self.local():
                 return
-            if self.path not in ('/project-review', '/preferences', '/compile', '/proofread', '/save', '/open', '/source', '/project', '/synctex', '/chat', '/chat/cancel', '/chat/new', '/history/diff', '/history/label', '/history/restore', '/history/pdf', '/history/pdf-cancel', '/history/pdf-cache', '/history/summaries', '/history/summaries/cancel'):
+            if self.path not in ('/main-chat', '/project-review', '/preferences', '/compile', '/proofread', '/save', '/open', '/source', '/project', '/synctex', '/chat', '/chat/cancel', '/chat/new', '/history/diff', '/history/label', '/history/restore', '/history/pdf', '/history/pdf-cancel', '/history/pdf-cache', '/history/summaries', '/history/summaries/cancel'):
                 self.reply(404, {'error': 'Not found.'})
                 return
             try:
@@ -2609,7 +2626,7 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
                             self.reply(200, {'status':'done','language':language,'summaries':[
                                 {'id':row['id'],'summary':row['summary']} for row in rows if row['id'] in ids and row['summary']]})
                             return
-                        self.server.history_summary = ChatJob({'task':'history-summary','items':items,'effort':'low','language':language},history).start()
+                        self.server.history_summary = ChatJob({'task':'history-summary','items':items,'effort':'low','language':language},history,backend=ai_backend).start()
                         self.reply(200, {'id':self.server.history_summary.id})
                         return
                     revision = history.get(data.get('id'))
@@ -2666,6 +2683,39 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
                     self.server.sync_version = ''
                     self.reply(200, project_state())
                     return
+                if self.path == '/main-chat':
+                    if ai_backend != 'deepseek' or not deepseek_session:
+                        raise ValueError('请从 DeepSeek 主对话启动此编辑器，绑定发送目标。')
+                    identity = data.get('request_id')
+                    if not isinstance(identity, str) or not re.fullmatch('[0-9a-f]{32}', identity):
+                        raise ValueError('发送任务 ID 无效。')
+                    digest = hashlib.sha256(payload).digest()
+                    if identity in main_chat_requests:
+                        if main_chat_requests[identity] != digest:
+                            raise FileConflict('发送内容已变化，请重新发送。')
+                        self.reply(200, {'accepted': True})
+                        return
+                    state = snapshot(path)
+                    if (data.get('path') != str(path) or data.get('version') != state['version']
+                            or data.get('source') != state['source'].replace('\r\n', '\n')):
+                        raise FileConflict('请等待自动保存完成，或重新读取外部修改后再发送；批注保留。')
+                    context = chat_context({**data, 'messages': [{'role': 'user', 'content': 'Apply the comments.'}],
+                                            'model': '', 'effort': ''}, path, backend='deepseek')
+                    if not context.get('annotations'):
+                        raise ValueError('请先添加批注。')
+                    from deepseek import main_chat_request
+                    text = ('请按下面每条批注的 request 修改指定文件中的对应选区。selection 和附近源码仅作参考。'
+                            '先读取当前文件并核对选区，保留其他修改；有冲突时说明冲突，不覆盖未保存草稿。'
+                            '如编辑器开启项目校对，请先检查 ' + f'http://127.0.0.1:{self.server.server_port}/project-review'
+                            + '，再按项目约定通过 propose 提交。\n'
+                            + json.dumps({'file': str(path), 'version': state['version'], 'annotations': context['annotations']}, ensure_ascii=False))
+                    result = main_chat_request({'action': 'send', 'session_id': deepseek_session,
+                                                'request_id': identity, 'cwd': launch_cwd, 'text': text})
+                    if result.get('accepted') is not True:
+                        raise ValueError('DeepSeek 主对话未确认接收；批注保留。')
+                    main_chat_requests[identity] = digest
+                    self.reply(200, {'accepted': True})
+                    return
                 if self.path == '/chat/cancel':
                     if self.server.chat and data.get('id') == self.server.chat.id:
                         self.server.chat.cancel()
@@ -2707,7 +2757,7 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
                             recent = recent[2:]
                         data = {**data, 'messages': recent + [incoming[-1]]}
                         memory, memory_revision = history, state['revision']
-                    job = ChatJob(chat_context(data, path, main_thread), memory, memory_revision)
+                    job = ChatJob(chat_context(data, path, main_thread, ai_backend), memory, memory_revision, backend=ai_backend)
                     if request_id:
                         job.id = request_id
                         job.request_hash = request_hash
@@ -2866,9 +2916,10 @@ if __name__ == '__main__':
     parser.add_argument('file', type=Path)
     parser.add_argument('--port', type=int, default=0)
     parser.add_argument('--project-root', type=Path, help='Project folder containing the main file and included sources')
+    parser.add_argument('--ai-backend', choices=('codex', 'deepseek'), default='codex', help='AI provider for Send, project chat and history summaries')
     args = parser.parse_args()
     try:
-        server = make_server(args.file, args.port, project_root=args.project_root)
+        server = make_server(args.file, args.port, project_root=args.project_root, ai_backend=args.ai_backend)
     except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired, sqlite3.Error) as error:
         parser.exit(1, str(error) + '\n')
     print(f'http://127.0.0.1:{server.server_port}/', flush=True)

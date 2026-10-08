@@ -1,6 +1,12 @@
 import {translations} from './latex-locales.mjs';
 
 export const english = {
+  '发送到 DeepSeek 主对话':'Send to DeepSeek main chat',
+  '正在转交主对话…':'Sending to main chat…',
+  '批注已转交 DeepSeek 主对话。':'Comments sent to DeepSeek main chat.',
+  '请等待自动保存完成后再发送；批注保留。':'Wait for autosave before sending. Comments are preserved.',
+  '请从 DeepSeek 主对话启动此编辑器。':'Launch this editor from a DeepSeek main chat.',
+  '请先安装 DeepSeek 主对话桥接并刷新页面。':'Install the DeepSeek main-chat bridge, then refresh this page.',
   '项目修改校对（主对话 / 外部修改）':'Project change review (main chat / external edits)',
   '记录项目 TeX 修改，逐处 Keep / Undo；手动输入照常保存。':'Review project TeX changes with Keep / Undo. Manual typing saves normally.',
   '项目校对 · {count}':'Project review · {count}',
@@ -275,7 +281,8 @@ export function resolveLanguage(preferences = []) {
 }
 export function t(key, values = {}) {
   const fallback = english[key] || key;
-  const text = language === 'zh-CN' ? key : translations[fallback]?.[language] || fallback;
+  let text = language === 'zh-CN' ? key : translations[fallback]?.[language] || fallback;
+  if (globalThis.document?.documentElement?.dataset?.aiBackend === 'deepseek') text = text.replaceAll('Codex', 'DeepSeek');
   return text.replace(/\{(\w+)\}/g, (match, name) => values[name] ?? match);
 }
 export function setText(element, key, values = {}) {

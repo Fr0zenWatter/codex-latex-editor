@@ -12,6 +12,31 @@
 
 ## 安装
 
+### DeepSeek Harness 预发布版本
+
+此分支通过 `--ai-backend deepseek` 开启 DeepSeek 适配；不带参数仍使用 Codex。Python 和本地 TeX 依赖沿用下文。当前在 Windows、DeepSeek Harness `0.2.0-rc.2` 实测账号登录的 Send；其他平台尚未实机验证。服务在本机运行，浏览器需允许访问回环地址。
+
+```sh
+python plugins/latex-codex/scripts/editor.py /path/to/main.tex --ai-backend deepseek
+python plugins/latex-codex/scripts/install_deepseek_bridge.py
+```
+
+第二条命令仅用于可选的主对话转发。它在 `$DSH_HOME/profiles/desktop/cordis.patch.yml`（默认 `~/.dsh`）追加 `latex-main-chat-bridge`，保留其他配置，不读取或复制凭据；解压目录需保留。重复执行不重复添加。支持普通 YAML 块列表和 JSON 列表；其他格式需手动添加以下条目，替换为模块的实际绝对路径。已有其他安装路径的同名桥接时，先移除旧条目。
+
+```yaml
+- insert:
+    - id: latex-main-chat-bridge
+      name: /path/to/plugins/latex-codex/scripts/deepseek-main-chat.mjs
+```
+
+默认 HMR 会加载新增配置；关闭 HMR 时重启 Harness。卸载仅移除该条目。不要修改安装目录的 `app.asar`。桥接使用 Windows named pipe 或权限 `0600` 的 Unix socket；网页只访问编辑器同源 `/main-chat`。启动时捕获 `DSH_SESSION_ID` 和工作目录，转发仅允许同一工作目录中的该会话仍在运行，不按最近记录选择会话，不使用 headless resume 争用主对话。因此需从 DeepSeek 主对话运行启动命令，再打开打印的 URL。
+
+保存批注后，列表提供独立的“发送到 DeepSeek 主对话”。没有会话绑定或桥接不可用时禁用并说明原因。发送前核对自动保存内容、文件和版本，接收确认后才清除该批批注；失败保留，相同请求 ID 安全重试，改内容不能复用 ID。转交不直接改源码，不生成本地建议；主对话的修改仍走外部同步和项目校对。真实桥接加载、状态连接和测试替身中的转交流程已验证；向用户现有会话的实际提交由用户点击按钮触发。
+
+Send、项目对话和历史摘要调用已安装的 `dsh headless --json -`。CLI 优先 `DSH_CLI_PATH`，其次 PATH；Windows 再查应用卸载注册信息，直接以 Electron Node 模式调用随应用附带的 CLI，避免可见窗口和命令 shell。认证由 Harness 完成，不把密钥加入参数。模型列表区分 Harness 账号与 API 路由；“跟随 DeepSeek 默认”沿用 **headless profile** 的默认模型，与桌面会话选择独立。主对话上下文暂不自动加入项目对话；项目本地记忆仍在原数据库。
+
+每次调用使用只读运行，临时会话、projection storage 和配置覆盖用后清理。临时 Cordis 插件隐藏工具并用执行 guard 拒绝工具调用，关闭 skill 扫描、项目 instructions 和额外标题模型请求；不修改全局配置。只解析无截断的 `final` 并核对 replacements；失败、工具事件和不完整批次不能应用。DeepSeek 此调用没有强制 JSON Schema，格式失败保留批注供重试。检查包括 `test_deepseek.py`、`test_deepseek.mjs`、`test_chat_ui.mjs` 和既有 chat、HTTP、校对检查。
+
 先检查已登录的 Codex 桌面应用与 CLI、Python 3.10+、本地 TeX Live / MiKTeX / MacTeX。TeX 环境需提供 `xelatex` / `pdflatex`、`bibtex` 和 `synctex`。缺少依赖时说明缺项，不自动安装 TeX 环境或更改全局设置。前端资源已随插件附带，无需 npm、pip 或 Poppler 安装。PDF 页尺寸与文字位置由自带 PDF.js 读取，服务端只调用本地 TeX / SyncTeX。macOS 优先使用 PATH 中的 TeX，找不到时检查 `/Library/TeX/texbin`，不修改全局 PATH。Windows / Linux 的系统文件选择器使用可选的 tkinter；缺少时仍可通过启动命令打开文稿。macOS 使用系统原生文件选择器。
 
 用户要求安装时，在仓库根目录执行：

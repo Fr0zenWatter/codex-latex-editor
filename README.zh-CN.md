@@ -1,69 +1,29 @@
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-# LaTeX Codex — Codex 侧栏里的 LaTeX 与 Markdown 工作区
+# LaTeX Codex · DeepSeek Harness 测试版
 
-**一边与 Codex 对话，一边写论文和笔记。** LaTeX Codex 将源码和预览放进 Codex 应用的右侧栏。积累批注，在主对话中统一提交修改要求，再到旁边查看结果。
+在 DeepSeek Harness 的侧边浏览器里编辑 LaTeX 和 Markdown，沿用本地预览、自动保存和历史。
 
-安装后，只需说：**“用 latex-codex 打开 main.tex。”** 可以直接编辑，也可以告诉 Codex 怎么改；文件自动保存，PDF 通过本地 TeX 编译更新。内置历史快照系统，支持回溯历史版本、对比源码与 PDF 改动。
+- 源码与 PDF 双向跳转、PDF 选字与公式框选。
+- **Send** 使用已登录的 DeepSeek Harness 生成修改建议，源码与 PDF 逐处 **Keep / Undo**。
+- 模型与思考等级由 Harness 提供；支持写作风格和项目对话。
+- 可选的 **发送到 DeepSeek 主对话**，将保存的批注交给启动编辑器的对话处理。
+- Markdown 实时预览，以及通过现有 TeX 环境生成 PDF。
 
-支持 `.md` 和 `.markdown` 笔记。只需说：**“$Latex codex  打开 xx”即可**。
+在 DeepSeek 主对话中，让它从解压目录执行：
 
-## 功能演示
+```sh
+python plugins/latex-codex/scripts/editor.py /path/to/main.tex --ai-backend deepseek
+```
 
-点击预览查看完整视频，演示均配有中英字幕。
+在侧边浏览器打开打印的本地地址。选中源码或 PDF 内容，添加批注，然后点击 **Send**。
 
-### 批注（主对话框）
+需要主对话转发时，先运行一次：
 
-选中源码，点击批注图标并保存要求，在 Codex 主对话中统一提交。
+```sh
+python plugins/latex-codex/scripts/install_deepseek_bridge.py
+```
 
-[![观看原对话框批注演示](docs/media/04-native-comments.gif)](docs/media/04-native-comments.mp4)
+然后从 DeepSeek 主对话启动编辑器；添加批注后选择 **发送到 DeepSeek 主对话**。保留解压目录，桥接配置会引用其中的模块。安装与维护细节见 [AGENTS.md](AGENTS.md)。
 
-### 临时批注（不占主对话框）
-
-在 PDF 中选中一个词、一段话，或带公式的段落，添加批注让 Codex 修改对应内容，源码与 PDF 一起更新。
-
-在源码和临时红绿 PDF 中逐处审阅建议：**Keep** 保存该处修改，**Undo** 保留原文。可在**齿轮**中分别开关编辑器与 PDF 校对；开启**项目修改校对**后，还可审阅主对话或外部工具对项目 TeX 文件的修改。
-
-批注工具栏的 **Style** 提供 Tao Compact / Shelah Compact 中英文风格，也可导入自己的 `.txt` / `.md` 提示词；选择会记住并沿用于新批注。
-
-在**选字**模式下，从 PDF 页面空白处拖动可框选文字或公式，再右键添加批注；从文字处拖动仍是普通选字。按 **Esc** 清除框选。
-
-可在**齿轮 → 修改标记颜色**中选择颜色，用 LaTeX `\color` 标注批注中实际修改的内容，方便在 PDF 中查看；选择“无”即可关闭颜色标注。
-
-[![观看批注修改演示](docs/media/03-pdf-comments.gif)](docs/media/03-pdf-comments.mp4)
-
-### LaTeX ↔ PDF 跳转
-
-抓手模式下双击 PDF，定位对应源码；双击行号或点击中间的 **→**，跳回 PDF。章节拨轮方便浏览长文，指定 `main.tex` 后，还能跨 `\input` / `\include` 文件跳转。
-
-在**选字**模式下，按住**空格**拖动页面，或按住 **Alt + 空格**拖动缩放，范围为 30%–500%。
-
-[![观看双向跳转演示](docs/media/01-navigation.gif)](docs/media/01-navigation.mp4)
-
-### 本地历史
-
-修改自动保存，可以对比源码变化、查看 PDF 修改前后的效果，并恢复历史版本。
-
-[![观看历史演示](docs/media/02-history.gif)](docs/media/02-history.mp4)
-
-### 编辑与个性化
-
-- **编辑功能：** 默认普通编辑，支持切换 Vim 和 Emacs 模式，以及语法高亮、命令补全、行内公式预览等常用功能。
-- **界面语言：** 支持多语言切换，默认跟随系统语言，无法识别时使用英文；可在**齿轮 → 语言**中手动选择。
-- **主题风格：** 支持多种浅色、深色主题切换，也可上传或粘贴截图，生成并保存自定义配色。
-
-### Markdown → PDF
-
-打开 `.md` 或 `.markdown` 笔记，实时预览；点击 **PDF 预览**，使用本地 TeX 将表格、公式和 TikZ 图编译成 PDF。Markdown 同样支持源码与 PDF 双向跳转、AI 批注修改和历史对比。
-
-[![观看 Markdown 编译演示](docs/media/05-markdown.gif)](docs/media/05-markdown.mp4)
-
-## 开始使用
-
-1. 下载本仓库，用 Codex 打开这个文件夹。
-2. 对 Codex 说：**“请按 [AGENTS.md](AGENTS.md) 安装 latex-codex。”**
-3. 安装后新开对话，说：**“用 latex-codex 打开 main.tex。”** 也可指定文稿路径。
-
-编辑会直接保存到原始 `.tex`、`.md` 或 `.markdown` 文件。
-
-版本更新见 [Releases](https://github.com/Fr0zenWatter/codex-latex-editor/releases)。订阅新版本：在 GitHub 点击 **Watch → Custom → Releases**。
+这是独立的预发布版本；现有 Codex 版本仍在 [Releases](https://github.com/Fr0zenWatter/codex-latex-editor/releases) 中。

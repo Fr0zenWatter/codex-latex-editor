@@ -3,6 +3,11 @@ import {t} from './latex-settings.mjs';
 export function attachNativeAnnotations(editor, setText, document = globalThis.document) {
   const $ = id => document.getElementById(id);
   const button = $('native-annotation-open'), status = $('status'), hint = $('native-annotation-status');
+  if (document.documentElement?.dataset?.aiBackend === 'deepseek') {
+    button.hidden = true;
+    hint.hidden = true;
+    return;
+  }
   // Also remove the old drawer in pages served by an already-running editor.
   $('native-annotation-preview')?.remove();
   let marker = null;

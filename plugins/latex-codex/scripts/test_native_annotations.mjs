@@ -98,4 +98,8 @@ button.onclick(); assert(marks.at(-1).cleared, 'Restore source on an API excepti
 document.oai.annotation.request = () => ({accepted:true});
 button.onclick(); events.changes(); assert(marks.at(-1).cleared, 'Do not retain replacement widgets during source editing.');
 button.onclick(); events.swapDoc(); assert(marks.at(-1).cleared, 'Clean up when opening another file.');
+document.documentElement = {dataset:{aiBackend:'deepseek'}};
+attachNativeAnnotations(editor, () => {}, document);
+assert.equal(button.hidden, true, 'DeepSeek does not expose the Codex native annotation bridge.');
+assert.equal(hint.hidden, true);
 console.log('PASS: in-place exact native ranges, batch defaults, exit cleanup and boundary validation');
