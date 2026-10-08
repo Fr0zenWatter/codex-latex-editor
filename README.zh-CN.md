@@ -8,6 +8,8 @@
 
 支持 `.md` 和 `.markdown` 笔记。只需说：**“$Latex codex  打开 xx”即可**。
 
+现已支持 [DeepSeek Harness（测试版）](https://github.com/Fr0zenWatter/codex-latex-editor/releases/tag/v0.3.1-deepseek.1)。
+
 ## 功能演示
 
 点击预览查看完整视频，演示均配有中英字幕。

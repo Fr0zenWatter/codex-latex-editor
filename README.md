@@ -8,6 +8,8 @@ Once installed, just ask: **“Use latex-codex to open main.tex.”** Edit direc
 
 Supports `.md` and `.markdown` notes. Just say: **“$Latex codex open xx”**.
 
+Also supports [DeepSeek Harness (preview)](https://github.com/Fr0zenWatter/codex-latex-editor/releases/tag/v0.3.1-deepseek.1).
+
 ## Demos
 
 Click a preview to watch the full video. All demos include English and Chinese subtitles.
