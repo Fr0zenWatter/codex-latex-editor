@@ -12,9 +12,14 @@ const selected = boxedPdfContent(content,1,[18,58,69,90]);
 assert.equal(selected.text,'A Bnd2','Copy keeps real spaces, and geometry includes both fraction rows and superscripts.');
 assert.equal(selected.fragments.length,5);
 assert.equal(selected.points.length,4);
+assert.equal(selected.contiguous,true,'A box covering every intervening glyph can use similar source matching.');
 assert.equal(boxedPdfContent(content,1,[0,0,1,1]),null);
 assert.equal(boxedPdfContent(content,1,[20,70,20.5,80]),null,'A slight edge touch must not select a neighboring glyph.');
 assert.equal(boxedPdfContent(content,1,[0,50,85,95],[[0,60,15,85]]).text,'A Bnd2','Exclude margin line numbers without excluding formula digits.');
+const cropped = {styles:content.styles,items:[glyph('alpha',20,70,10,25),glyph('missing',90,70,10,35),glyph('beta',20,55,10,20)]};
+assert.equal(boxedPdfContent(cropped,1,[18,50,50,85]).contiguous,false,'Missing middle glyphs disable similar matching, even when the two selected rows look adjacent.');
+assert.equal(boxedPdfContent({...cropped,items:[cropped.items[0],glyph('253',2,70,6,10),cropped.items[2]]},1,[18,50,50,85],[[0,0,15,100]]).contiguous,true,'Excluded margin numbers are not prose gaps.');
+assert.equal(boxedPdfContent({...cropped,items:[glyph('2',20,70),glyph('8',25,84,5),glyph('corners',35,70,10,35)]},1,[18,65,75,81]).contiguous,false,'An omitted superscript between selected fragments also blocks similarity.');
 assert.deepEqual(pdfTextRect({...glyph('r',30,40),transform:[0,10,-10,0,30,40]},content.styles),[20,40,30,45],'Use rotated glyph geometry.');
 assert.deepEqual(pdfWords({styles:content.styles,items:[...('旧句。下一句。')].map((text,i)=>glyph(text,20+i*5,70))},1).map(word=>word[2]),
   ['旧句。','下一句。'],'Keep separate CJK sentences even when their glyphs share one row.');

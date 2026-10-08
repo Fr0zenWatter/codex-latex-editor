@@ -197,7 +197,11 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     try {
       ({models} = await request('/chat/models'));
       modelSelect.replaceChildren(option('', t('跟随 Codex 默认')), ...models.map(model => option(model.id, model.name)));
-      modelSelect.value = ''; updateEfforts(); modelsLoaded = true; $('chat-model-status').textContent = '';
+      // Harness account routes read the stored credentials; the API route needs DEEPSEEK_API_KEY.
+      const preferred = models.find(model => model.id.startsWith('deepseek-account/') && model.default)
+        || models.find(model => model.id.startsWith('deepseek-account/'));
+      modelSelect.value = preferred ? preferred.id : '';
+      updateEfforts(); modelsLoaded = true; $('chat-model-status').textContent = '';
     } catch(e) { $('chat-model-status').textContent = e.message; }
     finally { modelsLoading = false; renderQuickSettings(); }
   }

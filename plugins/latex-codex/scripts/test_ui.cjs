@@ -72,6 +72,7 @@ const context = vm.createContext({
   attachMathHover(){return {setMainSource(){}};},attachNativeAnnotations(){},attachSelectionChat(){return {open(){chatOpened.push('full');},openQuick(anchor){chatOpened.push(anchor);},refreshAnnotations(){},busy:false};},attachHistory(){},mountHistoryTabs(){},katex:{},
   attachProjectReview(){return {items:[],busy:false,refresh:async()=>{},clear(){}};},
   attachProofreadPdf(){return {update(){},invalidate(){},active:false};},paintProofreadActions(){},
+  attachProofreadNavigation(config){config.button.navigation=config;return {update(){}};},proofreadPdfPositions(){return [];},
   mountSourceWheel({button}){return {update(data){button.textContent=data.files.find(file=>file.path===data.path)?.name;button.files=data.files;button.mainFile=data.mainFile;},setDisabled(value){button.disabled=value;}};},
   pdfPageBoxes:async()=>[[0,0,600,800],[0,0,600,800]],
   attachPdfBoxSelection(config){context.boxConfig=config;return {selection:null,clear(){this.selection=null;config.onSelect(null);},start(){return false;},move(){return false;},end(){return false;},bounds(){return {left:20,top:30,bottom:70};}};},
@@ -857,6 +858,14 @@ After.`;
   assert.equal(vm.runInContext('pdfVersion',context),'','Unsynced child edits disable old PDF synchronization.');
   assert.equal(vm.runInContext('mainSource',context),'','Opening the main source must discard the previous child preamble snapshot.');
   assert.throws(()=>context.sourcePdfTextRange('alpha missing beta',[1],'alpha beta',{}, {},'alpha missing beta',true),/唯一匹配/,'Rectangular prose selections cannot guess across omitted words.');
+  const similarBox=(source,text,continuous=true)=>JSON.parse(JSON.stringify(context.sourcePdfTextRange(source,[1],text,{}, {},source,true,continuous)));
+  const similarSource='Before. A precise bound follows. After.';
+  assert.deepEqual(similarBox(similarSource,'A precise boμnd follows.'),{from:{line:0,ch:8},to:{line:0,ch:32},approximate:true,similar:true},'A continuous box tolerates a PDF glyph substitution while preserving its source edges.');
+  assert.throws(()=>similarBox(similarSource,'A precise boμnd follows.',false),/唯一匹配/,'Unverified or disconnected rectangles remain strict.');
+  assert.throws(()=>similarBox('A precise bound follows. A precise bound follows.','A precise boμnd follows.'),/唯一匹配/,'Similar box matching still rejects equally good source ranges.');
+  assert.throws(()=>similarBox(similarSource,'A completely different statement.'),/唯一匹配/,'Continuous geometry does not justify an unrelated source match.');
+  const scriptSource=String.raw`The bound is $x_1^2$ for every value.`;
+  assert.deepEqual(similarBox(scriptSource,'The bound is x21 for every value.'),{from:{line:0,ch:0},to:{line:0,ch:scriptSource.length},approximate:true,similar:true,mathBlock:true},'Similar boxes tolerate reordered formula scripts and retain the complete inline expression.');
   const boxedItem=String.raw`\item The matrix factors have rank $r$, the transformed condition numbers are below $7\sqrt k$, and the raw condition numbers are at most $1024\sqrt k\,r^2$.`;
   const boxedItemPdf='1. The matrix factors have rank r,\nthe transformed condi-\ntion numbers are below 7√k, and the raw condition\nnumbers are at most 1024√k r2.';
   const boxedMatch=(source,text)=>JSON.parse(JSON.stringify(context.sourcePdfTextRange(source,[1],text,{}, {},source,true)));
@@ -867,6 +876,21 @@ After.`;
   const boxedHyphen=String.raw`\item A matrix-vector factor has rank $r$.`;
   assert.deepEqual(boxedMatch(boxedHyphen,'2. A matrix-\nvector factor has rank r.'),{from:{line:0,ch:6},to:{line:0,ch:boxedHyphen.length},approximate:true,mathBlock:true},'Formula projection must retain genuine compound-word hyphens.');
   assert.deepEqual(JSON.parse(JSON.stringify(context.sourcePdfTextRange('Before $x_1$ after.',[1],'x',{}, {},'Before $x_1$ after.',true))),{from:{line:0,ch:7},to:{line:0,ch:12},approximate:true,mathBlock:true},'Even a literal boxed inline symbol expands to its intact formula.');
+  const runInBody=String.raw`All $2^8$ corners agreed with \eqref{eq:intervals} to error $2.23\times10^{-16}$. These checks do not replace proofs.`;
+  const runInSource='\\paragraph{Exactness checks.}\n'+runInBody;
+  const runInPdf='Exactness checks. All 28 corners agreed with (15) to error 2.23 × 10−16. These checks do not replace proofs.';
+  const runInMatch=(source,text,locations=[2])=>{
+    const range=context.sourcePdfTextRange(source,locations,text,{'eq:intervals':'15'}, {},source,true);
+    const offset=pos=>source.split('\n').slice(0,pos.line).reduce((n,line)=>n+line.length+1,0)+pos.ch;
+    return source.slice(offset(range.from),offset(range.to));
+  };
+  assert.equal(runInMatch(runInSource,runInPdf),runInSource,'A boxed run-in heading and its body preserve the paragraph command even when SyncTeX tags only the body.');
+  assert.equal(runInMatch(runInSource,runInPdf.slice('Exactness checks. '.length)),runInBody,'Body-only selections exclude an unselected run-in heading.');
+  assert.equal(runInMatch('\\paragraph*[Short title]{Exactness checks.}\n'+runInBody,runInPdf),'\\paragraph*[Short title]{Exactness checks.}\n'+runInBody,'Starred and optional-short-title run-in headings use the displayed title.');
+  assert.equal(runInMatch('\\subparagraph{Exactness checks.} '+runInBody,runInPdf,[1]),'\\subparagraph{Exactness checks.} '+runInBody,'Same-line subparagraph headings retain balanced source boundaries.');
+  assert.throws(()=>runInMatch(runInSource,runInPdf.replace('corners ','')),/唯一匹配/,'Run-in headings never excuse missing boxed prose.');
+  assert.throws(()=>runInMatch(runInSource,runInPdf.replace('Exactness checks.','Other checks.')),/唯一匹配/,'Only the actual source heading can match.');
+  assert.throws(()=>runInMatch(runInSource,runInPdf.slice('Exactness '.length)),/唯一匹配/,'A partial heading followed by body text must not silently include omitted title words.');
   const theoremPreamble=String.raw`\newtheorem{theorem}{Theorem}
 \newtheorem{lem}[theorem]{Lemma}
 \newtheorem*{observation}{Observation}`;
@@ -918,6 +942,12 @@ Every square is nonnegative.
   assert.deepEqual(JSON.parse(JSON.stringify(editor.selection)),{from:{line:0,ch:2},to:{line:0,ch:18}},'Boxed prose uses the existing source/comment flow.');
   let copied;preview.events.copy({clipboardData:{setData(type,text){assert.equal(type,'text/plain');copied=text;}},preventDefault(){}});
   assert.equal(copied,'short selectable');
+  assert.equal(await context.synchronize('selection',{...boxData,text:'short selectab1e',contiguous:true}),true,'The box geometry flag reaches the source matcher.');
+  assert.match(element('#status').textContent,/相似 LaTeX/);
+  assert.deepEqual(JSON.parse(JSON.stringify(editor.selection)),{from:{line:0,ch:2},to:{line:0,ch:18}});
+  const similarSelection=editor.selection;
+  await context.synchronize('selection',{...boxData,text:'short selectab1e',contiguous:false});
+  assert.equal(editor.selection,similarSelection,'A gapped box cannot change the source selection through a similar match.');
   vm.runInContext("version='changed'",context);preview.oncontextmenu(pdfClick);
   assert.equal(vm.runInContext('pdfSelection.version',context),'box-v','Opening the box menu never restamps a stale selection as current.');
   const boxesOpened=chatOpened.length;await element('#pdf-chat-quick-menu').onclick();assert.equal(chatOpened.length,boxesOpened);
@@ -1025,6 +1055,22 @@ Every square is nonnegative.
   vm.runInContext("display({source:markdownSource,version:'tex-v',name:'paper.tex',path:'/project/paper.tex'})",context);
   assert.equal(options.mode,'text/x-stex');assert.equal(element('#markdown-preview').hidden,true);
   assert.equal(element('a[download]').href,'/pdf');
+  const reviewDoc={};context.reviewDoc=reviewDoc;editor.getDoc=()=>reviewDoc;
+  editor.charCoords=pos=>({top:pos.line*100});
+  vm.runInContext("localReviewItems=[{doc:reviewDoc,review:{},marker:{find:()=>({from:{line:9,ch:0}})}},{doc:{},review:{},marker:{find:()=>({from:{line:20,ch:0}})}},{doc:reviewDoc,marker:{find:()=>({from:{line:30,ch:0}})}}];projectReview.items.push({doc:reviewDoc,review:{},marker:{find:()=>({from:{line:15,ch:0}})}})",context);
+  const sourceNavigation=element('#proofread-next').navigation;
+  assert.equal(sourceNavigation.previous,element('#proofread-previous'));
+  stored.set('latex-codex-proofread-editor','on');
+  assert.deepEqual(Array.from(sourceNavigation.positions()),[900,1500], 'Source navigation includes project review and skips stale/non-review annotations.');
+  assert.equal(sourceNavigation.top(),200);assert.equal(sourceNavigation.bottom(),800);
+  sourceNavigation.scroll(876);assert.deepEqual(editor.scroll,[null,876]);
+  stored.set('latex-codex-proofread-editor','off');assert.equal(sourceNavigation.positions().length,0);
+  assert.equal(element('#pdf-proofread-next').navigation.positions().length,0, 'Regular PDFs never expose proofread targets.');
+  const pdfNavigation=element('#pdf-proofread-next').navigation;
+  assert.equal(pdfNavigation.previous,element('#pdf-proofread-previous'));
+  assert.equal(pdfNavigation.top(),element('#preview').scrollTop);
+  assert.equal(pdfNavigation.bottom(),element('#preview').scrollTop+element('#preview').clientHeight);
+  console.log('PASS: source and PDF previous/next-change wiring, viewport boundaries, offscreen positions, project reviews, stale document exclusion and disabled proofreading');
   console.log('PASS: Markdown math mode, live/PDF preview switching, save-only behavior, both downloads, navigation and return to LaTeX');
   console.log('PASS: optional automatic box comments, mapped anchors, no AI submission, cancellation, replacement, stale source and persistence');
   console.log('PASS: durable annotation saves, path/version guards, transient retry, conflict and draft protection');

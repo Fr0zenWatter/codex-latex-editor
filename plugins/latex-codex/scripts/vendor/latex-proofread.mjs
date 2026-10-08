@@ -1,5 +1,26 @@
 import {t} from './latex-settings.mjs';
 
+export function attachProofreadNavigation({button, previous, positions, top, bottom, scroll}) {
+  let frame = 0;
+  function update() {
+    const targets = positions().filter(Number.isFinite).sort((a,b) => a-b);
+    const above = targets.filter(position => position < top() - 1);
+    const below = targets.filter(position => position >= bottom() - 1);
+    previous.hidden = !above.length;
+    previous.lastElementChild.textContent = t('上方还有 {count} 处改动', {count:above.length});
+    button.hidden = !below.length;
+    button.lastElementChild.textContent = t('下方还有 {count} 处改动', {count:below.length});
+    return {above, below};
+  }
+  function schedule() {
+    if (!frame) frame = requestAnimationFrame(() => { frame = 0; update(); });
+  }
+  previous.onclick = () => { const target = update().above.at(-1); if (target !== undefined) scroll(Math.max(0,target-24)); };
+  button.onclick = () => { const target = update().below[0]; if (target !== undefined) scroll(Math.max(0,target-24)); };
+  window.addEventListener('latex-language-change', schedule);
+  return {update:schedule};
+}
+
 // This is a display widget. The source stays unchanged until Keep succeeds.
 export function attachProofread(editor, from, to, before, after, changes, keep, undo, settled=()=>{}, visible=true) {
   const root = document.createElement('span'); root.className = 'proofread';

@@ -79,7 +79,7 @@ export async function readPdfOutline(pdf, fallback = []) {
 
 export function attachPdfOutline({container, preview, viewer, eventBus, t, style: initialStyle = 'wheel'}) {
   let generation = 0, pageCount = 0, entries = [], active = -1, selected = -1, position = 0, target = 0;
-  let style = initialStyle === 'cards' ? 'cards' : 'wheel', items = [], sections = [], subsections = [];
+  let style = ['cards', 'timeline'].includes(initialStyle) ? initialStyle : 'wheel', items = [], sections = [], subsections = [];
   let subSelected = -1, subPosition = 0, subTarget = 0;
   let opened = false, inside = false, keyboardFocus = false, drag = null, suppressClick = false, pressedIndex = null;
   let scrollDrag = null, suppressHandleClick = false, thumbCenter = 0, thumbTravel = 0, scrollRange = 0;
@@ -112,7 +112,7 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
   const clamp = value => Math.max(0, Math.min(items.length - 1, value));
   const holdsFocus = () => keyboardFocus && container.contains(document.activeElement);
   function positionFor(index) {
-    if (style === 'wheel') return Math.max(0, items.indexOf(index));
+    if (style !== 'cards') return Math.max(0, items.indexOf(index));
     let owner = 0;
     sections.forEach((section, i) => { if (section <= index) owner = i; });
     return owner;
@@ -148,7 +148,8 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
     container.setAttribute('aria-label', t('章节目录'));
     updatePageCaption();
     handle.setAttribute('aria-description', t(items.length ? '方向键滚动 PDF，Enter 打开章节目录' : '方向键滚动 PDF'));
-    dial.setAttribute('aria-label', t(style === 'cards' ? '章节卡片：方向键浏览，Enter 跳转' : '章节拨轮：方向键浏览，Enter 跳转'));
+    dial.setAttribute('aria-label', t(style === 'timeline' ? '章节时间线：方向键浏览，Enter 跳转' :
+      style === 'cards' ? '章节卡片：方向键浏览，Enter 跳转' : '章节拨轮：方向键浏览，Enter 跳转'));
     subdial.setAttribute('aria-label', t('小节轮盘：方向键浏览，Enter 跳转'));
     for (const cell of [...cells.values(), ...subCells.values()]) cell.setAttribute('aria-label', t('跳转到章节') + ' ' + name(entries[Number(cell.dataset.index)]));
     updateCaption();
@@ -256,10 +257,14 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
 
   function makeCell(index, parent = rotor) {
     const entry = entries[index], cell = element('button', 'pdf-dial-tick', parent);
+    const major = entry.depth === 0 || entry.kind === 'section';
     cell.type = 'button'; cell.tabIndex = -1; cell.title = name(entry);
     cell.setAttribute('aria-label', t('跳转到章节') + ' ' + name(entry));
-    cell.dataset.index = index; cell.classList.toggle('is-major', entry.depth === 0);
-    if (style === 'wheel') {
+    cell.dataset.index = index; cell.classList.toggle('is-major', major);
+    if (style === 'timeline') {
+      const marker = element('span', 'pdf-timeline-marker', cell); marker.setAttribute('aria-hidden', 'true');
+      marker.textContent = major ? entry.number : '';
+    } else if (style === 'wheel') {
       const number = element('span', 'pdf-dial-number', cell); number.textContent = entry.number || String(index + 1);
     } else if (parent === rotor) {
       const tag = element('span', 'pdf-card-tag', cell);
@@ -272,6 +277,7 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
     if (!items.length) return;
     const next = items[clamp(Math.round(position))];
     if (selected !== next) { selected = next; refreshSubsections(); updateCaption(); }
+    if (style === 'timeline') rotor.style.setProperty('--timeline-progress', `${Math.max(0, Math.min(height, height / 2 + (positionFor(active) - position) * 56))}px`);
     // The circle's center is to the right; the visible arc faces left.
     // Keep spacing independent of document length, with no wrap-around.
     const visible = style === 'cards' ? height / 176 : height / 112, limit = visible + 1;
@@ -280,7 +286,9 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
     for (let index = first; index <= last; index++) {
       const cell = cells.get(index) || makeCell(items[index]), offset = index - position, angle = offset * step;
       cells.set(index, cell);
-      if (style === 'cards') {
+      if (style === 'timeline') {
+        cell.style.transform = `translateY(${offset * 56}px) translateY(-50%)`;
+      } else if (style === 'cards') {
         const spread = offset * 88 / cardRadius;
         const x = cardRadius * (1 - Math.cos(spread)), y = cardRadius * Math.sin(spread);
         // Reference carousel: upright cards recede in size and depth along the arc.
@@ -291,11 +299,12 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
         cell.style.transform = `translate(${x}px,${y}px) translateY(-50%) rotate(${-angle * 180 / Math.PI}deg) scale(${1 - Math.min(Math.abs(offset) * .04, .3)})`;
       }
       // Keep readable cards opaque; only fade cards as they leave the visible arc.
-      cell.style.opacity = String(style === 'cards' ? Math.max(0, Math.min(1, (visible - Math.abs(offset)) / .27)) :
+      cell.style.opacity = String(style !== 'wheel' ? Math.max(0, Math.min(1, (visible - Math.abs(offset)) / .27)) :
         Math.cos(Math.min(Math.abs(offset) / visible, 1) * Math.PI / 2));
       cell.style.pointerEvents = Math.abs(offset) < visible ? 'auto' : 'none';
       const current = style === 'cards' ? index === positionFor(active) : items[index] === active;
       cell.classList.toggle('is-selected', items[index] === selected); cell.classList.toggle('is-current', current);
+      cell.classList.toggle('is-completed', style === 'timeline' && items[index] < active);
       cell.setAttribute('aria-current', current ? 'location' : 'false');
     }
     paintSubsections();
@@ -444,7 +453,7 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
   }
   function scheduleTrack() { if (!tracking) tracking = requestAnimationFrame(track); }
   function resize() {
-    width = 336; height = style === 'cards' ? 400 : 344;
+    width = 336; height = style === 'wheel' ? 344 : 400;
     // Scale the complete composition together, while keeping it inside the preview.
     scale = .8 * Math.max(.1, Math.min(1.4, Math.max(.72, preview.clientWidth / 800),
       preview.clientWidth / width, Math.max(1, preview.clientHeight - 16) / height));
@@ -483,7 +492,7 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
   return {
     clear,
     setStyle(value) {
-      const next = value === 'cards' ? 'cards' : 'wheel'; if (style === next) return;
+      const next = ['cards', 'timeline'].includes(value) ? value : 'wheel'; if (style === next) return;
       if (drag) endDrag({}, true);
       clearTimers(); cancelAnimationFrame(animation); animation = 0;
       style = next; buildItems(); resize(); language();

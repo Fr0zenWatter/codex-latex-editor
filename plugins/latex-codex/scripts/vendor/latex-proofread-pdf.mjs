@@ -46,6 +46,19 @@ export function attachProofreadPdf({request, capture, display, restore, message,
   return {update,invalidate,get active(){return pending || !!shown;},get data(){return shown;}};
 }
 
+export function proofreadPdfPositions(viewer, data, annotations, build) {
+  if (!data || data.pdf_revision !== build) return [];
+  const pending = new Set(annotations.filter(item => item.review).map(item => item.id)), positions = new Map();
+  for (const region of data.regions) {
+    const view = viewer.getPageView(region.page-1);
+    if (!pending.has(region.id) || !view?.viewport || data.top_origin && !view.pdfPage) continue;
+    const [left,,,topEdge] = data.top_origin ? view.pdfPage.mediaBox : [0,0,0,0];
+    const top = view.div.offsetTop + view.viewport.convertToViewportPoint(left+region.rect[0],topEdge+region.rect[3])[1];
+    positions.set(region.id, Math.min(positions.get(region.id) ?? Infinity, top));
+  }
+  return [...positions.values()];
+}
+
 export function paintProofreadActions(viewer, data, annotations, build, translate) {
   if (!data || data.pdf_revision !== build) return;
   const rows = new Map();

@@ -76,13 +76,17 @@ python plugins/latex-codex/scripts/editor.py /path/to/project/paper/main.tex --p
 
 ## 维护
 
+目录新增“章节时间线”：沿用 PDF 抓手的悬停、点击和关闭流程，竖线连接 section 大圆与 subsection 小胶囊，当前位置显示双层圆环。滚轮、拖动和方向键只浏览，点击或 Enter 跳转；目录样式沿用全局偏好保存。实现和检查在 `vendor/latex-outline.{mjs,css}`、`vendor/latex-settings.mjs`、`test_outline.mjs` 和 `test_settings.mjs`。
+
+源码和 PDF 校对区提供“上方还有 N 处改动”和“下方还有 N 处改动”按钮，分别位于右上角与右下角，点击滚动到最近的上一处或下一处待处理修改，不接受或撤销建议。源码按 CodeMirror 标记的位置统计，可导航未渲染的改动；PDF 按当前校对预览的区域定位，同一建议跨页只计一次。滚动、缩放、分栏调整、Keep / Undo 和校对开关变化更新计数；某方向没有改动时隐藏对应按钮。实现和检查在 `vendor/latex-proofread.mjs`、`vendor/latex-proofread-pdf.mjs`、`test_proofread.mjs`、`test_proofread_pdf.mjs` 和 `test_ui.cjs`。
+
 临时批注框工具栏的“Style”按钮位于思考等级后，未选风格为灰色，已选高亮；收起时只显示 Style，不展示名称，不另开对话框。点击原生下拉菜单选择“无”、预设或导入提示词。预设提供用户给定的 Tao Compact / Shelah Compact 中英文提示词，可导入 UTF-8 `.txt` / `.md`（最大 64 KiB、12000 字符）。预设及拼接逻辑在 `scripts/vendor/latex-writing-styles.mjs`，仅作为当前批注的提示词数据，不安装或执行技能。Style 选择（含导入提示词）自动存入用户全局偏好，新批注、刷新页面和切换文稿继续沿用，选择“无”清除默认风格。每条批注保存自己的风格快照；批量发送按各自快照把风格合入 `annotation.request`，当前修改要求优先。确认修改的历史保留实际发送的完整要求。仅当前默认导入项随全局偏好保存，其余导入项仍只保留在当前页面；检查覆盖 `test_chat_ui.mjs` 与 `test_preferences.py`。
 
 PDF 的“选字”模式支持空格临时拖动；同时按住空格与 Alt，再按住左键向右下拖动可连续放大，向左上拖动可连续缩小，范围为 30%–500%。按下鼠标的位置作为缩放中心；每帧合并指针移动，通过 PDF.js 延迟栅格渲染保持拖动流畅，松开后立即补清晰渲染。松开任一快捷键、取消拖动、失焦、切换模式或替换 PDF 均结束手势，不触发框选批注或源码定位。检查覆盖 `test_ui.cjs`。
 
 源码的 Ctrl+F / macOS Cmd+F 打开搜索替换面板，支持大小写、正则、整词与仅选区搜索，Enter / Shift+Enter 浏览匹配，Esc 关闭。默认不区分大小写、按普通文本搜索；选项按钮高亮表示开启，再次点击关闭，大小写与正则按钮的提示显示当前状态。替换通过 CodeMirror 的正常编辑与自动保存流程执行；全部替换为一次可撤销操作。实现位于 `plugins/latex-codex/scripts/vendor/latex-search.{mjs,css}`，检查覆盖 `test_search.mjs` 与 `test_ui.cjs`。PDF 右侧滚动手柄显示当前物理页码和总页数，默认宽度 26 px，较长页数自动撑开；无章节目录时仍保留页码与滚动，PDF 关闭时清除，检查覆盖 `test_outline.mjs`。
 
-PDF 的“选字”模式保留文字上的原生拖选；从页面空白处按下左键拖动时，在起始页内框选文字或公式。框选按 PDF.js 字符几何位置判断，松开后才按页读取并缓存字符数据，拖动过程不调用 SyncTeX。右键“添加批注”沿用现有源码定位；公式优先核实编译位置并选中完整公式环境，行内公式也保留完整源码边界。框选正文要求明确匹配，不用编辑距离猜测被矩形漏掉的文字；无法匹配时扩大选框或在源码选择。Esc、切换拖动模式、缩放或替换 PDF 会清除框选。检查覆盖 `test_pdf_selection.mjs` 与 `test_ui.cjs`。历史 PDF 标红按完整句子展开，Markdown 同时以源码段落和标题为边界，跨图片后的下一段不并入前句；中文句号保留独立句子，换行造成的 PDF 文字片段拆合不算内容修改，正文页码不参与 Markdown 句子对比。检查覆盖 `test_history_pdf.py` 与 `test_markdown_pdf.py`。
+PDF 的“选字”模式保留文字上的原生拖选；从页面空白处按下左键拖动时，在起始页内框选文字或公式。框选按 PDF.js 字符几何位置判断，松开后才按页读取并缓存字符数据，拖动过程不调用 SyncTeX。右键“添加批注”沿用现有源码定位；公式优先核实编译位置并选中完整公式环境，行内公式也保留完整源码边界。同排显示的 `\paragraph` / `\subparagraph` 标题与正文可一起匹配，保留完整标题命令；只选正文时不带入标题。框选正文先做明确匹配；几何检测确认首末字符之间的文字完整覆盖时，可使用与拖选相同的有限相似匹配，容忍字符误读与公式排版差异。漏选中间字符时不启用相似匹配，多个同等匹配仍拒绝定位；无法匹配时扩大选框或在源码选择。Esc、切换拖动模式、缩放或替换 PDF 会清除框选。检查覆盖 `test_pdf_selection.mjs` 与 `test_ui.cjs`。历史 PDF 标红按完整句子展开，Markdown 同时以源码段落和标题为边界，跨图片后的下一段不并入前句；中文句号保留独立句子，换行造成的 PDF 文字片段拆合不算内容修改，正文页码不参与 Markdown 句子对比。检查覆盖 `test_history_pdf.py` 与 `test_markdown_pdf.py`。
 
 PDF 正文定位识别主文件中直接声明的 `\newtheorem`（含星号及共享计数器）和 `proof`，将自动标题、编号、纯文本可选标题和证毕方块与对应源码边界核对。完整环境选区保留配对的 `\begin` / `\end`，部分正文保持精确范围；跨环境的部分选区、漏选正文和歧义匹配拒绝定位。宏生成标题、外部包定义的自定义环境及非标准标题布局仍需源码选择。实现与检查在 `editor.py`、`test_ui.cjs`。
 
