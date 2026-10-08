@@ -12,7 +12,7 @@ Also supports [DeepSeek Harness (preview)](https://github.com/Fr0zenWatter/codex
 
 ## Demos
 
-Click a preview to watch the full video. All demos include English and Chinese subtitles.
+Click a preview to watch the full demo. All demos include English and Chinese subtitles.
 
 ### Annotations (main chat)
 
@@ -22,15 +22,13 @@ Select source text, click the annotation icon, and save your requests. Send them
 
 ### Temporary annotations (kept out of the main chat)
 
-Select a word, a paragraph, or text with equations in the PDF. Add comments and let Codex revise those passages, with the source and PDF updating together.
+Switch between **Select text / Pan** above the PDF. In Select text mode, hold **Space** to pan, or **Space + Alt** and drag vertically to zoom. Box-select or drag directly over text, then right-click to add a comment. Settings can open comments automatically after box selection.
 
 Review each suggestion in the source and a temporary red/green PDF preview. **Keep** saves that change; **Undo** preserves the original. Editor and PDF proofreading can be toggled separately under **gear**. Enable **Project change review** to review changes made by the main chat or external tools across project TeX files.
 
-Choose **Style** in the comment toolbar for Tao Compact / Shelah Compact in English or Chinese, or import your own `.txt` / `.md` prompt. Your choice is remembered for new comments.
+**Style** in the comment toolbar provides prompt instructions for your edits.
 
-In **Select text** mode, drag from a blank area of the PDF page to box-select text or formulas, then right-click to add a comment. Dragging on text keeps ordinary text selection; **Esc** clears the box selection.
-
-Choose a color under **gear → Replacement color** to mark actual annotation edits with LaTeX `\color`, making changes easy to spot in the PDF. Select **None** to turn color marking off.
+Under **gear → Replacement color**, add LaTeX `\color` to edits to show PDF changes to reviewers.
 
 [![Watch the annotation editing demo](docs/media/03-pdf-comments.gif)](docs/media/03-pdf-comments.mp4)
 
