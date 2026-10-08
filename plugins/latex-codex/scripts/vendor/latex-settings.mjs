@@ -50,7 +50,8 @@ export const english = {
   '正在保存设置…':'Saving settings…', '设置已保存，下次打开会恢复。':'Settings saved. They will be restored next time.',
   '设置保存失败：{message}':'Could not save settings: {message}',
   '章节目录':'Section outline',
-  '轮盘':'Dial', '章节卡片 + 小节轮盘':'Section cards + subsection dial',
+  '轮盘':'Dial', '章节卡片 + 小节轮盘':'Section cards + subsection dial', '章节时间线':'Section timeline',
+  '章节时间线：方向键浏览，Enter 跳转':'Section timeline: arrow keys to browse, Enter to jump',
   '章节卡片：方向键浏览，Enter 跳转':'Section cards: arrow keys to browse, Enter to jump',
   '小节轮盘：方向键浏览，Enter 跳转':'Subsection dial: arrow keys to browse, Enter to jump',
   '打开章节拨轮':'Open section dial', '章节拨轮：方向键浏览，Enter 跳转':'Section dial: arrow keys to browse, Enter to jump',
@@ -138,6 +139,7 @@ export const english = {
   '上一版 → 此版本':'Previous snapshot → Selected version', '版本名称已保存。':'Version name saved.', '版本名称已清除。':'Version name cleared.',
   '正在保留当前内容并恢复…':'Preserving current contents and restoring…', '读取失败：':'Unable to load: ', '历史读取失败：':'Unable to load history: ',
   '命名失败：':'Unable to rename: ', '恢复失败：':'Unable to restore: ', '下方还有 {count} 处改动':'{count} more updates below',
+  '上方还有 {count} 处改动':'{count} more updates above',
   '新增':'Added', '删除':'Deleted', '删除的行':'Deleted line',
   '正在打开…':'Opening…', 'LaTeX 源码':'LaTeX source', '问 Codex':'Ask Codex', '选中文本后与 Codex 对话':'Select text to ask Codex',
   'i 插入 · Esc 普通模式 · / 搜索 · :w 保存并编译':'i Insert · Esc Normal · / Search · :w Save and compile',
@@ -325,9 +327,9 @@ export function initSettings() {
   if (!['system', ...supportedLanguages].includes(languageSelect.value)) languageSelect.value = 'system';
   if (!colors[colorSelect.value]) colorSelect.value = 'orange';
   try { outlineSelect.value = preferences.getItem('latex-codex-outline-style') || 'wheel'; } catch {}
-  if (!['wheel', 'cards'].includes(outlineSelect.value)) outlineSelect.value = 'wheel';
+  if (!['wheel', 'cards', 'timeline'].includes(outlineSelect.value)) outlineSelect.value = 'wheel';
   outlineSelect.onchange = () => {
-    if (!['wheel', 'cards'].includes(outlineSelect.value)) outlineSelect.value = 'wheel';
+    if (!['wheel', 'cards', 'timeline'].includes(outlineSelect.value)) outlineSelect.value = 'wheel';
     try { preferences.setItem('latex-codex-outline-style', outlineSelect.value); } catch {}
     window.dispatchEvent(new Event('latex-outline-change'));
   };

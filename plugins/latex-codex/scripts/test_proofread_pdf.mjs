@@ -1,6 +1,6 @@
 // Run: node test_proofread_pdf.mjs (stdlib only).
 import assert from 'node:assert/strict';
-import {attachProofreadPdf,paintProofreadActions} from './vendor/latex-proofread-pdf.mjs';
+import {attachProofreadPdf,paintProofreadActions,proofreadPdfPositions} from './vendor/latex-proofread-pdf.mjs';
 let timers=new Map(),timerId=0;
 globalThis.setTimeout=fn=>{timers.set(++timerId,fn);return timerId;};globalThis.clearTimeout=id=>timers.delete(id);
 const flush=async()=>{const work=[...timers.values()];timers.clear();await Promise.all(work.map(fn=>fn()));};
@@ -43,4 +43,12 @@ assert.equal(page.children.length,1);const [,undo,keep]=page.children[0].childre
 assert.equal(kept,1);assert.equal(undone,1);assert.equal(keep.attributes['aria-label'],'Keep #1');
 annotation.review.busy=true;paintProofreadActions(viewer,{pdf_revision:'shown',regions:[{id:1,page:1,rect:[70,600,300,620]}]},[annotation],'shown',key=>key);
 assert(page.children[1].children[2].disabled);
+page.offsetTop=200;
+const regions={pdf_revision:'shown',regions:[{id:1,page:1,rect:[70,600,300,620]},
+  {id:1,page:2,rect:[70,400,300,420]},{id:2,page:1,rect:[70,200,300,220]}]};
+assert.deepEqual(proofreadPdfPositions(viewer,regions,[annotation],'shown'),[380], 'Cross-page regions count as one suggestion at its first occurrence.');
+assert.deepEqual(proofreadPdfPositions(viewer,regions,[],'shown'),[], 'Keep/Undo removes resolved targets.');
+assert.deepEqual(proofreadPdfPositions(viewer,regions,[annotation],'other'),[], 'Stale PDF geometry cannot navigate.');
+const croppedViewer={getPageView:()=>({div:page,pdfPage:{mediaBox:[10,20,610,820]},viewport:{convertToViewportPoint:(x,y)=>[x,820-y]}})};
+assert.deepEqual(proofreadPdfPositions(croppedViewer,{pdf_revision:'shown',top_origin:true,regions:[{id:1,page:1,rect:[70,-220,300,-200]}]},[annotation],'shown'),[400]);
 console.log('PASS: disposable-only requests, Unicode ranges, deduplication, stale response exclusion, restore, errors and independent PDF controls');

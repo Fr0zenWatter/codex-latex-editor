@@ -63,4 +63,42 @@
 #pdf-outline[data-outline-style=cards] .pdf-dial> .pdf-dial-rotor> .pdf-dial-tick.is-current{border-bottom-color:#38887999}
 #pdf-outline[data-outline-style=cards] .pdf-dial> .pdf-dial-rotor .pdf-dial-title{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;width:100%;min-height:0;white-space:normal;overflow-wrap:anywhere;max-height:2.7em;overflow:hidden}
 .pdf-card-tag{position:absolute;left:12px;top:10px;border-radius:999px;background:#ffffff1a;padding:2px 7px;color:#ffffffb3;font-size:10px;font-weight:500;line-height:1.4;letter-spacing:.04em}
+#pdf-outline[data-outline-style=timeline] .pdf-dial-indicator{display:none}
+#pdf-outline[data-outline-style=timeline] .pdf-dial-drawer::before{
+  inset:-24px 12px -24px 0;background:radial-gradient(ellipse 48% 48% at 50% 50%,#fffffff5 30%,#f4f6f8dc 65%,transparent 100%);
+}
+#pdf-outline[data-outline-style=timeline] .pdf-dial-rotor::before{
+  content:'';position:absolute;left:43px;top:0;bottom:0;width:2px;border-radius:999px;
+  background:linear-gradient(to bottom,#2c6bff66 var(--timeline-progress,50%),#cbd5e1 var(--timeline-progress,50%));
+}
+#pdf-outline[data-outline-style=timeline] .pdf-dial-rotor{mask-image:linear-gradient(transparent,#000 12%,#000 88%,transparent);-webkit-mask-image:linear-gradient(transparent,#000 12%,#000 88%,transparent)}
+#pdf-outline[data-outline-style=timeline] .pdf-dial-tick{
+  left:28px;width:calc(100% - 64px);min-height:48px;padding:0;gap:16px;align-items:center;
+  color:#64748b;font-size:13px;font-weight:450;text-shadow:none;transform-origin:left center;
+}
+#pdf-outline[data-outline-style=timeline] .pdf-dial-tick.is-major{font-size:15px;font-weight:650;color:#334155}
+#pdf-outline[data-outline-style=timeline] .pdf-dial-tick:is(.is-selected,:hover){color:#0f172a}
+#pdf-outline[data-outline-style=timeline] .pdf-dial-tick.is-current{color:#245ce0}
+#pdf-outline[data-outline-style=timeline] .pdf-dial-title{
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;max-height:2.8em;
+  white-space:normal;overflow-wrap:anywhere;line-height:1.4;
+}
+.pdf-timeline-marker{
+  position:relative;isolation:isolate;display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;
+  color:#64748b;font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;
+}
+.pdf-timeline-marker::before{
+  content:'';position:absolute;inset:0;z-index:-1;border:2px solid #cbd5e1;border-radius:50%;background:#f8fafc;
+  transition:border-color 200ms ease,background 200ms ease,outline-color 200ms ease;
+}
+.pdf-dial-tick:not(.is-major) .pdf-timeline-marker::before{inset:10px 6px;border-radius:999px}
+.pdf-dial-tick.is-completed .pdf-timeline-marker{color:#fff}
+.pdf-dial-tick.is-completed .pdf-timeline-marker::before{border-color:#2c6bff;background:#2c6bff}
+.pdf-dial-tick.is-current .pdf-timeline-marker{color:#245ce0}
+.pdf-dial-tick.is-current .pdf-timeline-marker::before{
+  border-color:#2c6bff;background:#eff5ff;outline:3px solid #2c6bff33;outline-offset:3px;box-shadow:0 1px 3px #1e40af18;
+}
+.pdf-dial-tick.is-current:not(.is-major) .pdf-timeline-marker::before{inset:7px;border-radius:50%;background:#2c6bff}
+#pdf-outline[data-outline-style=timeline] .pdf-dial:focus-visible{outline:2px solid #2c6bff66;outline-offset:-8px;border-radius:16px}
+@media(prefers-reduced-motion:reduce){.pdf-timeline-marker::before{transition:none}}
 @media(prefers-reduced-motion:reduce){.pdf-dial-drawer,#pdf-outline .pdf-dial-handle,#pdf-outline[data-outline-style=cards] .pdf-dial> .pdf-dial-rotor> .pdf-dial-tick{transition:none}}

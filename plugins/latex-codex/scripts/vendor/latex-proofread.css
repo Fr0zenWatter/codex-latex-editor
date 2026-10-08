@@ -20,3 +20,15 @@
 .pdf-proofread-actions button:disabled{opacity:.5;cursor:wait}
 
 #project-review-list{display:flex;flex-direction:column;gap:6px;max-height:60vh;overflow:auto;max-width:min(480px,calc(100vw - 32px))}
+.proofread-navigation{
+  position:absolute;right:16px;z-index:8;display:flex;align-items:center;gap:9px;max-width:calc(100% - 32px);
+  border:0;border-radius:28px;background:#1f252d;color:#fff;box-shadow:0 5px 16px #0003;padding:10px 16px;font:600 12px/1.4 system-ui;cursor:pointer;
+}
+.proofread-navigation[hidden],.preview-shell:has(#log:not([hidden])) .proofread-navigation{display:none}
+.proofread-navigation:hover{background:#343d48}
+.proofread-navigation:focus-visible{outline:2px solid var(--command);outline-offset:2px}
+.proofread-navigation .toolbar-icon{flex:none}
+.proofread-next{bottom:14px}
+.proofread-previous{top:14px}
+#proofread-previous{top:42px}
+main>section:first-child{position:relative}

@@ -1,6 +1,6 @@
 // Run: node test_proofread.mjs (stdlib only).
 import assert from 'node:assert/strict';
-import {attachProofread} from './vendor/latex-proofread.mjs';
+import {attachProofread,attachProofreadNavigation} from './vendor/latex-proofread.mjs';
 
 function element() {
   return {children:[],style:{},attributes:{},events:{},textContent:'',
@@ -64,4 +64,30 @@ hidden.setVisible(true,{from:{line:1,ch:3},to:{line:3,ch:9}});
 assert.equal(markOptions.replacedWith,hidden.root);
 hidden.setVisible(false);hidden.setVisible(false);assert.equal(cleared,initialClears+1);
 await hidden.keep();hidden.destroy();
+// Count offscreen pending changes, coalesce layout updates, and resolve the latest target on click.
+let positions=[500,100,300,NaN],top=150,bottom=200,frame=null,scheduled=0;
+const handlers={},label={},previousLabel={},button={lastElementChild:label},previous={lastElementChild:previousLabel},jumps=[];
+globalThis.window={addEventListener:(name,fn)=>handlers[name]=fn};
+globalThis.requestAnimationFrame=fn=>{frame=fn;scheduled++;return scheduled;};
+const navigation=attachProofreadNavigation({button,previous,positions:()=>positions,top:()=>top,bottom:()=>bottom,scroll:position=>jumps.push(position)});
+const paint=()=>{const fn=frame;frame=null;fn();};
+navigation.update();navigation.update();assert.equal(scheduled,1);paint();
+assert.equal(button.hidden,false);assert.equal(label.textContent,'2 more updates below');
+assert.equal(previous.hidden,false);assert.equal(previousLabel.textContent,'1 more updates above');
+button.onclick();assert.deepEqual(jumps,[276]);
+bottom=400;navigation.update();paint();assert.equal(label.textContent,'1 more updates below');
+positions=[100,300];button.onclick();assert.equal(button.hidden,true);assert.deepEqual(jumps,[276],'Handled changes cannot remain stale click targets.');
+positions=[450];handlers['latex-language-change']();paint();assert.equal(button.hidden,false);
+bottom=600;navigation.update();paint();assert.equal(button.hidden,true);
+// Upward navigation chooses the nearest previous change and excludes visible anchors.
+positions=[300,100,200,NaN,400,500];top=400;bottom=600;navigation.update();paint();
+assert.equal(previousLabel.textContent,'3 more updates above');
+previous.onclick();assert.equal(jumps.at(-1),276);
+top=200;navigation.update();paint();assert.equal(previousLabel.textContent,'1 more updates above');
+previous.onclick();assert.equal(jumps.at(-1),76);
+positions=[20];top=100;previous.onclick();assert.equal(jumps.at(-1),0,'Near-start targets clamp to the document top.');
+const jumpCount=jumps.length;positions=[];previous.onclick();
+assert.equal(previous.hidden,true);assert.equal(button.hidden,true);assert.equal(jumps.length,jumpCount,'Resolved changes cannot remain upward click targets.');
+positions=[50];handlers['latex-language-change']();paint();assert.equal(previousLabel.textContent,'1 more updates above');
+top=0;navigation.update();paint();assert.equal(previous.hidden,true);
 console.log('PASS: lossless Unicode/multiline diff, literal markup, deletion, resize, busy exclusion, save failure/retry and cleanup');

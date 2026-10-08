@@ -3,6 +3,7 @@ import {pdfTextRect} from './latex-pdf-analysis.mjs';
 // Keep PDF content order for source matching, but select by geometry, not DOM order.
 export function boxedPdfContent(content, page, box, excluded = []) {
   const fragments = [], parts = [];
+  let gap = false, contiguous = true;
   const lineBreak = () => {
     if (!parts.length || parts.at(-1) === '\n') return;
     parts.push('\n');if (fragments.length) fragments.at(-1).text += '\n';
@@ -18,8 +19,14 @@ export function boxedPdfContent(content, page, box, excluded = []) {
     if (excluded.some(([l,b,r,t]) => x >= l && x <= r && y >= b && y <= t)) continue;
     const overlapX = Math.max(0, Math.min(right,box[2])-Math.max(left,box[0]));
     const overlapY = Math.max(0, Math.min(top,box[3])-Math.max(bottom,box[1]));
-    if (overlapX*overlapY < width*height*.25) continue;
-    if (item.str.trim()) fragments.push({page,rect,text:item.str});
+    if (overlapX*overlapY < width*height*.25) {
+      if (fragments.length && item.str.trim()) gap = true;
+      continue;
+    }
+    if (item.str.trim()) {
+      if (gap) contiguous = false;
+      fragments.push({page,rect,text:item.str});gap = false;
+    }
     parts.push(item.str);if (item.hasEOL) lineBreak();
   }
   if (!fragments.length) return null;
@@ -29,7 +36,7 @@ export function boxedPdfContent(content, page, box, excluded = []) {
     const point = anchor(fragments[index]);
     if (!points.some(p => p.x === point.x && p.y === point.y)) points.push(point);
   }
-  return {kind:'box',points,fragments,rectangles:fragments.map(({page,rect}) => ({page,rect})),text:parts.join('').trim()};
+  return {kind:'box',contiguous,points,fragments,rectangles:fragments.map(({page,rect}) => ({page,rect})),text:parts.join('').trim()};
 }
 
 export function attachPdfBoxSelection({preview,viewer,capture,onSelect,message,excludedRects = () => []}) {
