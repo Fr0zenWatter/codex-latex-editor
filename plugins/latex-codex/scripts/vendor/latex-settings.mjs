@@ -1,6 +1,26 @@
 import {translations} from './latex-locales.mjs';
 
 export const english = {
+  '项目修改校对（主对话 / 外部修改）':'Project change review (main chat / external edits)',
+  '记录项目 TeX 修改，逐处 Keep / Undo；手动输入照常保存。':'Review project TeX changes with Keep / Undo. Manual typing saves normally.',
+  '项目校对 · {count}':'Project review · {count}',
+  '请先保存编辑草稿，再处理项目校对。':'Save the editor draft before reviewing project changes.',
+  '项目修改已变化，请刷新校对后重试。':'Project changes have changed. Refresh the review and retry.',
+  '写作风格':'Writing style', '导入提示词':'Import prompt',
+  '请选择不超过 64 KB 的 UTF-8 .txt 或 .md 提示词文件。':'Choose a UTF-8 .txt or .md prompt file up to 64 KB.',
+  '提示词需包含 1–12000 个字符。':'The prompt must contain 1–12000 characters.',
+  '编辑器校对（Proofread）':'Editor proofreading',
+  'PDF 校对（Proofread）':'PDF proofreading',
+  '都关闭时，Send 直接应用新修改；已有建议仍可在批注列表确认。':'With both off, Send applies new changes directly. Existing suggestions remain in the comment list.',
+  '请逐处选择 Keep 或 Undo；也可在批注列表处理。':'Choose Keep or Undo for each suggestion, also available in the comment list.',
+  '已恢复正式 PDF。':'Restored the regular PDF.',
+  '正在编译 PDF 校对预览…':'Compiling PDF proofread preview…',
+  'PDF 校对预览：红色删除，绿色保留；不写入历史。':'PDF proofread: red is removed, green is kept. No history entry.',
+  'PDF 校对预览失败：{message}':'PDF proofread preview failed: {message}',
+  '请先处理 PDF 校对建议，再进行源码定位。':'Resolve PDF proofread suggestions before source navigation.',
+  '校对修改':'Proofread changes', '撤销这处建议':'Undo this suggestion', '保留这处修改':'Keep this change',
+  '请在源码逐处选择 Keep 或 Undo。':'Choose Keep or Undo for each change in the source.',
+  '正在保存，请稍后重试。':'Saving. Please try again shortly.', '已撤销这处建议，原文保留。':'Suggestion undone. Original text preserved.',
   'Markdown 源码':'Markdown source', 'Markdown 预览':'Markdown preview',
   'PDF 预览':'PDF preview', '实时预览':'Live preview', '已切换到实时预览':'Switched to live preview',
   '保存并预览':'Save and preview', '下载源码':'Download source',
@@ -126,7 +146,7 @@ export const english = {
   '自动编译':'Automatic compilation', '编译选项':'Compilation options',
   '{name} · 自动保存，手动编译':'{name} · Autosave, manual compilation', '正在保存…':'Saving…', '已保存 · 自动编译已关闭':'Saved · Automatic compilation is off',
   '保存并编译':'Save and compile', '正在编译…':'Compiling…', '本机编译 · PDF 预览':'Local compiler · PDF preview',
-  '按住空格拖动 PDF':'Hold Space to pan the PDF',
+  '空格拖动 · Alt + 空格缩放':'Space: pan · Alt+Space: zoom',
   '拖动':'Pan', '选字':'Select text', '切换拖动页面与选择文字':'Switch between panning and text selection',
   '缩小 PDF':'Zoom out', '放大 PDF':'Zoom in', '适合宽度':'Fit width', 'PDF 缩放':'PDF zoom', '滚轮或拖动缩放，点击恢复适合宽度':'Scroll or drag to zoom; click to fit width', '滚轮或拖动缩放，方向键微调':'Scroll or drag to zoom; arrow keys fine-tune', '恢复适合宽度':'Reset to fit width', '编译后的 PDF':'Compiled PDF',
   '编译日志':'Compilation log', '源码操作':'Source actions', '注释 / 取消注释':'Toggle comment', '询问 Codex / 修改选区':'Ask Codex / Edit selection',
@@ -185,7 +205,7 @@ export const supportedLanguages = ['en', 'zh-CN', 'zh-TW', 'ja', 'fr', 'de', 'es
 export let language = 'en';
 const bindings = new Map();
 const preferenceKeys = ['language','revision-color','outline-style','theme','custom-themes',
-  'editor-mode','source-font-size','chat-color','auto-compile','pdf-box-auto-comment','split'].map(name=>'latex-codex-'+name);
+  'editor-mode','source-font-size','chat-color','auto-compile','pdf-box-auto-comment','proofread-editor','proofread-pdf','proofread-project','writing-style','split'].map(name=>'latex-codex-'+name);
 let persisted = null, pending = {}, saveTimer, saveQueue = Promise.resolve();
 function preferenceData() {
   if (persisted === null) {
@@ -275,16 +295,32 @@ export function initSettings() {
       }
       preferences.setItem('latex-codex-auto-compile', $('auto-compile').checked ? 'on' : 'off');
       preferences.setItem('latex-codex-pdf-box-auto-comment', $('pdf-box-auto-comment').checked ? 'on' : 'off');
+      for (const name of ['proofread-editor','proofread-pdf']) preferences.setItem('latex-codex-'+name, $(name).checked ? 'on' : 'off');
+      preferences.setItem('latex-codex-proofread-project', $('proofread-project').checked ? 'on' : 'off');
       await savePreferences(true);
     } catch {}
     finally { $('settings-save').disabled = false; }
   };
   window.addEventListener?.('pagehide', () => { savePreferences().catch(() => {}); });
+  const projectReview = $('proofread-project');
+  projectReview.checked = preferences.getItem('latex-codex-proofread-project') === 'on';
+  projectReview.onchange = () => {
+    preferences.setItem('latex-codex-proofread-project', projectReview.checked ? 'on' : 'off');
+    window.dispatchEvent(new Event('latex-project-review-change'));
+  };
   const boxAutoComment = $('pdf-box-auto-comment');
-  boxAutoComment.checked = preferences.getItem('latex-codex-pdf-box-auto-comment') === 'on';
+  boxAutoComment.checked = preferences.getItem('latex-codex-pdf-box-auto-comment') !== 'off';
   boxAutoComment.onchange = () => {
     preferences.setItem('latex-codex-pdf-box-auto-comment', boxAutoComment.checked ? 'on' : 'off');
   };
+  for (const name of ['proofread-editor','proofread-pdf']) {
+    const control = $(name);
+    control.checked = preferences.getItem('latex-codex-'+name) !== 'off';
+    control.onchange = () => {
+      preferences.setItem('latex-codex-'+name, control.checked ? 'on' : 'off');
+      window.dispatchEvent(new Event('latex-proofread-change'));
+    };
+  }
   try { languageSelect.value = preferences.getItem('latex-codex-language') || 'system'; colorSelect.value = preferences.getItem('latex-codex-revision-color') || 'orange'; } catch {}
   if (!['system', ...supportedLanguages].includes(languageSelect.value)) languageSelect.value = 'system';
   if (!colors[colorSelect.value]) colorSelect.value = 'orange';

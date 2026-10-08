@@ -1,0 +1,22 @@
+.CodeMirror .proofread{display:inline-block;vertical-align:top;max-width:100%;font:inherit;line-height:1.5;white-space:normal;border-radius:4px;overflow:hidden;color:var(--text);background:var(--bg)}
+:is(#annotations-list,#project-review-list)>.proofread{display:block;width:100%!important;max-width:100%;margin-bottom:8px;line-height:1.5;white-space:normal;color:var(--text);background:var(--bg)}
+.proofread-row{display:flex;align-items:flex-start;width:100%;padding:3px 6px;box-sizing:border-box}
+.proofread-sign{flex:none;width:20px;user-select:none;opacity:.7}
+.proofread-text{min-width:0;flex:1;white-space:pre-wrap;overflow-wrap:anywhere;tab-size:2}
+.proofread-before{background:color-mix(in srgb,#d94b58 20%,var(--bg))}
+.proofread-after{background:color-mix(in srgb,#36b669 20%,var(--bg))}
+.proofread-before .proofread-word{background:color-mix(in srgb,#d94b58 42%,transparent)}
+.proofread-after .proofread-word{background:color-mix(in srgb,#36b669 42%,transparent)}
+.proofread-actions{display:flex;align-items:center;justify-content:flex-end;gap:4px;padding:6px;background:var(--bg);font:12px/1.4 system-ui}
+.proofread-actions button{padding:5px 12px;border:0;border-radius:18px;font:inherit;cursor:pointer}
+.proofread-actions .proofread-undo{background:var(--panel);color:var(--muted)}
+.proofread-actions .proofread-keep{background:#087b38;color:#fff}
+.proofread-actions button:focus-visible{outline:2px solid var(--command);outline-offset:2px}
+.proofread-actions button:disabled{opacity:.5;cursor:wait}
+.proofread-error{min-width:0;flex:1;color:light-dark(#b42318,#ffaaaa);overflow-wrap:anywhere}
+.pdf-proofread-actions{position:absolute;z-index:7;display:flex;flex-direction:column;align-items:stretch;gap:2px;padding:3px;border-radius:6px;background:#fffef5;color:#4b5563;box-shadow:0 1px 5px #0003;font:10px/1.2 system-ui;text-align:center}
+.pdf-proofread-actions button{border:0;border-radius:10px;padding:3px 5px;background:#e5e7eb;color:#374151;font:inherit;cursor:pointer}
+.pdf-proofread-actions .proofread-keep{background:#087b38;color:#fff}
+.pdf-proofread-actions button:disabled{opacity:.5;cursor:wait}
+
+#project-review-list{display:flex;flex-direction:column;gap:6px;max-height:60vh;overflow:auto;max-width:min(480px,calc(100vw - 32px))}

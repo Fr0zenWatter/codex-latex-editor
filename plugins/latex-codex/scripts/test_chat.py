@@ -141,6 +141,10 @@ with patch('chat.codex_executable', return_value='codex.exe'), patch('chat.subpr
     result = run_batch([{'id': 2, 'replacement': None}, {'id': 1, 'replacement': 'better'}])
     assert result['status'] == 'done' and result['replacement'] is None
     assert result['replacements'][1]['segments'] == revision_segments('chosen', 'better')
+    changes = result['replacements'][1]['changes']
+    assert ''.join(run['text'] for run in changes if run['kind'] != 'insert') == 'chosen'
+    assert ''.join(run['text'] for run in changes if run['kind'] != 'delete') == 'better'
+    assert result['replacements'][0]['changes'] is None
     prompt = process.communicate.call_args.args[0].decode()
     assert 'multiple annotations' in prompt and 'Polish second.' in prompt
     assert 'context_before' in prompt and 'context_after' in prompt

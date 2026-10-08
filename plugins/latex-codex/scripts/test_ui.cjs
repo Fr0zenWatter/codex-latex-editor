@@ -17,7 +17,7 @@ function element(id) {
     style: {setProperty(key, value) { this[key] = value; }},
     attributes:{},classList: {add() {}, remove() {}, toggle() {}}, setAttribute(key,value) {this.attributes[key]=value;},
     showPopover(){this.open=true;},hidePopover(){this.open=false;},focus(){this.focused=true;},
-    events:{},addEventListener(name,handler){this.events[name]=handler;},getBoundingClientRect(){return {left:120,top:180,width:280,bottom:208};},
+    events:{},addEventListener(name,handler){this.events[name]=handler;},getBoundingClientRect(){return {left:120,top:180,width:280,height:28,bottom:208};},
     offsetWidth:240,offsetHeight:42,
     setPointerCapture(id) { this.captured = id; },
     hasPointerCapture(id) { return this.captured === id; },
@@ -52,6 +52,10 @@ const viewer = {
   fitChanges:0,
   currentPageNumber:1,pagesCount:2,currentScale:1,pdfDocument:null,
   getPageView(index){return views[index];},update(){},
+  scaleUpdates:[],refreshes:0,
+  updateScale(config){this.scaleUpdates.push(config);this.currentScale=Math.round(this.currentScale*config.scaleFactor*100)/100;},
+  panBy(dx,dy){element('#preview').scrollLeft-=dx;element('#preview').scrollTop-=dy;},
+  refresh(){this.refreshes++;},
   set currentScaleValue(value){assert.equal(value,'page-width');this.fitChanges=(this.fitChanges||0)+1;this.currentScale=1;},
   setDocument(pdf){this.pdfDocument=pdf;this.pagesCount=pdf?.numPages||0;this.currentScale=1;this.firstPagePromise=Promise.resolve();},
 };
@@ -66,6 +70,8 @@ const context = vm.createContext({
   preferences:{getItem(key){return stored.get(key);},setItem(key,value){stored.set(key,value);}},
   t:key=>key, setText:(element,key,values={})=>{element.textContent=key.replace(/\{(\w+)\}/g,(match,name)=>values[name]??match);},initSettings(){}, initScreenshotThemes(){}, applyCustomTheme(){return false;},
   attachMathHover(){return {setMainSource(){}};},attachNativeAnnotations(){},attachSelectionChat(){return {open(){chatOpened.push('full');},openQuick(anchor){chatOpened.push(anchor);},refreshAnnotations(){},busy:false};},attachHistory(){},mountHistoryTabs(){},katex:{},
+  attachProjectReview(){return {items:[],busy:false,refresh:async()=>{},clear(){}};},
+  attachProofreadPdf(){return {update(){},invalidate(){},active:false};},paintProofreadActions(){},
   mountSourceWheel({button}){return {update(data){button.textContent=data.files.find(file=>file.path===data.path)?.name;button.files=data.files;button.mainFile=data.mainFile;},setDisabled(value){button.disabled=value;}};},
   pdfPageBoxes:async()=>[[0,0,600,800],[0,0,600,800]],
   attachPdfBoxSelection(config){context.boxConfig=config;return {selection:null,clear(){this.selection=null;config.onSelect(null);},start(){return false;},move(){return false;},end(){return false;},bounds(){return {left:20,top:30,bottom:70};}};},
@@ -198,8 +204,8 @@ assert.equal(viewer.currentScale, 1.25);
 assert.equal(element('#preview').scrollTop, 200);
 assert.equal(element('#zoom-fit').textContent, '125%');
 for (let i = 0; i < 20; i++) element('#zoom-fit').events.wheel({deltaY:-120,preventDefault(){},stopPropagation(){}});
-assert.equal(element('#zoom-fit').textContent, '250%');
-assert.equal(element('#pdf-zoom-dial').attributes['aria-valuenow'], '250');
+assert.equal(element('#zoom-fit').textContent, '500%');
+assert.equal(element('#pdf-zoom-dial').attributes['aria-valuenow'], '500');
 for (let i = 0; i < 20; i++) element('#zoom-fit').events.wheel({deltaY:120,preventDefault(){},stopPropagation(){}});
 assert.equal(element('#zoom-fit').textContent, '30%');
 assert.equal(viewer.currentScale, .3);
@@ -257,7 +263,7 @@ assert.equal(zoomDial.children[0].children[0],tickNodes[0],'Tick DOM nodes persi
 settleAnimation();assert.equal(zoomButton.textContent,'113%');
 zoomButton.onclick();settleAnimation();reducedMotion.matches=true;
 const keyEvent=key=>({key,preventDefault(){},stopPropagation(){}});
-zoomDial.onkeydown(keyEvent('End'));assert.equal(zoomButton.textContent,'250%');
+zoomDial.onkeydown(keyEvent('End'));assert.equal(zoomButton.textContent,'500%');
 zoomDial.onkeydown(keyEvent('Home'));assert.equal(zoomButton.textContent,'30%');
 zoomDial.onkeydown(keyEvent('Escape'));assert(!zoomDial.open);assert(zoomButton.focused);
 zoomButton.onclick();zoomButton.onpointerenter();element('#log-toggle').onclick();
@@ -361,6 +367,90 @@ preview.onkeydown({...space});windowHandlers.blur.forEach(handler=>handler());
 assert.equal(vm.runInContext('spacePan',context),false,'Losing window focus must release temporary panning.');
 preview.onkeydown({...space,ctrlKey:true});assert.equal(vm.runInContext('spacePan',context),false);
 preview.onkeydown({...space,target:{closest:()=>({})}});assert.equal(vm.runInContext('spacePan',context),false,'Typing inside PDF form fields must retain space.');
+
+// Space + Alt scrubs around the initial pointer, without panning or source navigation.
+const alt={key:'Alt',code:'AltLeft',altKey:true,target:space.target,preventDefault(){this.prevented=true;}};
+const zoomDrag={...pointer,altKey:true};
+for(const altFirst of [true,false]){
+  vm.runInContext('setPdfZoom(100)',context);
+  preview.onkeydown(altFirst?alt:space);preview.onkeydown(altFirst?{...space,altKey:true}:alt);
+  assert.equal(vm.runInContext('altZoom',context),true,'Either modifier order arms drag zoom.');
+  const before=viewer.scaleUpdates.length,left=preview.scrollLeft,top=preview.scrollTop;
+  preview.onpointerdown(zoomDrag);
+  preview.onpointermove({...zoomDrag,clientX:202});
+  assert.equal(animationFrames.size,0,'Ignore a shaky click.');
+  preview.onpointermove({...zoomDrag,clientX:230,clientY:220});
+  preview.onpointermove({...zoomDrag,clientX:260,clientY:240});
+  assert.equal(animationFrames.size,1);assert.equal(viewer.scaleUpdates.length,before);
+  preview.onkeydown({...alt,repeat:true});
+  flushAnimationFrames();
+  assert.equal(viewer.scaleUpdates.length,before+1,'Coalesce pointer movements into one scale update per frame.');
+  assert.equal(zoomButton.textContent,'140%');
+  assert.equal(viewer.scaleUpdates.at(-1).origin,undefined,'Do not pass window coordinates to PDF.js offset-parent origin.');
+  assert.equal(viewer.scaleUpdates.at(-1).drawingDelay,150);
+  assert.equal(preview.scrollLeft,left);assert.equal(preview.scrollTop,top,'Drag must not also pan the PDF.');
+  preview.onpointermove({...zoomDrag,clientX:180,clientY:170});flushAnimationFrames();
+  assert.equal(zoomButton.textContent,'85%','Dragging up-left shrinks continuously.');
+  direction=null;preview.ondblclick(zoomDrag);assert.equal(direction,null);
+  preview.onpointermove({...zoomDrag,clientX:220,clientY:220});
+  const rendered=viewer.refreshes;preview.onpointerup(zoomDrag);
+  assert.equal(animationFrames.size,0);assert.equal(zoomButton.textContent,'114%','Release applies the last pending pointer position.');
+  assert.equal(viewer.refreshes,rendered+1,'Release restores sharp rendering immediately.');
+  assert.equal(preview.captured,null);
+  windowHandlers.keyup.forEach(handler=>handler(alt));
+  assert.equal(vm.runInContext('spacePan',context),true,'Releasing Alt leaves ordinary Space panning available.');
+  windowHandlers.keyup.forEach(handler=>handler(space));
+}
+// Realistic page layout: nested pane, browser scaling, later pages and PDF.js scroll restoration.
+const previousGeometry={page:pdfImage.getBoundingClientRect,pane:preview.getBoundingClientRect,
+  width:preview.offsetWidth,height:preview.offsetHeight,left:preview.scrollLeft,top:preview.scrollTop,updateScale:viewer.updateScale};
+for(const {cssScale,pageOffset} of [{cssScale:1,pageOffset:0},{cssScale:.8,pageOffset:900}]){
+  vm.runInContext('setPdfZoom(100)',context);viewer.currentScale=2;
+  preview.offsetWidth=675;preview.offsetHeight=796;preview.scrollLeft=120;preview.scrollTop=pageOffset*2+150;
+  preview.getBoundingClientRect=()=>({left:411,top:70,width:675*cssScale,height:796*cssScale});
+  pdfImage.getBoundingClientRect=()=>({left:411-preview.scrollLeft*cssScale,
+    top:70+(pageOffset*viewer.currentScale-preview.scrollTop)*cssScale,
+    width:700*viewer.currentScale*cssScale,height:900*viewer.currentScale*cssScale});
+  viewer.updateScale=function(config){previousGeometry.updateScale.call(this,config);preview.scrollLeft=20;preview.scrollTop=10;};
+  const press={...zoomDrag,clientX:411+300*cssScale,clientY:70+280*cssScale};
+  const before=pdfImage.getBoundingClientRect(),u=(press.clientX-before.left)/before.width,v=(press.clientY-before.top)/before.height;
+  preview.onkeydown({...space,altKey:true});preview.onpointerdown(press);
+  for(const delta of [30,65,45,90,55]){
+    preview.onpointermove({...press,clientX:press.clientX+delta,clientY:press.clientY+delta});flushAnimationFrames();
+    const after=pdfImage.getBoundingClientRect();
+    assert(Math.abs(after.left+u*after.width-press.clientX)<1e-6,'The clicked PDF point stays at its initial screen x, regardless of pane offset.');
+    assert(Math.abs(after.top+v*after.height-press.clientY)<1e-6,'Later-page offsets and browser scaling must not move the zoom anchor.');
+  }
+  preview.onpointerup(press);windowHandlers.keyup.forEach(handler=>handler(space));
+}
+pdfImage.getBoundingClientRect=previousGeometry.page;preview.getBoundingClientRect=previousGeometry.pane;
+preview.offsetWidth=previousGeometry.width;preview.offsetHeight=previousGeometry.height;viewer.updateScale=previousGeometry.updateScale;
+vm.runInContext('setPdfZoom(100)',context);
+preview.scrollLeft=previousGeometry.left;preview.scrollTop=previousGeometry.top;
+preview.onkeydown({...space,altKey:true});preview.onpointerdown(zoomDrag);
+preview.onpointermove({...zoomDrag,clientX:5000});flushAnimationFrames();assert.equal(zoomButton.textContent,'500%');
+preview.onpointermove({...zoomDrag,clientX:4990});flushAnimationFrames();assert(Number.parseInt(zoomButton.textContent)<500,'Reverse immediately at the upper bound.');
+preview.onpointermove({...zoomDrag,clientX:-5000});flushAnimationFrames();assert.equal(zoomButton.textContent,'30%');
+windowHandlers.keyup.forEach(handler=>handler(space));
+for(const finish of [
+  ()=>windowHandlers.keyup.forEach(handler=>handler(space)),
+  ()=>windowHandlers.keyup.forEach(handler=>handler(alt)),
+  ()=>preview.onpointercancel(zoomDrag),()=>preview.onlostpointercapture(zoomDrag),
+  ()=>preview.onpointermove({...zoomDrag,buttons:0}),()=>preview.events.blur(),
+  ()=>windowHandlers.blur.forEach(handler=>handler()),()=>preview.onkeydown({key:'Escape'}),
+  ()=>{element('#pan-mode').onclick();element('#pan-mode').onclick();},
+  ()=>{element('#log-toggle').onclick();element('#log-toggle').onclick();},
+]){
+  preview.onkeydown({...space,altKey:true});preview.onpointerdown(zoomDrag);
+  preview.onpointermove({...zoomDrag,clientX:240});finish();
+  assert.equal(vm.runInContext('pdfPan',context),null);assert.equal(preview.captured,null);
+  assert.equal(animationFrames.size,0,'Ending the gesture cancels queued frames.');
+  const zoom=zoomButton.textContent;preview.onpointermove({...zoomDrag,clientX:900});assert.equal(zoomButton.textContent,zoom);
+  vm.runInContext('endSpacePan()',context);
+}
+preview.onkeydown({...space,altKey:true,target:{closest:()=>({})}});
+assert.equal(vm.runInContext('spacePan',context),false,'Space + Alt must not intercept form controls.');
+vm.runInContext('setPdfZoom(100)',context);
 preview.scrollTop=350;
 
 element('#pan-mode').onclick();
@@ -777,6 +867,46 @@ After.`;
   const boxedHyphen=String.raw`\item A matrix-vector factor has rank $r$.`;
   assert.deepEqual(boxedMatch(boxedHyphen,'2. A matrix-\nvector factor has rank r.'),{from:{line:0,ch:6},to:{line:0,ch:boxedHyphen.length},approximate:true,mathBlock:true},'Formula projection must retain genuine compound-word hyphens.');
   assert.deepEqual(JSON.parse(JSON.stringify(context.sourcePdfTextRange('Before $x_1$ after.',[1],'x',{}, {},'Before $x_1$ after.',true))),{from:{line:0,ch:7},to:{line:0,ch:12},approximate:true,mathBlock:true},'Even a literal boxed inline symbol expands to its intact formula.');
+  const theoremPreamble=String.raw`\newtheorem{theorem}{Theorem}
+\newtheorem{lem}[theorem]{Lemma}
+\newtheorem*{observation}{Observation}`;
+  const theoremBody=String.raw`For every real number $x$, we have $x^2 \geq 0$.`;
+  const theoremSource='\\begin{theorem}\n'+theoremBody+'\n\\end{theorem}';
+  const proofBody='The square of a real number is nonnegative.';
+  const proofSource='\\begin{proof}\n'+proofBody+'\n\\end{proof}';
+  const theoremPdf='Theorem 1. For every real number x, we have x2 ≥ 0.';
+  const theoremMatch=(source,text,locations=[1,source.split('\n').length],preamble=theoremPreamble)=>{
+    const range=context.sourcePdfTextRange(source,locations,text,{}, {},preamble,true);
+    const offset=pos=>source.split('\n').slice(0,pos.line).reduce((n,line)=>n+line.length+1,0)+pos.ch;
+    return source.slice(offset(range.from),offset(range.to));
+  };
+  assert.equal(theoremMatch(theoremSource,theoremPdf,[2]),theoremSource,'Generated theorem headings map to the complete, balanced environment even when SyncTeX returns its body.');
+  assert.equal(theoremMatch(theoremSource,theoremPdf,[3]),theoremSource,'SyncTeX may tag theorem text to the end line.');
+  assert.equal(theoremMatch(proofSource,'Proof. '+proofBody+' □',[3]),proofSource,'Proof heading and optional QED glyph are source-aware decorations.');
+  assert.equal(theoremMatch(proofSource,'Proof. '+proofBody),proofSource,'A vector-drawn QED need not appear in the PDF text.');
+  assert.equal(theoremMatch(theoremSource+'\n'+proofSource,theoremPdf+' Proof. '+proofBody+' ∎',[2,6]),theoremSource+'\n'+proofSource,'Theorem and proof can be selected together without unpaired delimiters.');
+  assert.equal(theoremMatch(theoremSource,'For every real number x, we have x2 ≥ 0.',[2]),theoremBody,'Selecting only the body retains its exact source edges and intact inline math.');
+  assert.equal(theoremMatch(theoremSource,'Theorem 1. For every real number x,',[2]),String.raw`For every real number $x$,`,'A header plus partial body must not select the unselected rest of the theorem.');
+  assert.equal(theoremMatch(proofSource,'real number is nonnegative. □',[2]),'real number is nonnegative.','Partial proof plus QED retains the partial prose range.');
+  assert.equal(theoremMatch(theoremSource,'real number',[2]),'real number','A plain partial selection stays precise.');
+  assert.equal(theoremMatch(String.raw`\begin{lem}[Positivity]
+\label{lem:positive}
+Every square is nonnegative.
+\end{lem}`,'Lemma A.2 (Positivity). Every square is nonnegative.',[3]),String.raw`\begin{lem}[Positivity]
+\label{lem:positive}
+Every square is nonnegative.
+\end{lem}`,'Literal shared-counter declarations, optional titles and labels are supported.');
+  const observation=String.raw`\begin{observation}Every square is nonnegative.\end{observation}`;
+  assert.equal(theoremMatch(observation,'Observation. Every square is nonnegative.'),observation);
+  const titledProof=String.raw`\begin{proof}[Proof of positivity]Every square is nonnegative.\end{proof}`;
+  assert.equal(theoremMatch(titledProof,'Proof of positivity. Every square is nonnegative.'),titledProof);
+  assert.throws(()=>theoremMatch(theoremSource,theoremPdf.replace('real ','')),/唯一匹配/,'Generated headings never excuse missing boxed prose.');
+  assert.throws(()=>theoremMatch(theoremSource,theoremPdf.replace('Theorem','Lemma')),/唯一匹配/,'A different environment heading cannot be stripped.');
+  assert.throws(()=>theoremMatch(theoremSource,theoremPdf,[2],'% '+theoremPreamble),/唯一匹配/,'Commented-out theorem declarations are not evidence for a generated title.');
+  assert.throws(()=>theoremMatch(theoremSource+'\n'+theoremSource,theoremPdf),/唯一匹配/,'Identical theorem bodies in the SyncTeX search region remain ambiguous.');
+  assert.throws(()=>theoremMatch(theoremSource+'\n'+proofSource,'we have x2 ≥ 0. Proof. '+proofBody),/唯一匹配/,'Crossing only part of an environment must not create an unbalanced replacement.');
+  assert.throws(()=>theoremMatch(proofSource,'The square □ of a real number is nonnegative.'),/唯一匹配/,'A QED glyph is ignored only at the actual proof end.');
+  assert.throws(()=>theoremMatch(proofSource,'The square Proof. of a real number is nonnegative.'),/唯一匹配/,'Heading-looking text inside the body is not a generated boundary.');
   const boxSource='A short selectable sentence.';
   source=boxSource;context.boxSource=boxSource;
   vm.runInContext("panMode=false;busy=false;syncBusy=false;conflict=false;version=pdfVersion='box-v';saved=boxSource;pdfBuild='box-pdf'",context);

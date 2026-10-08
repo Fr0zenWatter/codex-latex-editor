@@ -12,7 +12,7 @@ import tempfile
 import threading
 import uuid
 
-from history import SUMMARY_LANGUAGES, summary_language
+from history import SUMMARY_LANGUAGES, summary_language, word_changes
 
 
 def codex_executable():
@@ -368,6 +368,8 @@ class ChatJob:
                             or len({item['id'] for item in replacements}) != len(expected)):
                         raise ValueError('Codex 返回的批注修改不完整或格式无效，请重试。')
                     for item in replacements:
+                        item['changes'] = (word_changes(expected[item['id']]['selection'], item['replacement'])
+                                           if item['replacement'] is not None else None)
                         item['segments'] = (revision_segments(expected[item['id']]['selection'], item['replacement'])
                                             if item['replacement'] is not None and not markdown else None)
                     result['replacement'] = None

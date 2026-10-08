@@ -2,6 +2,22 @@
 import assert from 'node:assert/strict';
 import {attachSelectionChat,colorReplacement} from './vendor/latex-chat.mjs';
 import {initSettings} from './vendor/latex-settings.mjs';
+import {writingStyles,readWritingStyle,restoreWritingStyle,annotationRequest} from './vendor/latex-writing-styles.mjs';
+const promptFile=(name,text)=>({name,size:new TextEncoder().encode(text).length,arrayBuffer:async()=>new TextEncoder().encode(text).buffer});
+assert.equal(writingStyles.length,4);
+assert(writingStyles.every(style=>style.prompt.length>0 && style.prompt.length<=12000));
+assert.deepEqual(await readWritingStyle(promptFile('my-style.txt','Keep notation stable.')),{name:'my-style',prompt:'Keep notation stable.'});
+for(const file of [promptFile('style.exe','text'),promptFile('style.md',' '),promptFile('style.md','a'.repeat(12001)),
+  {...promptFile('style.txt','text'),size:65537}, {name:'bad.txt',size:2,arrayBuffer:async()=>new Uint8Array([255,254]).buffer}]) {
+  await assert.rejects(()=>readWritingStyle(file));
+}
+assert.equal(annotationRequest({request:'Keep this unchanged.'}),'Keep this unchanged.');
+assert.equal(restoreWritingStyle(JSON.stringify({id:'tao-en'})),writingStyles.find(style=>style.id==='tao-en'));
+assert.deepEqual(restoreWritingStyle(JSON.stringify({name:'Imported',prompt:'Preserve notation.'})),
+  {id:'custom-saved',name:'Imported',prompt:'Preserve notation.'});
+for(const value of [null,'broken','null','{}',JSON.stringify({id:'missing'}),
+  JSON.stringify({name:' ',prompt:'text'}),JSON.stringify({name:'x',prompt:' '}),
+  JSON.stringify({name:'x',prompt:'a'.repeat(12001)})]) assert.equal(restoreWritingStyle(value),null);
 const elements = new Map();
 function el(id) {
   if (!elements.has(id)) elements.set(id, {value:'',textContent:'',hidden:true,children:[],style:{},dataset:{},attributes:{},
@@ -10,6 +26,7 @@ function el(id) {
     append(...nodes){this.children.push(...nodes);},replaceChildren(...nodes){this.children=nodes;},
     events:{},offsetWidth:320,offsetHeight:46,getBoundingClientRect(){return {left:950,top:750,bottom:780};},
     scrollHeight:68,contains(node){return !!node && node===this;},
+    clientWidth:500,querySelector(){return null;},
     focus(){this.events.focus?.();},showPopover(){this.open=true;},hidePopover(){this.open=false;this.events.beforetoggle?.({newState:'closed'});},addEventListener(name,handler){this.events[name]=handler;}});
   return elements.get(id);
 }
@@ -17,22 +34,31 @@ globalThis.document = {querySelector:el,querySelectorAll:()=>[],documentElement:
 const windowEvents = {};
 globalThis.window = {innerWidth:1000,innerHeight:800,addEventListener(name,handler){windowEvents[name]=handler;}};
 window.dispatchEvent=()=>{};
-globalThis.localStorage={getItem:key=>key==='latex-codex-language'?'zh-CN':null,setItem(){}};
+const storedPreferences=new Map([['latex-codex-language','zh-CN']]);
+globalThis.localStorage={getItem:key=>storedPreferences.get(key)??null,setItem:(key,value)=>storedPreferences.set(key,value)};
 initSettings();
 let quickResize;
-globalThis.ResizeObserver = class {constructor(callback){quickResize=callback;}observe(){}};
+globalThis.ResizeObserver = class {constructor(callback){this.callback=callback;}observe(target){if(target===el('#chat-quick'))quickResize=this.callback;}disconnect(){}};
 let operations=0; const marks=[];
 let keyMap='vim',escapes=0,source='before chosen after',selection={from:{line:0,ch:7},to:{line:0,ch:13}},mark,doc={},selected=true;
 globalThis.CodeMirror = {Vim:{handleKey(_,key){assert.equal(key,'<Esc>');escapes++;}}};
 const events={},editor={
   on(name,callback){events[name]=callback;},getDoc:()=>doc,getOption:name=>name==='keyMap'?keyMap:false,
+  getWrapperElement:()=>el('#wrapper'),scrollIntoView(){},
   somethingSelected:()=>selected,listSelections:()=>[selection],
   getCursor:key=>selection[key],getValue:()=>source,getRange:(from,to)=>source.slice(from.ch,to.ch),
   charCoords:pos=>({top:pos.ch===selection.from.ch?700:710,bottom:730}),
-  markText(from,to){mark={from:{...from},to:{...to},find(){return this.cleared?null:{from:this.from,to:this.to};},clear(){this.cleared=true;}};marks.push(mark);return mark;},
+  markText(from,to,options={}){mark={options,from:{...from},to:{...to},find(){return this.cleared?null:{from:this.from,to:this.to};},clear(){this.cleared=true;},changed(){}};marks.push(mark);return mark;},
   indexFromPos:pos=>pos.ch,posFromIndex:ch=>({line:0,ch}),setCursor(){},focus(){},
   operation(fn){operations++;fn();},
-  replaceRange(text,from,to,origin){assert.equal(origin,'codex-chat');source=source.slice(0,from.ch)+text+source.slice(to.ch);},
+  replaceRange(text,from,to,origin){
+    assert.equal(origin,'codex-chat');source=source.slice(0,from.ch)+text+source.slice(to.ch);
+    const shift=text.length-(to.ch-from.ch);
+    for(const tracked of marks.filter(item=>!item.cleared)){
+      if(tracked.from.ch>=to.ch){tracked.from.ch+=shift;tracked.to.ch+=shift;}
+      else if(tracked.to.ch>from.ch)tracked.clear();
+    }
+  },
 };
 let calls=[],answer={status:'done',reply:'Suggestion',replacement:'revised',segments:[['revised','color']]},deferred=null;
 const request=async(url,options)=>{
@@ -44,14 +70,18 @@ const request=async(url,options)=>{
   if(url.startsWith('/chat?id='))return answer;
   return {};
 };
-let painted=[];
-let annotationSaves=[],saveFailure=false;
-const chat=attachSelectionChat(editor,request,items=>painted=[...items],async(after,change)=>{
+let painted=[],paintedBusy=[];
+let annotationSaves=[],saveFailure=false,saveWait=null;
+const chat=attachSelectionChat(editor,request,items=>{painted=[...items];paintedBusy=items.map(item=>!!item.review?.busy);},async(after,change)=>{
   assert.equal(source,change.before,'Persist before changing the editor or clearing markers.');
   assert(painted.length);
+  if(saveWait)await saveWait;
   if(saveFailure)throw new Error('History unavailable');
   annotationSaves.push({after,change});
 });
+const reviewActions=item=>item.review.root.children.at(-1).children;
+const keepReview=item=>reviewActions(item).at(-1).onclick();
+const undoReview=item=>reviewActions(item).at(-2).onclick();
 assert.equal(el('#annotations-send').hidden,true);
 // A closed popover has zero width; pin its right edge without measuring it.
 el('#annotations-review').offsetWidth=0;
@@ -148,6 +178,23 @@ assert.equal(el('#chat-quick-send').attributes['aria-label'],'添加批注');ass
 assert.equal(el('#chat-quick-input').value,'');
 assert(!elements.has('#chat-quick-selection'),'The composer never copies the selected text into the dialog.');
 const sent=calls.filter(call=>call.url==='/chat').length;
+const styleSelect=el('#chat-quick-style');
+assert.equal(styleSelect.value,'');assert.equal(styleSelect.children.length,6);
+assert.equal(el('#chat-style-control').dataset.active,'false');
+let filePickerOpened=0;el('#chat-style-file').click=()=>filePickerOpened++;
+styleSelect.value='__import__';styleSelect.onchange();
+assert.equal(filePickerOpened,1);assert.equal(styleSelect.value,'','Canceling the file picker leaves no style selected.');
+el('#chat-style-file').files=[promptFile('My prompt.md','Prefer one concise paragraph.')];
+await el('#chat-style-file').onchange();
+assert.match(styleSelect.value,/^custom-/);assert.equal(el('#chat-style-control').dataset.active,'true');
+const importedStyle=styleSelect.value;
+styleSelect.value='__import__';styleSelect.onchange();
+assert.equal(styleSelect.value,importedStyle,'Opening import retains the selected style until another file is loaded.');
+el('#chat-style-file').files=[promptFile('empty.txt','')];await el('#chat-style-file').onchange();
+assert.match(el('#chat-quick-status').textContent,/1–12000/);assert.match(styleSelect.value,/^custom-/,'Failed imports preserve the current style.');
+styleSelect.value='tao-en';styleSelect.onchange();
+assert.equal(el('#chat-style-control').dataset.active,'true');
+assert.equal(calls.filter(call=>call.url==='/chat').length,sent,'Selecting/importing a style never sends a model request.');
 el('#chat-quick-input').value='Polish this passage';
 selection={from:{line:0,ch:0},to:{line:0,ch:6}};
 await el('#chat-quick-form').onsubmit({preventDefault(){}});
@@ -158,9 +205,15 @@ assert.equal(el('#annotations-toggle').textContent,'批注 · 1');
 assert.equal(el('#annotations-send').hidden,false);
 selection={from:{line:0,ch:14},to:{line:0,ch:19}};
 chat.openQuick({left:100,top:100,pdf:{pdf_revision:'build',rectangles:[{page:2,rect:[1,2,3,4]}]}});
+assert.equal(styleSelect.value,'tao-en','New source/PDF annotations reuse the selected global style.');
+styleSelect.value='';styleSelect.onchange();
 el('#chat-quick-input').value='Rewrite the ending';await el('#chat-quick-form').onsubmit({preventDefault(){}});
 assert.equal(painted.length,2);assert.equal(painted[1].pdf.rectangles[0].page,2);
+assert.equal(painted[0].style.id,'tao-en');assert.equal(painted[1].style,null,'Clearing the default does not change an earlier comment.');
 el('#annotations-list').children[0].onclick();
+assert.equal(styleSelect.value,'tao-en','Editing a queued comment restores its own style.');
+assert.equal(storedPreferences.get('latex-codex-writing-style'),'null','Reopening an older comment does not change the default.');
+styleSelect.value='shelah-en';styleSelect.onchange();
 assert.equal(el('#chat-quick-input').value,'Polish this passage');assert.equal(el('#chat-quick-delete').hidden,false);
 assert.equal(el('#chat-quick-send').attributes['aria-label'],'保存批注');assert.equal(el('#chat-quick-send').textContent,'');
 el('#chat-quick-input').value='Use precise language';await el('#chat-quick-form').onsubmit({preventDefault(){}});
@@ -181,18 +234,31 @@ assert.equal(batchBody.model,'test-model');assert.equal(batchBody.effort,'high')
 assert.match(batchBody.request_id,/^[0-9a-f]{32}$/);
 assert.equal(batchBody.messages.at(-1).content,'#1\nUse precise language\n\n#2\nRewrite the ending');
 assert.equal(batchBody.annotations[0].selection,'chosen','The selection remains request context, separate from the conversation.');
-assert.equal(source,'extra before {\\color{blue}revised} {\\color{blue}ending}');
-assert.equal(annotationSaves[0].change.before,'extra before chosen after');
+assert.match(batchBody.annotations[0].request,/SHELAH COMPACT/);
+assert.match(batchBody.annotations[0].request,/Current annotation request \(takes priority\):\nUse precise language$/);
+assert(!batchBody.annotations[0].request.includes('TAO COMPACT'),'The edited style replaces the old one.');
+assert.equal(batchBody.annotations[1].request,'Rewrite the ending','One comment’s style never leaks into another.');
+assert.equal(source,'extra before chosen after','Send must only display reviews, without changing source or saving suggestions.');
+assert.equal(annotationSaves.length,0);assert.equal(painted.length,2);
+assert(painted.every(item=>item.review));assert.equal(el('#annotations-send').hidden,true);
+const firstReview=painted[0],secondReview=painted[1];
+source='latest '+source;for(const item of marks.filter(item=>!item.cleared)){item.from.ch+=7;item.to.ch+=7;}
+await keepReview(secondReview);
+assert.equal(source,'latest extra before chosen {\\color{blue}ending}');
+assert.equal(painted.length,1);assert.equal(painted[0],firstReview,'Keep must not dismiss another review.');
+undoReview(firstReview);
+assert.equal(source,'latest extra before chosen {\\color{blue}ending}','Undo preserves original text and other accepted edits.');
+assert.equal(annotationSaves[0].change.before,'latest extra before chosen after');
 assert.equal(annotationSaves[0].after,source);
 assert.equal(annotationSaves[0].change.reply,'Both updated.');
 assert.deepEqual(annotationSaves[0].change.items.map(item=>[item.selection,item.request,item.replacement]),[
-  ['chosen','Use precise language','{\\color{blue}revised}'],['after','Rewrite the ending','{\\color{blue}ending}']]);
+  ['after','Rewrite the ending','{\\color{blue}ending}']]);
 assert.match(annotationSaves[0].change.id,/^[0-9a-f]{32}$/);
-assert.equal(operations,1,'Apply the complete batch in one undoable editor operation.');
+assert.equal(operations,1,'Keep applies only its own range in one undoable editor operation.');
 assert.equal(el('#chat-input').value,'Keep my full-panel draft.');assert.equal(el('#chat-panel').hidden,true);
 assert.equal(painted.length,0);assert.equal(el('#annotations-send').disabled,true);
 assert.equal(el('#annotations-send').hidden,true);
-assert.equal(el('#annotations-send').attributes['aria-busy'],'false');assert.equal(el('#annotations-status').textContent,'Both updated.');
+assert.equal(el('#annotations-send').attributes['aria-busy'],'false');
 // Identical words have separate source anchors; non-BMP text must use Python offsets on the wire.
 chooseColor('');
 source='😀 chosen gap chosen after';selection={from:{line:0,ch:3},to:{line:0,ch:9}};
@@ -217,13 +283,6 @@ assert.equal(painted.length,2);assert.match(el('#annotations-status').textConten
 const beforeStaleSend=calls.filter(call=>call.url==='/chat').length;
 await el('#annotations-send').onclick();assert.equal(calls.filter(call=>call.url==='/chat').length,beforeStaleSend);
 source='😀 chosen gap chosen after';
-// A history failure must preserve every comment, marker and the complete source.
-saveFailure=true;
-await el('#annotations-send').onclick();
-assert.equal(source,'😀 chosen gap chosen after');assert.equal(painted.length,2);
-assert.equal(operations,1);assert.equal(annotationSaves.length,1);
-assert.match(el('#annotations-status').textContent,/History unavailable/);
-assert.equal(el('#annotations-stop').disabled,false);saveFailure=false;
 // Cancelling a late-starting batch keeps all notes, including after its job id arrives.
 deferred=new Promise(resolve=>release=resolve);const cancelledBatch=el('#annotations-send').onclick();
 el('#annotations-stop').onclick();release({id:'cancelled-batch'});await cancelledBatch;deferred=null;
@@ -233,13 +292,91 @@ selection={from:{line:0,ch:4},to:{line:0,ch:8}};
 chat.openQuick({left:100,top:100});el('#chat-quick-input').value='Overlapping';
 await el('#chat-quick-form').onsubmit({preventDefault(){}});assert.equal(painted.length,2);
 assert.match(el('#chat-quick-status').textContent,/重叠/);el('#chat-quick-cancel').onclick();
-el('#annotations-list').children[0].onclick();el('#chat-quick-delete').onclick();assert.equal(painted.length,1);
-answer={status:'done',reply:'An explanation.',replacement:null,replacements:[{id:4,replacement:null}]};
+// A history failure during Keep preserves both reviews and the complete source.
+saveFailure=true;await el('#annotations-send').onclick();
+const failedReview=painted[0],remainingReview=painted[1];
+await keepReview(failedReview);
+assert.equal(source,'😀 chosen gap chosen after');assert.equal(painted.length,2);
+assert.equal(operations,1);assert.equal(annotationSaves.length,1);
+assert.match(reviewActions(failedReview)[0].textContent,/History unavailable/);
+assert.equal(reviewActions(failedReview).at(-1).disabled,false);saveFailure=false;
+assert(paintedBusy.every(value=>!value),'PDF controls must be repainted as enabled after a failed Keep.');
+undoReview(failedReview);undoReview(remainingReview);assert.equal(painted.length,0);
+selection={from:{line:0,ch:14},to:{line:0,ch:20}};
+chat.openQuick({left:100,top:100});el('#chat-quick-input').value='Explain this';await el('#chat-quick-form').onsubmit({preventDefault(){}});
+answer={status:'done',reply:'An explanation.',replacement:null,replacements:[{id:5,replacement:null}]};
 await el('#annotations-send').onclick();assert.equal(source,'😀 chosen gap chosen after');assert.equal(painted.length,0);
 assert.equal(annotationSaves.length,2);
 assert.equal(annotationSaves[1].change.items[0].start,13);
 assert.equal(annotationSaves[1].change.items[0].replacement,null,'Keep explanation-only batches in history too.');
 assert.equal(annotationSaves[1].after,annotationSaves[1].change.before);
+// Accept left-to-right: the later review follows the first replacement's new length.
+source='before chosen after';selection={from:{line:0,ch:0},to:{line:0,ch:6}};
+chat.openQuick({left:100,top:100});el('#chat-quick-input').value='First change';await el('#chat-quick-form').onsubmit({preventDefault(){}});
+selection={from:{line:0,ch:14},to:{line:0,ch:19}};
+chat.openQuick({left:100,top:100});el('#chat-quick-input').value='Later change';await el('#chat-quick-form').onsubmit({preventDefault(){}});
+const [left,right]=painted;
+answer={status:'done',reply:'Review both.',replacement:null,replacements:[
+  {id:left.id,replacement:'A much longer beginning'},{id:right.id,replacement:'end'}]};
+await el('#annotations-send').onclick();assert.equal(chat.hasAnnotations,true);
+saveWait=new Promise(resolve=>release=resolve);const accepting=keepReview(left);
+assert.equal(chat.busy,true);assert.equal(reviewActions(right).at(-1).disabled,true);
+const callsDuringSave=calls.length;el('#chat-input').value='Do not send during Keep';
+await el('#chat-form').onsubmit({preventDefault(){}});await el('#chat-end').onclick();
+assert.equal(calls.length,callsDuringSave);assert.equal(painted.length,2);
+release();await accepting;saveWait=null;
+assert.equal(source,'A much longer beginning chosen after');assert.equal(painted[0],right);
+assert.equal(reviewActions(right).at(-1).disabled,false);
+await keepReview(right);assert.equal(source,'A much longer beginning chosen end');
+assert.equal(annotationSaves.at(-1).change.items[0].start,31);
+assert.equal(annotationSaves.at(-1).change.items.length,1);assert.equal(chat.hasAnnotations,false);
+// A stale suggestion never overwrites an edited range; the other suggestion can still be kept.
+source='before chosen after';selection={from:{line:0,ch:0},to:{line:0,ch:6}};
+chat.openQuick({left:100,top:100});el('#chat-quick-input').value='First change';await el('#chat-quick-form').onsubmit({preventDefault(){}});
+selection={from:{line:0,ch:14},to:{line:0,ch:19}};
+chat.openQuick({left:100,top:100});el('#chat-quick-input').value='Later change';await el('#chat-quick-form').onsubmit({preventDefault(){}});
+const [staleReview,validReview]=painted;
+answer.replacements=[{id:staleReview.id,replacement:'start'},{id:validReview.id,replacement:'end'}];
+await el('#annotations-send').onclick();source='BEFORE chosen after';
+const savedBeforeStale=annotationSaves.length;await keepReview(staleReview);
+assert.equal(source,'BEFORE chosen after');assert.equal(annotationSaves.length,savedBeforeStale);
+assert.match(reviewActions(staleReview)[0].textContent,/选区已变化/);
+await keepReview(validReview);assert.equal(source,'BEFORE chosen end');
+undoReview(staleReview);assert.equal(painted.length,0);assert.equal(source,'BEFORE chosen end');
+// Independent review surfaces; changing settings never accepts an existing proposal.
+const proofreadPreferences=new Map(),originalPreference=localStorage.getItem;
+localStorage.getItem=key=>proofreadPreferences.has(key)?proofreadPreferences.get(key):originalPreference(key);
+const reviewSettings=(sourceOn,pdfOn)=>{
+  proofreadPreferences.set('latex-codex-proofread-editor',sourceOn?'on':'off');
+  proofreadPreferences.set('latex-codex-proofread-pdf',pdfOn?'on':'off');
+  windowEvents['latex-proofread-change']();
+};
+const queueReview=async()=>{
+  source='before chosen after';selection={from:{line:0,ch:7},to:{line:0,ch:13}};
+  chat.openQuick({left:100,top:100});el('#chat-quick-input').value='Replace this';await el('#chat-quick-form').onsubmit({preventDefault(){}});
+  answer={status:'done',reply:'Changed.',replacement:null,replacements:[{id:painted.at(-1).id,replacement:'new'}]};
+  await el('#annotations-send').onclick();
+};
+chooseColor('');reviewSettings(false,true);await queueReview();
+const pdfOnly=painted[0];assert(pdfOnly.review);assert.equal(source,'before chosen after');
+assert.equal(el('#annotations-toggle').hidden,false,'Hidden inline previews must still have an accessible review list.');
+assert(!marks.some(mark=>!mark.cleared&&mark.options.replacedWith===pdfOnly.review.root));
+assert(el('#annotations-list').children.includes(pdfOnly.review.root),'PDF-only reviews remain reviewable if preview compilation fails.');
+editor.replaceRange('prefix ',{line:0,ch:0},{line:0,ch:0},'codex-chat');
+reviewSettings(true,false);
+const visibleMark=marks.find(mark=>!mark.cleared&&mark.options.replacedWith===pdfOnly.review.root);
+assert.equal(visibleMark.from.ch,14,'Enabling source review uses the current, shifted annotation range.');
+const savedBeforeSwitch=annotationSaves.length;reviewSettings(false,false);
+assert.equal(source,'prefix before chosen after');assert.equal(annotationSaves.length,savedBeforeSwitch);
+assert(el('#annotations-list').children.includes(pdfOnly.review.root));
+await keepReview(pdfOnly);assert.equal(source,'prefix before new after');
+await queueReview();assert.equal(source,'before new after');assert.equal(painted.length,0,'Both disabled applies new Send results directly.');
+saveFailure=true;await queueReview();assert.equal(source,'before chosen after');assert.equal(painted.length,1);assert(!painted[0].review);
+saveFailure=false;await el('#annotations-send').onclick();assert.equal(source,'before new after');assert.equal(painted.length,0);
+reviewSettings(true,false);await queueReview();assert(painted[0].review);assert.equal(source,'before chosen after');undoReview(painted[0]);
+reviewSettings(false,true);el('#filename').title='note.md';await queueReview();
+assert.equal(source,'before new after','Markdown with editor review off has no available PDF review surface.');assert.equal(painted.length,0);
+el('#filename').title='main.tex';reviewSettings(true,true);localStorage.getItem=originalPreference;
 // Dismissing a populated composer saves it locally; draft protection warns before leaving.
 source='before chosen after';selection={from:{line:0,ch:7},to:{line:0,ch:13}};
 chat.openQuick({left:100,top:100});el('#chat-quick-input').value='Save on dismiss';el('#chat-quick').hidePopover();
@@ -303,7 +440,41 @@ assert.equal(quick.style.top,'390px');
 quick.hidePopover();quick.offsetWidth=320;quick.offsetHeight=46;
 console.log('PASS: selection-aware placement, captured pointer drag, bounds, keyboard, resize, cancellation and preserved draft/selection');
 console.log('PASS: adaptive composer height, collapse/draft state, supported effort cycling and expansion around selection');
-console.log('PASS: full chat, queued comments, editing/deletion, batch send/apply, Unicode anchors, atomic stale protection, retry and cancellation');
+console.log('PASS: queued comments, per-range Keep/Undo, shifted Unicode anchors, stale protection, save exclusion, retry and cancellation');
+
+// Discard an import that completes after leaving its original annotation.
+styleSelect.value='';styleSelect.onchange();
+el('#chat-quick-cancel').onclick();events.swapDoc();
+chat.openQuick({left:100,top:100});
+let finishImport;
+el('#chat-style-file').files=[{name:'late.txt',size:5,arrayBuffer:()=>new Promise(resolve=>finishImport=resolve)}];
+const importPending=el('#chat-style-file').onchange();
+el('#chat-quick-cancel').onclick();chat.openQuick({left:100,top:100});
+finishImport(new TextEncoder().encode('Later').buffer);await importPending;
+assert.equal(styleSelect.value,'');assert(!styleSelect.children.some(option=>option.textContent==='late'));
+styleSelect.value='tao-zh';styleSelect.onchange();styleSelect.value='';styleSelect.onchange();
+assert.equal(el('#chat-style-control').dataset.active,'false','No style returns the Style control to its inactive appearance.');
+el('#chat-quick-cancel').onclick();events.swapDoc();
+assert.equal(styleSelect.children.length,6,'Document changes discard temporary imports.');
+chat.openQuick({left:100,top:100});
+styleSelect.value='tao-zh';styleSelect.onchange();
+el('#chat-quick-cancel').onclick();events.swapDoc();chat.openQuick({left:100,top:100});
+assert.equal(styleSelect.value,'tao-zh','Preset defaults survive cancellation and document switches.');
+el('#chat-style-file').files=[promptFile('Persistent.txt','Use compact paragraphs.')];
+await el('#chat-style-file').onchange();
+const savedImport=JSON.parse(storedPreferences.get('latex-codex-writing-style'));
+assert.equal(savedImport.name,'Persistent');assert.equal(savedImport.prompt,'Use compact paragraphs.');
+el('#chat-quick-cancel').onclick();events.swapDoc();chat.openQuick({left:100,top:100});
+assert.equal(styleSelect.value,'custom-saved','Imported defaults survive document switches.');
+el('#chat-quick-cancel').onclick();
+const reloadedStyleChat=attachSelectionChat(editor,request);reloadedStyleChat.openQuick({left:100,top:100});
+assert.equal(styleSelect.value,'custom-saved','A new editor instance restores the saved imported prompt.');
+assert.equal(el('#chat-style-control').dataset.active,'true');
+styleSelect.value='';styleSelect.onchange();el('#chat-quick-cancel').onclick();
+reloadedStyleChat.openQuick({left:100,top:100});assert.equal(styleSelect.value,'');
+assert.equal(storedPreferences.get('latex-codex-writing-style'),'null');
+el('#chat-quick-cancel').onclick();
+console.log('PASS: per-comment snapshots, persistent style defaults, imported prompts, explicit clearing and stale import rejection');
 
 // A reloaded editor restores project questions and uses them after changing selections.
 source='before chosen after';selection={from:{line:0,ch:7},to:{line:0,ch:13}};doc={};selected=true;

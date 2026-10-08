@@ -1,13 +1,13 @@
 export function attachPdfZoom({button, dial, preview, getZoom, setZoom, t}) {
   const rotor = dial.querySelector('.pdf-zoom-rotor');
   const radius = 190, step = Math.PI / 18, selectedAngle = Math.PI * .75;
-  const anchors = [30, 50, 75, 100, 125, 150, 200, 250], cells = [];
+  const anchors = [30, 50, 75, 100, 125, 150, 200, 250, 300, 350, 400, 450, 500], cells = [];
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
   let opened = false, inside = false, drag = null, closeTimer, snapTimer, frame = 0, lastFrame = 0;
   let target = getZoom(), applying = false;
-  const clamp = value => Math.max(30, Math.min(250, value));
+  const clamp = value => Math.max(30, Math.min(500, value));
   // Keep the same glyphs throughout a rotation; only transforms and opacity change.
-  for (let value = 30; value <= 250; value += 5) {
+  for (let value = 30; value <= 500; value += 5) {
     const cell = document.createElement('span'), major = anchors.includes(value);
     cell.className = 'pdf-zoom-tick' + (major ? ' is-major' : '');
     if (major) cell.textContent = value + '%';
@@ -113,7 +113,7 @@ export function attachPdfZoom({button, dial, preview, getZoom, setZoom, t}) {
     const offsets = {ArrowRight: 5, ArrowUp: 5, ArrowLeft: -5, ArrowDown: -5, PageUp: 25, PageDown: -25};
     if (!(event.key in offsets) && event.key !== 'Home' && event.key !== 'End') return;
     event.preventDefault(); event.stopPropagation(); open(); clearTimeout(snapTimer);
-    moveTo(event.key === 'Home' ? 30 : event.key === 'End' ? 250 : target + offsets[event.key]);
+    moveTo(event.key === 'Home' ? 30 : event.key === 'End' ? 500 : target + offsets[event.key]);
   }
   button.onkeydown = dial.onkeydown = keyboard;
   window.addEventListener('resize', () => { if (opened) place(); });

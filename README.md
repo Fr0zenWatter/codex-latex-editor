@@ -22,6 +22,10 @@ Select source text, click the annotation icon, and save your requests. Send them
 
 Select a word, a paragraph, or text with equations in the PDF. Add comments and let Codex revise those passages, with the source and PDF updating together.
 
+Review each suggestion in the source and a temporary red/green PDF preview. **Keep** saves that change; **Undo** preserves the original. Editor and PDF proofreading can be toggled separately under **gear**. Enable **Project change review** to review changes made by the main chat or external tools across project TeX files.
+
+Choose **Style** in the comment toolbar for Tao Compact / Shelah Compact in English or Chinese, or import your own `.txt` / `.md` prompt. Your choice is remembered for new comments.
+
 In **Select text** mode, drag from a blank area of the PDF page to box-select text or formulas, then right-click to add a comment. Dragging on text keeps ordinary text selection; **Esc** clears the box selection.
 
 Choose a color under **gear → Replacement color** to mark actual annotation edits with LaTeX `\color`, making changes easy to spot in the PDF. Select **None** to turn color marking off.
@@ -31,6 +35,8 @@ Choose a color under **gear → Replacement color** to mark actual annotation ed
 ### LaTeX ↔ PDF
 
 In hand mode, double-click the PDF to find its source. Double-click a line number or click the middle **→** to jump back to the PDF. The chapter wheel helps you move through longer documents; setting `main.tex` enables navigation across `\input` / `\include` files.
+
+In **Select text** mode, hold **Space** to pan, or **Alt + Space** and drag to zoom from 30% to 500%.
 
 [![Watch the navigation demo](docs/media/01-navigation.gif)](docs/media/01-navigation.mp4)
 
@@ -59,3 +65,5 @@ Open `.md` or `.markdown` notes with live preview. Click **PDF preview** to comp
 3. Start a new chat and say: **“Use latex-codex to open main.tex.”** You can also provide your document's path.
 
 Edits save directly to your original `.tex`, `.md` or `.markdown` files.
+
+See [Releases](https://github.com/Fr0zenWatter/codex-latex-editor/releases) for version updates. To subscribe, choose **Watch → Custom → Releases** on GitHub.

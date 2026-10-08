@@ -52,6 +52,16 @@ with tempfile.TemporaryDirectory() as directory:
         assert request(servers[0], '/preferences', {'latex-codex-pdf-box-auto-comment': 'on'})[0] == 200
         assert json.loads(request(servers[1], '/preferences')[1])['latex-codex-pdf-box-auto-comment'] == 'on'
         assert Preferences(database).read()['latex-codex-pdf-box-auto-comment'] == 'on'
+        switches = {'latex-codex-proofread-editor': 'off', 'latex-codex-proofread-pdf': 'on'}
+        assert request(servers[0], '/preferences', switches)[0] == 200
+        assert all(json.loads(request(servers[1], '/preferences')[1])[key] == value for key, value in switches.items())
+        for style in ({'id': 'tao-en'}, {'name': 'Personal', 'prompt': 'Preserve notation.'}, None):
+            value = json.dumps(style)
+            assert request(servers[0], '/preferences', {'latex-codex-writing-style': value})[0] == 200
+            assert json.loads(request(servers[1], '/preferences')[1])['latex-codex-writing-style'] == value
+            assert Preferences(database).read()['latex-codex-writing-style'] == value
+        assert request(servers[0], '/preferences', {'latex-codex-proofread-project':'on'})[0] == 200
+        assert json.loads(request(servers[1], '/preferences')[1])['latex-codex-proofread-project'] == 'on'
         assert request(servers[0], '/preferences', {'source': 'never saved'})[0] == 400
         assert request(servers[0], '/preferences', {'latex-codex-theme': 1})[0] == 400
         assert request(servers[0], '/preferences', {'latex-codex-theme': 'x'}, 'https://example.com')[0] == 403

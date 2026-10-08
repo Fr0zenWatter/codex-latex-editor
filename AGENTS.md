@@ -51,17 +51,29 @@ python plugins/latex-codex/scripts/editor.py /path/to/project/paper/main.tex --p
 
 ## 维护
 
+临时批注框工具栏的“Style”按钮位于思考等级后，未选风格为灰色，已选高亮；收起时只显示 Style，不展示名称，不另开对话框。点击原生下拉菜单选择“无”、预设或导入提示词。预设提供用户给定的 Tao Compact / Shelah Compact 中英文提示词，可导入 UTF-8 `.txt` / `.md`（最大 64 KiB、12000 字符）。预设及拼接逻辑在 `scripts/vendor/latex-writing-styles.mjs`，仅作为当前批注的提示词数据，不安装或执行技能。Style 选择（含导入提示词）自动存入用户全局偏好，新批注、刷新页面和切换文稿继续沿用，选择“无”清除默认风格。每条批注保存自己的风格快照；批量发送按各自快照把风格合入 `annotation.request`，当前修改要求优先。确认修改的历史保留实际发送的完整要求。仅当前默认导入项随全局偏好保存，其余导入项仍只保留在当前页面；检查覆盖 `test_chat_ui.mjs` 与 `test_preferences.py`。
+
+PDF 的“选字”模式支持空格临时拖动；同时按住空格与 Alt，再按住左键向右下拖动可连续放大，向左上拖动可连续缩小，范围为 30%–500%。按下鼠标的位置作为缩放中心；每帧合并指针移动，通过 PDF.js 延迟栅格渲染保持拖动流畅，松开后立即补清晰渲染。松开任一快捷键、取消拖动、失焦、切换模式或替换 PDF 均结束手势，不触发框选批注或源码定位。检查覆盖 `test_ui.cjs`。
+
 源码的 Ctrl+F / macOS Cmd+F 打开搜索替换面板，支持大小写、正则、整词与仅选区搜索，Enter / Shift+Enter 浏览匹配，Esc 关闭。默认不区分大小写、按普通文本搜索；选项按钮高亮表示开启，再次点击关闭，大小写与正则按钮的提示显示当前状态。替换通过 CodeMirror 的正常编辑与自动保存流程执行；全部替换为一次可撤销操作。实现位于 `plugins/latex-codex/scripts/vendor/latex-search.{mjs,css}`，检查覆盖 `test_search.mjs` 与 `test_ui.cjs`。PDF 右侧滚动手柄显示当前物理页码和总页数，默认宽度 26 px，较长页数自动撑开；无章节目录时仍保留页码与滚动，PDF 关闭时清除，检查覆盖 `test_outline.mjs`。
 
 PDF 的“选字”模式保留文字上的原生拖选；从页面空白处按下左键拖动时，在起始页内框选文字或公式。框选按 PDF.js 字符几何位置判断，松开后才按页读取并缓存字符数据，拖动过程不调用 SyncTeX。右键“添加批注”沿用现有源码定位；公式优先核实编译位置并选中完整公式环境，行内公式也保留完整源码边界。框选正文要求明确匹配，不用编辑距离猜测被矩形漏掉的文字；无法匹配时扩大选框或在源码选择。Esc、切换拖动模式、缩放或替换 PDF 会清除框选。检查覆盖 `test_pdf_selection.mjs` 与 `test_ui.cjs`。历史 PDF 标红按完整句子展开，Markdown 同时以源码段落和标题为边界，跨图片后的下一段不并入前句；中文句号保留独立句子，换行造成的 PDF 文字片段拆合不算内容修改，正文页码不参与 Markdown 句子对比。检查覆盖 `test_history_pdf.py` 与 `test_markdown_pdf.py`。
 
-用户界面偏好保存在用户目录的 `.latex-codex/preferences.sqlite3`，跨文稿和服务端口共享，包括语言、编辑模式、源码字号、目录样式、配色与自定义配色、修改标记色、修订色、自动编译、框选后自动弹出 PDF 批注对话框和分栏比例。设置即时应用并自动保存，设置菜单的“保存设置”确认写入；失败显示提示并保留待保存值。浏览器 localStorage 只作兼容缓存，首次使用优先沿用当前地址下的旧偏好。设置库不随插件分发或提交。
+PDF 正文定位识别主文件中直接声明的 `\newtheorem`（含星号及共享计数器）和 `proof`，将自动标题、编号、纯文本可选标题和证毕方块与对应源码边界核对。完整环境选区保留配对的 `\begin` / `\end`，部分正文保持精确范围；跨环境的部分选区、漏选正文和歧义匹配拒绝定位。宏生成标题、外部包定义的自定义环境及非标准标题布局仍需源码选择。实现与检查在 `editor.py`、`test_ui.cjs`。
+
+设置中的“项目修改校对（主对话 / 外部修改）”默认关闭，开启后跟踪项目内 `.tex`（含子文件）的文件修改；手动输入及已 Keep 的插件建议正常保存，不重复校对。差异基线保存在项目历史数据库的独立表，刷新或重启不丢待确认修改；关闭开关仅隐藏，不自动接受。顶部“项目校对”列表定位文件，源码及临时 PDF 沿用各自 Proofread 开关与逐处 Keep / Undo。主对话 / 外部工具已经写入磁盘后才捕获差异，Keep 确认当前内容，Undo 校验最新文件与基线后撤销该处；不能在 Codex 文件工具写入前拦截。不覆盖未保存草稿；重叠的新修改需刷新校对。纯删除也保留可操作的标记，历史不保存临时红绿 PDF。主对话代理修改时先检查运行服务的 `/project-review`，启用时通过同源 POST `/project-review` 提交 `{action:"propose",path,version,source}`，使用最新文件版本，保留手动编辑与现有批注；该 API 会写入真实文件并保留校对基线。实现与检查在 `project_review.py`、`vendor/latex-project-review.mjs`、`test_project_review.py` 和 `test_project_review.mjs`。
+
+用户界面偏好保存在用户目录的 `.latex-codex/preferences.sqlite3`，跨文稿和服务端口共享，包括语言、编辑模式、源码字号、目录样式、配色与自定义配色、修改标记色、修订色、自动编译、框选后自动弹出 PDF 批注对话框、默认写作风格（含导入提示词）和分栏比例。设置即时应用并自动保存，设置菜单的“保存设置”确认写入；失败显示提示并保留待保存值。浏览器 localStorage 只作兼容缓存，首次使用优先沿用当前地址下的旧偏好。设置库不随插件分发或提交。
 
 历史胶囊标签的 React / TypeScript 源码在 `plugins/latex-codex/frontend/`，使用 Tailwind CSS 与 shadcn 风格的 Radix Tabs。组件统一放在 `frontend/components/ui/`；`@/components/ui` 别名和 `components.json` 都指向这里，避免组件导入与 shadcn CLI 生成路径不一致。样式入口为 `frontend/styles.css`。
 
 维护时在该目录执行 `npm ci`、`npm run build`（包含 TypeScript 检查）；生成的 `scripts/vendor/history-tabs.{mjs,css}` 和许可证文件随插件一起分发，使用者不需要 Node。需要新增 shadcn 组件时可在该目录执行 `npx shadcn@latest add <组件名>`，保留现有适配。npm 依赖与锁文件保留在源码中，不分发 `node_modules`。
 
-成功处理的本地 AI 批注批次作为独立检查点保存，包含原选区、修改要求、源码行号和 AI 回复；历史记录可展开查看。应用前保存准确的编辑草稿和修改后源码，包括同时在其他位置完成的编辑。保存失败保留源码和待处理批注；带唯一请求编号的批注保存可安全重试，普通保存不重试。批注不写入 `.tex` 源码，未发送、失败或取消的批注仍仅保留在当前页面；旧对话不回填批注关联。
+本地 AI 批注通过 Send 生成建议后，每处在源码编辑区显示红色原文、绿色修改和独立的 Keep / Undo。预览不改源码；Keep 先保存准确的当前草稿及该处修改，再以一次可撤销操作应用，Undo 只撤销该处建议并保留原文。其他编辑和待校对标记继续保留，后续 Send 只发送尚未生成建议的批注。每处 Keep 作为独立历史检查点，包含原选区、修改要求、源码行号和 AI 回复；无需修改的回答按批次记录。保存失败保留源码和建议；带唯一请求编号的批注保存可安全重试，普通保存不重试。未处理的建议沿用批注的关闭、切换与外部冲突保护。批注和校对预览不写入 `.tex` / Markdown 源码，旧对话不回填批注关联。实现为 `scripts/vendor/latex-proofread.{mjs,css}` 与 `latex-chat.mjs`，检查覆盖 `test_proofread.mjs`、`test_chat_ui.mjs` 和 `test_chat.py`。
+
+设置提供独立的“编辑器校对（Proofread）”与“PDF 校对（Proofread）”开关，均默认开启，偏好跨项目保存。关闭编辑器校对时，待处理建议移至批注列表；关闭 PDF 校对时恢复正式 PDF，并忽略未完成预览请求的结果。两者都关闭后，新 Send 修改走原有直接保存应用流程；切换开关不自动接受或丢弃已生成建议。Markdown 仅使用编辑器校对开关，PDF 校对开关不启用其临时 PDF 编译。检查覆盖 `test_settings.mjs`、`test_preferences.py`、`test_proofread.mjs`、`test_proofread_pdf.mjs`、`test_chat_ui.mjs`。
+
+LaTeX 批注建议同时生成临时 PDF 校对预览：原选区全文标红，建议全文标绿，PDF 页边的每处 Keep / Undo 与源码校对卡片共享操作。`/proofread` 在独立临时目录覆盖当前草稿并编译主文件（含子文件相对依赖）；不写真实源码、历史版本、历史 PDF 缓存，也不覆盖正式 PDF / SyncTeX。临时 PDF 仅在服务内存保留最近两份，临时源码和构建文件立即清理；普通 PDF 下载仍导出正式文稿。预览期间停用正式源码定位，处理完建议恢复正常 PDF；失败保留原 PDF 和建议。Keep 沿用正式保存及历史检查点流程，Undo 不新增历史。实现为 `scripts/proofread.py`、`vendor/latex-proofread-pdf.mjs` 和现有编译适配；检查覆盖 `test_proofread_pdf.py` / `.mjs`，共享的临时源码编译沿用 `test_history_pdf.py`。
 
 历史活动流统一显示整个项目的记录，按每条记录所属源码文件的章节定位改动，同一文件的五分钟保存组与对比基线保持独立。恢复另一文件前保存当前编辑草稿，并校验当前文件与目标文件的版本。鼠标移入记录栏时，使用已登录的 Codex CLI 在后台概括尚未缓存的记录，每批最多 12 个；摘要跟随界面语言，按版本、对比基线和语言分别存入现有历史数据库，不进入项目问答。旧版摘要保留为简体中文缓存，切换语言会取消旧请求并复用或生成对应语言的摘要。摘要失败仍显示本地章节位置，关闭历史会取消未完成请求。
 

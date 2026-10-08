@@ -22,6 +22,10 @@
 
 在 PDF 中选中一个词、一段话，或带公式的段落，添加批注让 Codex 修改对应内容，源码与 PDF 一起更新。
 
+在源码和临时红绿 PDF 中逐处审阅建议：**Keep** 保存该处修改，**Undo** 保留原文。可在**齿轮**中分别开关编辑器与 PDF 校对；开启**项目修改校对**后，还可审阅主对话或外部工具对项目 TeX 文件的修改。
+
+批注工具栏的 **Style** 提供 Tao Compact / Shelah Compact 中英文风格，也可导入自己的 `.txt` / `.md` 提示词；选择会记住并沿用于新批注。
+
 在**选字**模式下，从 PDF 页面空白处拖动可框选文字或公式，再右键添加批注；从文字处拖动仍是普通选字。按 **Esc** 清除框选。
 
 可在**齿轮 → 修改标记颜色**中选择颜色，用 LaTeX `\color` 标注批注中实际修改的内容，方便在 PDF 中查看；选择“无”即可关闭颜色标注。
@@ -31,6 +35,8 @@
 ### LaTeX ↔ PDF 跳转
 
 抓手模式下双击 PDF，定位对应源码；双击行号或点击中间的 **→**，跳回 PDF。章节拨轮方便浏览长文，指定 `main.tex` 后，还能跨 `\input` / `\include` 文件跳转。
+
+在**选字**模式下，按住**空格**拖动页面，或按住 **Alt + 空格**拖动缩放，范围为 30%–500%。
 
 [![观看双向跳转演示](docs/media/01-navigation.gif)](docs/media/01-navigation.mp4)
 
@@ -59,3 +65,5 @@
 3. 安装后新开对话，说：**“用 latex-codex 打开 main.tex。”** 也可指定文稿路径。
 
 编辑会直接保存到原始 `.tex`、`.md` 或 `.markdown` 文件。
+
+版本更新见 [Releases](https://github.com/Fr0zenWatter/codex-latex-editor/releases)。订阅新版本：在 GitHub 点击 **Watch → Custom → Releases**。

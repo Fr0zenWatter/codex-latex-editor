@@ -6,7 +6,8 @@ import sqlite3
 
 PREFERENCE_KEYS = frozenset('latex-codex-' + name for name in (
     'language', 'revision-color', 'outline-style', 'theme', 'custom-themes',
-    'editor-mode', 'source-font-size', 'chat-color', 'auto-compile', 'pdf-box-auto-comment', 'split'))
+    'editor-mode', 'source-font-size', 'chat-color', 'auto-compile', 'pdf-box-auto-comment',
+    'proofread-editor', 'proofread-pdf', 'proofread-project', 'writing-style', 'split'))
 
 
 class Preferences:
