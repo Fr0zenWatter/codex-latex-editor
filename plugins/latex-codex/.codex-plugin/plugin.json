@@ -1,7 +1,7 @@
 {
   "name": "latex-codex",
-  "version": "0.3.0",
-  "description": "Local LaTeX and Markdown editing with live HTML and PDF previews in the Codex browser side panel.",
+  "version": "0.3.2",
+  "description": "Local LaTeX and Markdown editor with the signed-in native Codex CLI.",
   "author": {
     "name": "Local developer"
   },

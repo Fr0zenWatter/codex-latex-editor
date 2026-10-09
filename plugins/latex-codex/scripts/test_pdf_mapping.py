@@ -88,6 +88,28 @@ try{
     assert.equal(offset(range.from),from);assert.equal(offset(range.to),to,'Do not include the following paragraph or bibliography.');
     console.log('PASS: real PDF '+kind+' mapping with formulas and a citation postnote');
   }
+  let misread=0;
+  const damagedText=selected.text.replace(/[a-z]/gi,char=>++misread%4===0?'◆':char);
+  assert.throws(()=>context.sourcePdfTextRange(source,[first,last],damagedText,{},citations),/唯一匹配/);
+  for(const kind of ['text','box']){
+    const range=await context.sourcePdfSelectionRange(source,[first,last],{...selected,text:damagedText,kind},{},citations,regions);
+    assert.equal(offset(range.from),from);assert.equal(offset(range.to),to);
+    console.log('PASS: real compiled row verification with more tolerant '+kind+' matching');
+  }
+  const lemmaBox=select('Lemma 1',0,'with these properties.');
+  assert.equal(lemmaBox.contiguous,true);
+  const bodyFrom=source.indexOf('Let $\\cA$'),bodyTo=source.indexOf('\n\n',bodyFrom);
+  const bodyFirst=source.slice(0,bodyFrom).split('\n').length,bodyLast=source.slice(0,bodyTo).split('\n').length;
+  for(const kind of ['text','box']){
+    const range=await context.sourcePdfSelectionRange(source,[bodyFirst,bodyLast],{...lemmaBox,kind},{}, {},regions);
+    assert.equal(offset(range.from),bodyFrom);
+    assert.equal(offset(range.to),bodyTo,'The generated heading must not pull in later theorem paragraphs.');
+    console.log('PASS: real PDF '+kind+' mapping with a theorem title and reordered formulas');
+  }
+  const completeLemma=select('Lemma 1',0,'Later theorem paragraph.');
+  const completeRange=await context.sourcePdfSelectionRange(source,[bodyFirst,bodyLast],completeLemma,{}, {},regions);
+  assert.equal(offset(completeRange.from),source.indexOf('\\begin{lemma}'));
+  assert.equal(offset(completeRange.to),source.indexOf('\\end{lemma}')+'\\end{lemma}'.length,'A complete theorem selection retains paired delimiters.');
 }finally{await task.destroy();}
 '''
 
@@ -95,8 +117,8 @@ try{
 with tempfile.TemporaryDirectory() as directory:
     path = Path(directory) / 'main.tex'
     source = r'''\documentclass{article}
-\usepackage{amsmath}\usepackage[numbers]{natbib}
-\newcommand{\custom}[1]{#1}
+\usepackage{amsmath,amssymb,amsthm}\usepackage[numbers]{natbib}
+\newcommand{\custom}[1]{#1}\newcommand{\cA}{\mathcal{A}}\newcommand{\bZ}{\mathbb{Z}}\newtheorem{lemma}{Lemma}
 \begin{document}
 First context: repeated phrase.\\
 Second context: repeated phrase.
@@ -115,6 +137,15 @@ $X$ whose finite intersections are nonempty is contained in an
 ultrafilter on $X$.
 
 Following paragraph.
+\begin{lemma}[A generated title with inline indices and symbols]
+\label{lem:indices}
+Let $\cA$ carry the data $(\Phi,\{\Pi_\varphi\}_{\varphi\in\Phi})$, where
+$\Phi=\{\varphi_1<\cdots<\varphi_n\}$, and suppose each part is closed.
+For every $1\leq i<n$, the maps $f,g:K_0(\cA)\to\bZ$ are defined
+on the generators with these properties.
+
+Later theorem paragraph.
+\end{lemma}
 \begin{thebibliography}{1}
 \bibitem{Jech2003} Test reference.
 \end{thebibliography}

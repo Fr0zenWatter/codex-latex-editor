@@ -22,3 +22,7 @@ __pycache__/
 
 .DS_Store
 Thumbs.db
+
+# Shared editor snapshot for the optional DeepSeek plugin (generated before packaging)
+/plugins/latex-deepseek/runtime/
+/plugins/latex-deepseek/.runtime-*/

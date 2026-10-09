@@ -1,7 +1,7 @@
 # 项目约定
 
 - README 写给使用者：只保留简短介绍、主要功能和最短用法。环境、安装命令和维护细节放在本文件。
-- 插件源码在 `plugins/latex-codex/`，市场配置在 `.agents/plugins/marketplace.json`。修改仓库源码，不直接修改已安装的缓存副本。
+- 原生 Codex 插件源码在 `plugins/latex-codex/`，DeepSeek 适配源码在 `plugins/latex-deepseek/`，两者的市场配置在 `.agents/plugins/marketplace.json`。修改仓库源码，不直接修改已安装的缓存副本。
 - 不提交论文、实验备份、分享压缩包、文档历史数据库或凭据。
 
 ## LaTeX 默认打开方式
@@ -12,9 +12,13 @@
 
 ## 安装
 
+### 原生 Codex（默认）
+
+`latex-codex@latex-codex-shared` 是原生插件。普通安装和更新保持此 ID，不安装 DeepSeek。
+
 先检查已登录的 Codex 桌面应用与 CLI、Python 3.10+、本地 TeX Live / MiKTeX / MacTeX。TeX 环境需提供 `xelatex` / `pdflatex`、`bibtex` 和 `synctex`。缺少依赖时说明缺项，不自动安装 TeX 环境或更改全局设置。前端资源已随插件附带，无需 npm、pip 或 Poppler 安装。PDF 页尺寸与文字位置由自带 PDF.js 读取，服务端只调用本地 TeX / SyncTeX。macOS 优先使用 PATH 中的 TeX，找不到时检查 `/Library/TeX/texbin`，不修改全局 PATH。Windows / Linux 的系统文件选择器使用可选的 tkinter；缺少时仍可通过启动命令打开文稿。macOS 使用系统原生文件选择器。
 
-用户要求安装时，在仓库根目录执行：
+用户要求原生插件安装或更新时，在仓库根目录执行：
 
 ```sh
 codex plugin marketplace add .
@@ -31,6 +35,42 @@ Windows 中 CLI 不在 PATH 时，优先使用当前桌面应用提供的 CLI：
 安装后让用户新开对话，使用 latex-codex 打开指定的 `.tex` 文件。保持仓库目录可用，作为本地插件源。当前版本已在 Windows 验证；macOS 路径查找和文件选择器有模拟检查，仍需真机验证。迁移时复制仓库并在新电脑重新注册本地市场和安装插件，文稿相对依赖及 `.latex-codex/` 历史随项目目录一起复制。
 
 安装机制参见 [官方文档](https://developers.openai.com/plugins/build/plugins#install-a-local-plugin-manually)。
+
+### 可选的独立 DeepSeek Harness 插件
+
+`latex-deepseek` 有独立的插件名、版本、技能和启动入口，默认使用 DeepSeek；原生 `latex-codex` 入口只接受 Codex。Python 和本地 TeX 依赖沿用上文。当前在 Windows、DeepSeek Harness `0.2.0-rc.2` 实测账号登录的 Send；其他平台尚未实机验证。服务在本机运行，浏览器需允许访问回环地址。
+
+```sh
+python scripts/build_deepseek_plugin.py
+codex plugin add latex-deepseek@latex-codex-shared
+python plugins/latex-deepseek/scripts/editor.py /path/to/main.tex
+```
+
+需要主对话转发时，另行执行：
+
+```sh
+python plugins/latex-deepseek/scripts/install_deepseek_bridge.py
+```
+
+最后一条命令仅用于用户要求的可选主对话转发，安装原生插件时不执行。它在 `$DSH_HOME/profiles/desktop/cordis.patch.yml`（默认 `~/.dsh`）追加 `latex-main-chat-bridge`，保留其他配置，不读取或复制凭据；解压目录需保留。重复执行不重复添加。支持普通 YAML 块列表和 JSON 列表；其他格式需手动添加以下条目，替换为模块的实际绝对路径。已有其他安装路径的同名桥接时，先移除旧条目。
+
+```yaml
+- insert:
+    - id: latex-main-chat-bridge
+      name: /path/to/plugins/latex-deepseek/scripts/deepseek-main-chat.mjs
+```
+
+默认 HMR 会加载新增配置；关闭 HMR 时重启 Harness。卸载仅移除该条目。不要修改安装目录的 `app.asar`。桥接使用 Windows named pipe 或权限 `0600` 的 Unix socket；网页只访问编辑器同源 `/main-chat`。启动时捕获 `DSH_SESSION_ID` 和工作目录，转发仅允许同一工作目录中的该会话仍在运行，不按最近记录选择会话，不使用 headless resume 争用主对话。因此需从 DeepSeek 主对话运行启动命令，再打开打印的 URL。
+
+保存批注后，列表提供独立的“发送到 DeepSeek 主对话”。没有会话绑定或桥接不可用时禁用并说明原因。发送前核对自动保存内容、文件和版本，接收确认后才清除该批批注；失败保留，相同请求 ID 安全重试，改内容不能复用 ID。转交不直接改源码，不生成本地建议；主对话的修改仍走外部同步和项目校对。真实桥接加载、状态连接和测试替身中的转交流程已验证；向用户现有会话的实际提交由用户点击按钮触发。
+
+Send、项目对话和历史摘要调用已安装的 `dsh headless --json -`。CLI 优先 `DSH_CLI_PATH`，其次 PATH；Windows 再查应用卸载注册信息，直接以 Electron Node 模式调用随应用附带的 CLI，避免可见窗口和命令 shell。认证由 Harness 完成，不把密钥加入参数。模型列表区分 Harness 账号与 API 路由；“跟随 DeepSeek 默认”沿用 **headless profile** 的默认模型，与桌面会话选择独立。主对话上下文暂不自动加入项目对话；项目本地记忆仍在原数据库。
+
+每次调用使用只读运行，临时会话、projection storage 和配置覆盖用后清理。临时 Cordis 插件隐藏工具并用执行 guard 拒绝工具调用，关闭 skill 扫描、项目 instructions 和额外标题模型请求；不修改全局配置。只解析无截断的 `final` 并核对 replacements；失败、工具事件和不完整批次不能应用。DeepSeek 此调用没有强制 JSON Schema，格式失败保留批注供重试。适配检查在 `plugins/latex-deepseek/scripts/test_deepseek.py` 和 `.mjs`；共享界面沿用原生目录中的 `test_chat_ui.mjs` 和既有 chat、HTTP、校对检查。
+
+DeepSeek 安装前需运行上面的打包命令。`scripts/build_deepseek_plugin.py` 只把原生目录中的九个运行模块和完整 vendor（含 PDF.js worker、字体及许可证）复制到 `plugins/latex-deepseek/runtime/`；该目录是忽略提交的生成资源，不含文稿、凭据、历史库或 frontend/node_modules。适配模块和技能保留在 DeepSeek 自己的源码目录。安装快照包含 runtime，可以单独迁移和启动，不读取原生插件的缓存路径。共享模块里的后端分支供 DeepSeek 包复用，原生安装不含 Harness 适配模块或桥接安装脚本。打包时先生成完整资源再替换旧目录；更新 DeepSeek 前停止其服务、重新打包再执行它自己的安装命令，按需更新 DeepSeek manifest 版本。原生更新无需打包或安装 DeepSeek，不合并两者的版本号。
+
+运行 `python scripts/test_plugin_packages.py` 验证两种默认后端、拒绝切换到另一后端、失败打包保留旧资源、删除旧生成文件，以及移走仓库和原生插件后 DeepSeek 独立启动与资源读取；不发真实模型请求或主对话消息。
 
 ## 启动与数据
 
@@ -51,7 +91,7 @@ python plugins/latex-codex/scripts/editor.py /path/to/project/paper/main.tex --p
 
 ## 维护
 
-目录新增“章节时间线”：沿用 PDF 抓手的悬停、点击和关闭流程，竖线连接 section 大圆与 subsection 小胶囊，当前位置显示双层圆环。滚轮、拖动和方向键只浏览，点击或 Enter 跳转；目录样式沿用全局偏好保存。实现和检查在 `vendor/latex-outline.{mjs,css}`、`vendor/latex-settings.mjs`、`test_outline.mjs` 和 `test_settings.mjs`。
+目录“章节时间线”在悬停或点击 PDF 抓手后隐藏抓手，以整条预览区高度展示固定章节点；竖线贴近右侧边框，连接 section 大圆与 subsection 小胶囊，当前位置显示双层圆环；较小的标题放在线左侧，单行超出时显示省略号，悬停可看完整标题，背景为磨砂半透明，宽度随最长标题收窄，左侧通过渐变遮罩平缓淡出。所有节点按章节顺序同时排列，点击节点跳转，Tab 与 Enter / Space 使用原生按钮操作；滚轮沿用 PDF 滚动和 Ctrl 缩放，不旋转或重新排列目录，拖动目录也不改变节点。密集目录缩小节点，标题在悬停或键盘聚焦时显示；离开后恢复抓手。目录样式沿用全局偏好保存，其他轮盘样式保留原交互。实现和检查在 `vendor/latex-outline.{mjs,css}`、`test_outline.mjs` 和 `test_settings.mjs`。
 
 源码和 PDF 校对区提供“上方还有 N 处改动”和“下方还有 N 处改动”按钮，分别位于右上角与右下角，点击滚动到最近的上一处或下一处待处理修改，不接受或撤销建议。源码按 CodeMirror 标记的位置统计，可导航未渲染的改动；PDF 按当前校对预览的区域定位，同一建议跨页只计一次。滚动、缩放、分栏调整、Keep / Undo 和校对开关变化更新计数；某方向没有改动时隐藏对应按钮。实现和检查在 `vendor/latex-proofread.mjs`、`vendor/latex-proofread-pdf.mjs`、`test_proofread.mjs`、`test_proofread_pdf.mjs` 和 `test_ui.cjs`。
 
@@ -63,7 +103,9 @@ PDF 的“选字”模式支持空格临时拖动；同时按住空格与 Alt，
 
 PDF 的“选字”模式保留文字上的原生拖选；从页面空白处按下左键拖动时，在起始页内框选文字或公式。框选按 PDF.js 字符几何位置判断，松开后才按页读取并缓存字符数据，拖动过程不调用 SyncTeX。右键“添加批注”沿用现有源码定位；公式优先核实编译位置并选中完整公式环境，行内公式也保留完整源码边界。同排显示的 `\paragraph` / `\subparagraph` 标题与正文可一起匹配，保留完整标题命令；只选正文时不带入标题。框选正文先做明确匹配；几何检测确认首末字符之间的文字完整覆盖时，可使用与拖选相同的有限相似匹配，容忍字符误读与公式排版差异。漏选中间字符时不启用相似匹配，多个同等匹配仍拒绝定位；无法匹配时扩大选框或在源码选择。Esc、切换拖动模式、缩放或替换 PDF 会清除框选。检查覆盖 `test_pdf_selection.mjs` 与 `test_ui.cjs`。历史 PDF 标红按完整句子展开，Markdown 同时以源码段落和标题为边界，跨图片后的下一段不并入前句；中文句号保留独立句子，换行造成的 PDF 文字片段拆合不算内容修改，正文页码不参与 Markdown 句子对比。检查覆盖 `test_history_pdf.py` 与 `test_markdown_pdf.py`。
 
-PDF 正文定位识别主文件中直接声明的 `\newtheorem`（含星号及共享计数器）和 `proof`，将自动标题、编号、纯文本可选标题和证毕方块与对应源码边界核对。完整环境选区保留配对的 `\begin` / `\end`，部分正文保持精确范围；跨环境的部分选区、漏选正文和歧义匹配拒绝定位。宏生成标题、外部包定义的自定义环境及非标准标题布局仍需源码选择。实现与检查在 `editor.py`、`test_ui.cjs`。
+PDF 正文定位识别主文件中直接声明的 `\newtheorem`（含星号及共享计数器）和 `proof`，将自动标题、编号、纯文本可选标题和证毕方块与对应源码边界核对。选区开头的标题及末尾的证毕方块核实后，允许正文沿用有限相似匹配，容忍公式脚标顺序或字形差异；不完整框选仍不启用相似匹配，选区中间的自动标题仍须明确匹配边界。完整环境选区保留配对的 `\begin` / `\end`，部分正文保持精确范围；跨环境的部分选区、漏选正文和歧义匹配拒绝定位。宏生成标题、外部包定义的自定义环境及非标准标题布局仍需源码选择。实现与检查在 `editor.py`、`test_ui.cjs` 和 `test_pdf_mapping.py`。
+
+正文定位先按原有精确匹配及最多 20% 字符差异处理。失败后，经过逐行 PDF 区域核实、规范化后至少 24 字符的选区允许最多 35% 差异，同时放宽投影长度差异，优先提高字形误读、漏读及公式重排时的定位成功率。候选仍须覆盖所有选中 PDF 字形；短选区、不完整框选及无法区分的同等候选继续沿用原有约束。数字引用的无编号正文兜底仍保持最多 5% / 12 字符。检查覆盖 `test_ui.cjs` 和真实编译的 `test_pdf_mapping.py`。
 
 PDF 拖选和框选共用正文定位规则，并保留选区前后各最多 80 字符的 PDF 上下文，用于区分同一源码行中的重复文字；同一完整公式内的重复符号视为同一源码候选。原段落匹配失败后，查询该次编译缓存的逐行 PDF 区域，在段落及锚点前后 12 行内补查正文和公式，候选必须覆盖所选 PDF 字形，查询最多 401 行，末尾换行不算额外源码行。`/synctex` 的 `range` 返回兼容原有 `regions` 的逐行 `lines`；子文件沿用自己的 SyncTeX tag。拖选与框选都支持源码 `\item` 边界上的自动数字编号，以及 `\href` 的显示文字和 `\url`。数字 `\cite` / `\citep` 支持一段纯文本后注或两段纯文本前后注，按当前编译编号投影，说明中的 `--` / `---` 对应 PDF 长横线；只选引用也保留完整命令。带说明的引用缺少编译编号时不跳过说明，说明中的宏、公式和嵌套方括号仍保持拒绝。仍无法由上下文或位置区分的候选保持拒绝，不自动扩大到整段；不完整框选不启用相似匹配。新增查询前后的源码 / PDF 版本保护与原流程一致。检查在 `test_pdf_selection.mjs`、`test_ui.cjs`、`test_pdf_mapping.py`、`test_editor.py` 和 `test_project_files.py`；`test_pdf_mapping.py` 使用真实编译、PDF.js 字形和 HTTP 定位接口串联验证。
 

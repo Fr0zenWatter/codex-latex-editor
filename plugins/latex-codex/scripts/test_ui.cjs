@@ -708,6 +708,24 @@ Following prose.`;
   let exactQueries=0;
   await context.sourcePdfSelectionRange('A unique target phrase.',[1],nearbySelection,{}, {},async()=>{exactQueries++;return {};});
   assert.equal(exactQueries,0,'Ordinary unique prose does not add a line-index request.');
+  const readable='The indexed formula determines a useful bound for every nonnegative input value.';
+  let letters=0;
+  const damaged=readable.replace(/[a-z]/gi,char=>++letters%4===0?'◆':char);
+  const damagedSelection={...rowSelection,text:damaged,fragments:[fragment(damaged,1,100)]};
+  assert.throws(()=>context.sourcePdfTextRange(readable,[1],damaged),/唯一匹配/,'The first pass keeps its existing text tolerance.');
+  for(const kind of ['text','box']){
+    const restored=await context.sourcePdfSelectionRange(readable+'\n'+readable,[2],{...damagedSelection,kind}, {}, {},indexedRows);
+    assert.deepEqual(JSON.parse(JSON.stringify(restored.from)),{line:1,ch:0});
+    assert.deepEqual(JSON.parse(JSON.stringify(restored.to)),{line:1,ch:readable.length},'The more tolerant retry selects only the physically matching source row.');
+  }
+  letters=0;
+  const missingGlyphs=readable.replace(/[a-z]/gi,char=>++letters%5===0?'':char);
+  const missingRange=await context.sourcePdfSelectionRange(readable+'\n'+readable,[2],{...damagedSelection,text:missingGlyphs}, {}, {},indexedRows);
+  assert.equal(missingRange.from.line,1);assert.equal(missingRange.to.ch,readable.length,'The wider retry also permits a longer source projection when PDF glyphs are missing.');
+  await assert.rejects(()=>context.sourcePdfSelectionRange(readable,[1],damagedSelection,{}, {},async()=>({lines:{}})),/唯一匹配/,'A damaged passage needs compiled position evidence before using the wider tolerance.');
+  await assert.rejects(()=>context.sourcePdfSelectionRange(readable,[1],{...damagedSelection,contiguous:false}, {}, {},async()=>({lines:{1:[{page:1,rect:[0,95,120,115]}]}})),/唯一匹配/,'A gapped box still cannot widen its text tolerance.');
+  await assert.rejects(()=>context.sourcePdfSelectionRange(readable+'\n'+readable,[2],damagedSelection,{}, {},async()=>({lines:{1:[{page:1,rect:[0,95,120,115]}],2:[{page:1,rect:[0,95,120,115]}]}})),/唯一匹配/,'Equal text and position candidates still remain ambiguous.');
+  await assert.rejects(()=>context.sourcePdfSelectionRange(readable,[1],damagedSelection,{}, {},async()=>({lines:{1:[{page:2,rect:[0,95,120,115]}]}})),/唯一匹配/,'The more tolerant retry cannot use text from another PDF page.');
   const adjacentMath=String.raw`Earlier unrelated prose.
 
 \begin{align*}
@@ -1002,6 +1020,26 @@ Every square is nonnegative.
   assert.equal(theoremMatch(observation,'Observation. Every square is nonnegative.'),observation);
   const titledProof=String.raw`\begin{proof}[Proof of positivity]Every square is nonnegative.\end{proof}`;
   assert.equal(theoremMatch(titledProof,'Proof of positivity. Every square is nonnegative.'),titledProof);
+  const scriptedBody=String.raw`For each index $1\leq i<n$, the expression $x_i^2$ determines a nonnegative value. Further properties follow below.`;
+  const scriptedSource='\\begin{lem}[A generated heading with reordered formula scripts]\n\\label{lem:scripts}\n'+scriptedBody+'\n\nUnselected later paragraph.\n\\end{lem}';
+  const scriptedPdf='Lemma 2 (A generated heading with reordered formula scripts). For each index 1 ≤ i < n, the expression x2i determines a nonnegative value. Further properties follow below.';
+  for(const box of [false,true]){
+    const range=context.sourcePdfTextRange(scriptedSource,[3],scriptedPdf,{}, {},theoremPreamble,box,true);
+    assert.deepEqual(JSON.parse(JSON.stringify(range.from)),{line:2,ch:0});
+    assert.deepEqual(JSON.parse(JSON.stringify(range.to)),{line:2,ch:scriptedBody.length},'A verified heading can precede similar formula text without selecting later theorem paragraphs.');
+  }
+  assert.throws(()=>context.sourcePdfTextRange(scriptedSource,[3],scriptedPdf,{}, {},theoremPreamble,true,false),/唯一匹配/,'A heading cannot enable similarity for a gapped box.');
+  assert.throws(()=>context.sourcePdfTextRange(scriptedSource,[3],scriptedPdf.replace('For each index ',''),{}, {},theoremPreamble,true,true),/唯一匹配/,'The generated heading must still meet the actual body boundary.');
+  assert.throws(()=>context.sourcePdfTextRange(scriptedSource,[3],scriptedPdf,{}, {},'',true,true),/唯一匹配/,'Similar body text cannot justify a heading without an active theorem declaration.');
+  assert.throws(()=>context.sourcePdfTextRange(scriptedSource+'\n'+scriptedSource,[3,9],scriptedPdf,{}, {},theoremPreamble,true,true),/唯一匹配/,'Repeated titled theorem bodies remain ambiguous even when formula scripts differ.');
+  const completeScripted=scriptedSource.replace('\n\nUnselected later paragraph.','');
+  const completeScriptedRange=context.sourcePdfTextRange(completeScripted,[3],scriptedPdf,{}, {},theoremPreamble,true,true);
+  assert.deepEqual(JSON.parse(JSON.stringify(completeScriptedRange.from)),{line:0,ch:0});
+  assert.deepEqual(JSON.parse(JSON.stringify(completeScriptedRange.to)),{line:3,ch:9},'Similar complete theorems keep their paired environment delimiters.');
+  const scriptedProof=String.raw`\begin{proof}The expression $x_i^2$ is nonnegative for all real values of its variable.\end{proof}`;
+  const scriptedProofPdf='Proof. The expression x2i is nonnegative for all real values of its variable. □';
+  const proofRange=context.sourcePdfTextRange(scriptedProof,[1],scriptedProofPdf,{}, {},theoremPreamble,true,true);
+  assert.equal(proofRange.from.ch,0);assert.equal(proofRange.to.ch,scriptedProof.length,'A boundary-verified QED can accompany reordered formula scripts.');
   assert.throws(()=>theoremMatch(theoremSource,theoremPdf.replace('real ','')),/唯一匹配/,'Generated headings never excuse missing boxed prose.');
   assert.throws(()=>theoremMatch(theoremSource,theoremPdf.replace('Theorem','Lemma')),/唯一匹配/,'A different environment heading cannot be stripped.');
   assert.throws(()=>theoremMatch(theoremSource,theoremPdf,[2],'% '+theoremPreamble),/唯一匹配/,'Commented-out theorem declarations are not evidence for a generated title.');

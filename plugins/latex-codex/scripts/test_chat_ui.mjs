@@ -495,3 +495,35 @@ assert.equal(resumedBody.remember,true);assert.equal(resumedBody.memory_revision
 assert(resumedBody.messages.some(message=>message.content==='Keep energy norm.'));
 assert.equal(resumedBody.selection,'chosen');
 console.log('PASS: project chat rehydration and remembered context across selections');
+
+// DeepSeek forwarding preserves failed comments and retries the same request identity.
+document.documentElement.dataset={aiBackend:'deepseek'};
+el('#annotations-send').after=button=>elements.set('#annotations-main-send',button);
+source='before chosen after';selection={from:{line:0,ch:7},to:{line:0,ch:13}};doc={};selected=true;
+el('#filename').title='demo.md';
+let mainBodies=[],mainFailure=true,unsaved=false;
+const deepseekRequest=async(url,options)=>{
+  if(url==='/main-chat'&&!options)return {available:true,linked:true};
+  if(url==='/state')return {path:'demo.md',source:unsaved?'older content':source,version:'v1'};
+  if(url==='/main-chat'){
+    mainBodies.push(JSON.parse(options.body));
+    if(mainFailure)throw new Error('Acknowledgement lost');
+    return {accepted:true};
+  }
+  return request(url,options);
+};
+const deepseekChat=attachSelectionChat(editor,deepseekRequest);
+await new Promise(resolve=>setTimeout(resolve,0));
+deepseekChat.openQuick({left:100,top:100});el('#chat-quick-input').value='Keep notation.';
+el('#chat-quick-form').onsubmit({preventDefault(){}});
+const mainButton=el('#annotations-main-send');
+assert.equal(mainButton.hidden,false);assert.equal(mainButton.disabled,false);
+unsaved=true;await mainButton.onclick();assert.equal(mainBodies.length,0);assert(deepseekChat.hasAnnotations);
+unsaved=false;await mainButton.onclick();assert(deepseekChat.hasAnnotations);assert.equal(source,'before chosen after');
+mainFailure=false;await mainButton.onclick();
+assert.equal(mainBodies.length,2);assert.equal(mainBodies[0].request_id,mainBodies[1].request_id);
+assert.equal(mainBodies[1].annotations[0].selection,'chosen');
+assert.equal(mainBodies[1].annotations[0].request,'Keep notation.');
+assert.equal(deepseekChat.hasAnnotations,false);assert.equal(source,'before chosen after');
+assert.equal(mainButton.hidden,true);
+console.log('PASS: DeepSeek main-chat forwarding, autosave/stale protection, preserved failures and stable retry identity');

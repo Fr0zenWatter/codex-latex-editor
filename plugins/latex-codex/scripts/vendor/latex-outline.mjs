@@ -90,7 +90,7 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
     const node = document.createElement(tag);
     node.setAttribute('class', className); parent.append(node); return node;
   }
-  // Put the entry first in Tab order; opening it makes the dial the next stop.
+  // Put the entry first in Tab order; opening it exposes the heading controls.
   const handle = element('button', 'pdf-dial-handle', container); handle.type = 'button';
   handle.setAttribute('aria-controls', 'pdf-outline-drawer'); handle.setAttribute('aria-expanded', 'false');
   const pageNumber = element('span', 'pdf-dial-page', handle); pageNumber.setAttribute('aria-hidden', 'true');
@@ -140,6 +140,10 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
     subCells.clear(); subRotor.replaceChildren();
   }
   function updateCaption() {
+    if (style === 'timeline') {
+      for (const attribute of ['aria-valuemin', 'aria-valuemax', 'aria-valuenow', 'aria-valuetext']) dial.removeAttribute(attribute);
+      return;
+    }
     const entry = entries[selected]; if (!entry) return;
     dial.setAttribute('aria-valuemin', '1'); dial.setAttribute('aria-valuemax', String(items.length));
     dial.setAttribute('aria-valuenow', String(items.indexOf(selected) + 1)); dial.setAttribute('aria-valuetext', name(entry));
@@ -148,7 +152,11 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
     container.setAttribute('aria-label', t('章节目录'));
     updatePageCaption();
     handle.setAttribute('aria-description', t(items.length ? '方向键滚动 PDF，Enter 打开章节目录' : '方向键滚动 PDF'));
-    dial.setAttribute('aria-label', t(style === 'timeline' ? '章节时间线：方向键浏览，Enter 跳转' :
+    dial.tabIndex = style === 'timeline' ? -1 : 0;
+    dial.setAttribute('role', style === 'timeline' ? 'group' : 'slider');
+    if (style === 'timeline') dial.removeAttribute('aria-orientation');
+    else dial.setAttribute('aria-orientation', 'vertical');
+    dial.setAttribute('aria-label', t(style === 'timeline' ? '章节时间线' :
       style === 'cards' ? '章节卡片：方向键浏览，Enter 跳转' : '章节拨轮：方向键浏览，Enter 跳转'));
     subdial.setAttribute('aria-label', t('小节轮盘：方向键浏览，Enter 跳转'));
     for (const cell of [...cells.values(), ...subCells.values()]) cell.setAttribute('aria-label', t('跳转到章节') + ' ' + name(entries[Number(cell.dataset.index)]));
@@ -197,25 +205,29 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
   });
 
   function updateScrollHandle(anchor = false) {
-    updatePageCaption();
     const viewport = preview.clientHeight, documentHeight = preview.scrollHeight || viewport;
     scrollRange = Math.max(0, documentHeight - viewport);
     const thumbHeight = Math.min(viewport, scrollRange ? Math.max(36, Math.min(72, viewport * viewport / documentHeight)) : 52);
     thumbTravel = Math.max(0, viewport - thumbHeight);
     thumbCenter = scrollRange ? thumbHeight / 2 + thumbTravel * Math.max(0, Math.min(1, preview.scrollTop / scrollRange)) : viewport / 2;
+    updatePageCaption();
     handle.style.height = `${thumbHeight}px`; handle.style.top = `${thumbCenter}px`;
-    if (!opened || anchor) {
+    if (style === 'timeline') interaction.style.top = `${viewport / 2}px`;
+    else if (!opened || anchor) {
       const half = height * scale / 2 + 8;
       interaction.style.top = `${Math.max(half, Math.min(viewport - half, thumbCenter))}px`;
     }
   }
   function updatePageCaption() {
     const current = Math.max(1, Math.min(pageCount, viewer.currentPageNumber || 1));
-    pageNumber.textContent = pageCount ? String(current) : '';
-    pageTotal.textContent = pageCount ? `/ ${pageCount}` : '';
+    const number = pageCount ? String(current) : '', total = pageCount ? `/ ${pageCount}` : '';
+    if (pageNumber.textContent !== number) pageNumber.textContent = number;
+    if (pageTotal.textContent !== total) pageTotal.textContent = total;
     const caption = pageCount ? t('PDF 第 {page} 页，共 {total} 页', {page: current, total: pageCount}) + ' · ' : '';
     const action = t(items.length ? '拖动滚动 PDF，悬停或点击打开章节目录' : '拖动滚动 PDF');
-    handle.title = caption + action; handle.setAttribute('aria-label', handle.title);
+    if (handle.title !== caption + action) {
+      handle.title = caption + action; handle.setAttribute('aria-label', handle.title);
+    }
   }
   handle.onpointerdown = event => {
     if (event.button !== 0 || drag || scrollDrag) return;
@@ -242,7 +254,7 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
   handle.onpointerup = event => endScrollDrag(event);
   handle.onpointercancel = event => endScrollDrag(event, true);
   handle.onlostpointercapture = event => endScrollDrag(event, true);
-  handle.addEventListener('wheel', event => {
+  function scrollPdf(event) {
     event.preventDefault(); event.stopPropagation();
     if (event.ctrlKey) {
       preview.dispatchEvent(new WheelEvent('wheel', {deltaY: event.deltaY, ctrlKey: true, cancelable: true}));
@@ -253,12 +265,13 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
     preview.scrollTop = Math.max(0, Math.min(scrollRange, preview.scrollTop + event.deltaY * unit));
     if (event.deltaX) preview.scrollLeft += event.deltaX * unit;
     updateScrollHandle(); scheduleTrack();
-  }, {passive: false});
+  }
+  handle.addEventListener('wheel', scrollPdf, {passive: false});
 
   function makeCell(index, parent = rotor) {
     const entry = entries[index], cell = element('button', 'pdf-dial-tick', parent);
     const major = entry.depth === 0 || entry.kind === 'section';
-    cell.type = 'button'; cell.tabIndex = -1; cell.title = name(entry);
+    cell.type = 'button'; cell.tabIndex = style === 'timeline' ? 0 : -1; cell.title = name(entry);
     cell.setAttribute('aria-label', t('跳转到章节') + ' ' + name(entry));
     cell.dataset.index = index; cell.classList.toggle('is-major', major);
     if (style === 'timeline') {
@@ -275,9 +288,18 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
   }
   function paint() {
     if (!items.length) return;
+    if (style === 'timeline') {
+      rotor.style.setProperty('--timeline-progress', `${Math.max(0, active) / Math.max(1, items.length - 1) * 100}%`);
+      for (const index of items) {
+        const cell = cells.get(index) || makeCell(index), current = index === active;
+        cells.set(index, cell);
+        cell.classList.toggle('is-current', current); cell.classList.toggle('is-completed', index < active);
+        cell.setAttribute('aria-current', current ? 'location' : 'false');
+      }
+      return;
+    }
     const next = items[clamp(Math.round(position))];
     if (selected !== next) { selected = next; refreshSubsections(); updateCaption(); }
-    if (style === 'timeline') rotor.style.setProperty('--timeline-progress', `${Math.max(0, Math.min(height, height / 2 + (positionFor(active) - position) * 56))}px`);
     // The circle's center is to the right; the visible arc faces left.
     // Keep spacing independent of document length, with no wrap-around.
     const visible = style === 'cards' ? height / 176 : height / 112, limit = visible + 1;
@@ -286,9 +308,7 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
     for (let index = first; index <= last; index++) {
       const cell = cells.get(index) || makeCell(items[index]), offset = index - position, angle = offset * step;
       cells.set(index, cell);
-      if (style === 'timeline') {
-        cell.style.transform = `translateY(${offset * 56}px) translateY(-50%)`;
-      } else if (style === 'cards') {
+      if (style === 'cards') {
         const spread = offset * 88 / cardRadius;
         const x = cardRadius * (1 - Math.cos(spread)), y = cardRadius * Math.sin(spread);
         // Reference carousel: upright cards recede in size and depth along the arc.
@@ -304,7 +324,6 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
       cell.style.pointerEvents = Math.abs(offset) < visible ? 'auto' : 'none';
       const current = style === 'cards' ? index === positionFor(active) : items[index] === active;
       cell.classList.toggle('is-selected', items[index] === selected); cell.classList.toggle('is-current', current);
-      cell.classList.toggle('is-completed', style === 'timeline' && items[index] < active);
       cell.setAttribute('aria-current', current ? 'location' : 'false');
     }
     paintSubsections();
@@ -354,6 +373,7 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
   function snap() { moveTo(Math.round(target)); moveSubTo(Math.round(subTarget)); }
   drawer.addEventListener('wheel', event => {
     if (!opened) return;
+    if (style === 'timeline') { scrollPdf(event); return; }
     event.preventDefault(); event.stopPropagation(); if (drag) return;
     const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? height : 1;
     const delta = (Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX) * unit;
@@ -363,7 +383,7 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
   }, {passive: false});
 
   dial.onpointerdown = event => {
-    if (drag || event.button !== 0 || !opened) return;
+    if (style === 'timeline' || drag || event.button !== 0 || !opened) return;
     event.preventDefault(); clearTimeout(snapTimer); clearTimeout(closeTimer);
     cancelAnimationFrame(animation); animation = 0; target = position; subTarget = subPosition; suppressClick = false;
     const cell = event.target.closest('.pdf-dial-tick'); pressedIndex = cell ? Number(cell.dataset.index) : null;
@@ -395,12 +415,12 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
   dial.onclick = event => {
     if (suppressClick || drag) { event.preventDefault(); return; }
     const cell = event.target.closest('.pdf-dial-tick');
-    const index = cell && (rotor.contains(cell) || subRotor.contains(cell)) ? Number(cell.dataset.index) : pressedIndex;
+    const index = cell && (rotor.contains(cell) || subRotor.contains(cell)) ? Number(cell.dataset.index) : style === 'timeline' ? null : pressedIndex;
     pressedIndex = null; if (index !== null) jump(index);
   };
   function jump(index) {
     const entry = entries[index]; if (!entry) return;
-    moveTo(positionFor(index));
+    if (style !== 'timeline') moveTo(positionFor(index));
     if (style === 'cards' && subsections.includes(index)) moveSubTo(subsections.indexOf(index));
     viewer.scrollPageIntoView({pageNumber: entry.page,
       destArray: [null, {name: 'XYZ'}, entry.x, entry.y, null], ignoreDestinationZoom: true});
@@ -419,6 +439,7 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
       }
       return;
     }
+    if (style === 'timeline') return;
     const inSubdial = subdial.contains(event.target), list = inSubdial ? subsections : items;
     const move = inSubdial ? moveSubTo : moveTo, cursor = inSubdial ? subTarget : target;
     const offsets = {ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1, PageDown: 5, PageUp: -5};
@@ -433,14 +454,15 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
   function mark(index) {
     if (active === index) return;
     active = index;
-    if (!opened) moveTo(positionFor(index), true);
+    if (!opened && style !== 'timeline') moveTo(positionFor(index), true);
     updateCaption(); paint();
   }
   function track() {
     tracking = 0;
-    updateScrollHandle();
-    if (!entries.length || container.hidden) return;
-    if (clickedPosition !== null && Math.abs(preview.scrollTop - clickedPosition) < 1) return;
+    if (!entries.length || container.hidden ||
+        clickedPosition !== null && Math.abs(preview.scrollTop - clickedPosition) < 1) {
+      updateScrollHandle(); return;
+    }
     clickedPosition = null;
     const probe = preview.scrollTop + 8;
     let index = 0, nearest = -Infinity;
@@ -449,7 +471,8 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
       const top = view.div.offsetTop + view.viewport.convertToViewportPoint(entry.x, entry.y)[1];
       if (top <= probe && top >= nearest) { nearest = top; index = i; }
     });
-    mark(index);
+    // Read all page geometry before caption/style writes can invalidate layout.
+    updateScrollHandle(); mark(index);
   }
   function scheduleTrack() { if (!tracking) tracking = requestAnimationFrame(track); }
   function resize() {
@@ -457,6 +480,9 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
     // Scale the complete composition together, while keeping it inside the preview.
     scale = .8 * Math.max(.1, Math.min(1.4, Math.max(.72, preview.clientWidth / 800),
       preview.clientWidth / width, Math.max(1, preview.clientHeight - 16) / height));
+    if (style === 'timeline') { width = Math.min(width, preview.clientWidth); height = Math.max(1, preview.clientHeight - 16); scale = 1; }
+    rotor.style.setProperty('--timeline-step', `${Math.max(1, height - 48) / Math.max(1, items.length)}px`);
+    container.classList.toggle('is-dense', style === 'timeline' && (height - 48) / Math.max(1, items.length) < 36);
     interaction.style.setProperty('--dial-scale', String(scale));
     radius = Math.max(160, height * .95); step = 56 / radius;
     interaction.style.width = `${width}px`; interaction.style.height = `${height}px`;
@@ -495,6 +521,7 @@ export function attachPdfOutline({container, preview, viewer, eventBus, t, style
       const next = ['cards', 'timeline'].includes(value) ? value : 'wheel'; if (style === next) return;
       if (drag) endDrag({}, true);
       clearTimers(); cancelAnimationFrame(animation); animation = 0;
+      suppressClick = false; pressedIndex = null;
       style = next; buildItems(); resize(); language();
       if (!items.length) setOpen(false);
     },

@@ -31,7 +31,10 @@ def codex_executable():
 
 
 @lru_cache(maxsize=1)
-def chat_models():
+def chat_models(backend='codex'):
+    if backend == 'deepseek':
+        from deepseek import dsh_models
+        return dsh_models()
     try:
         result = subprocess.run([codex_executable(), 'debug', 'models'], capture_output=True, timeout=25,
                                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
@@ -184,7 +187,7 @@ def main_chat_context(thread_id):
             'truncated': len(recent) < len(messages) or remaining < 0}
 
 
-def chat_context(data, path, main_thread=None):
+def chat_context(data, path, main_thread=None, backend='codex'):
     source, selection, messages = (data.get(key) for key in ('source', 'selection', 'messages'))
     if not isinstance(source, str) or not isinstance(selection, str) or not selection or selection not in source:
         raise ValueError('请先选择当前文档中的一段源码。')
@@ -218,7 +221,8 @@ def chat_context(data, path, main_thread=None):
     if not isinstance(model, str) or not isinstance(effort, str):
         raise ValueError('模型或思考等级无效。')
     if model or effort:
-        selected = next((item for item in chat_models() if item['id'] == model), None)
+        catalog = chat_models() if backend == 'codex' else chat_models(backend)
+        selected = next((item for item in catalog if item['id'] == model), None)
         if not selected or (effort and effort not in selected['efforts']):
             raise ValueError('请选择可用的模型及其支持的思考等级。')
         effort = effort or selected['default_effort']
@@ -230,14 +234,15 @@ def chat_context(data, path, main_thread=None):
                 'model': model, 'effort': effort, 'annotations': annotations}
     return {'file': str(path), 'document': source, 'selection': selection, 'messages': messages,
             'model': model, 'effort': effort,
-            'main_conversation': main_chat_context(main_thread)}
+            'main_conversation': main_chat_context(main_thread if backend == 'codex' else None)}
 
 
 class ChatJob:
-    def __init__(self, context, memory=None, memory_revision=None):
+    def __init__(self, context, memory=None, memory_revision=None, backend='codex'):
         self.id = uuid.uuid4().hex
         self.context = context
         self.memory, self.memory_revision = memory, memory_revision
+        self.backend = backend
         self.process = None
         self.cancelled = threading.Event()
         self.result = {'status': 'running'}
@@ -259,7 +264,7 @@ class ChatJob:
 
     def run(self):
         try:
-            executable = codex_executable()
+            executable = codex_executable() if self.backend == 'codex' else None
             annotations = self.context.get('annotations')
             markdown = Path(self.context.get('file', '')).suffix.lower() in ('.md', '.markdown')
             format_name = 'Markdown' if markdown else 'LaTeX'
@@ -313,43 +318,50 @@ class ChatJob:
                     'required':['summaries'],'additionalProperties':False}
             # ponytail: replay in-memory history for up to 20 turns; use app-server for longer, streaming sessions.
             with tempfile.TemporaryDirectory(prefix='latex-chat-') as directory:
-                schema_file = Path(directory) / 'response.json'
-                schema_file.write_text(json.dumps(schema), encoding='utf-8')
-                command = [executable, 'exec', '--ephemeral', '--skip-git-repo-check', '--sandbox', 'read-only',
-                           '--json', '--color', 'never', '--output-schema', str(schema_file), '-C', directory]
-                if self.context.get('model'):
-                    command.extend(['--model', self.context['model']])
-                if self.context.get('effort'):
-                    command.extend(['-c', 'model_reasoning_effort=' + json.dumps(self.context['effort'])])
-                for feature in ('shell_tool', 'apps', 'plugins', 'hooks', 'multi_agent', 'computer_use', 'browser_use', 'image_generation'):
-                    command.extend(['--disable', feature])
-                command.append('-')
+                process_options = {}
+                provider_name = 'DeepSeek' if self.backend == 'deepseek' else 'Codex'
+                if self.backend == 'deepseek':
+                    from deepseek import dsh_answer, dsh_command, dsh_patch
+                    command, environment = dsh_command()
+                    model, effort = self.context.get('model', ''), self.context.get('effort', '')
+                    if not model and effort:
+                        model = next((item['id'] for item in chat_models('deepseek') if item.get('default')), '')
+                        if not model:
+                            raise ValueError('DeepSeek 默认模型不可用，请先在 Harness 配置模型。')
+                    command += ['headless', '--patch', dsh_patch(directory, model=model, effort=effort), '--json', '-']
+                    process_options = {'cwd': directory, 'env': environment}
+                    instructions += 'Return ONLY one JSON object conforming to this schema: ' + json.dumps(schema) + '\n'
+                else:
+                    schema_file = Path(directory) / 'response.json'
+                    schema_file.write_text(json.dumps(schema), encoding='utf-8')
+                    command = [executable, 'exec', '--ephemeral', '--skip-git-repo-check', '--sandbox', 'read-only',
+                               '--json', '--color', 'never', '--output-schema', str(schema_file), '-C', directory]
+                    if self.context.get('model'):
+                        command.extend(['--model', self.context['model']])
+                    if self.context.get('effort'):
+                        command.extend(['-c', 'model_reasoning_effort=' + json.dumps(self.context['effort'])])
+                    for feature in ('shell_tool', 'apps', 'plugins', 'hooks', 'multi_agent', 'computer_use', 'browser_use', 'image_generation'):
+                        command.extend(['--disable', feature])
+                    command.append('-')
                 self.process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+                    stderr=subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
+                    **process_options)
                 if self.cancelled.is_set():
                     self.cancel()
                 try:
                     stdout, _ = self.process.communicate(
                         (instructions + json.dumps(self.context, ensure_ascii=False)).encode('utf-8'), timeout=180)
                 except subprocess.TimeoutExpired:
+                    already_cancelled = self.cancelled.is_set()
                     self.cancel()
                     self.process.communicate()
-                    self.result = {'status': 'error', 'error': 'Codex 回复超时，请重试。'}
+                    if not already_cancelled:
+                        self.result = {'status': 'error', 'error': provider_name + ' 回复超时，请重试。'}
                     return
-                answer, error = None, ''
-                for line in stdout.decode('utf-8', errors='replace').splitlines():
-                    try:
-                        event = json.loads(line)
-                    except ValueError:
-                        continue
-                    item = event.get('item', {})
-                    if event.get('type') == 'item.completed' and item.get('type') == 'agent_message':
-                        answer = item.get('text')
-                    if event.get('type') in ('error', 'turn.failed'):
-                        error = event.get('message') or event.get('error', {}).get('message', '')
-                if self.process.returncode or answer is None:
-                    raise ValueError(error or 'Codex 未返回结果，请确认 CLI 登录状态和网络后重试。')
-                result = json.loads(answer)
+                if self.backend == 'deepseek':
+                    result = dsh_answer(stdout, self.process.returncode)
+                else:
+                    result = self.codex_answer(stdout)
                 if summarizing:
                     if not isinstance(result,dict) or not isinstance(result.get('summaries'),list):
                         raise ValueError('AI 改动摘要格式无效。')
@@ -366,7 +378,7 @@ class ChatJob:
                                    or not (item['replacement'] is None or isinstance(item['replacement'], str))
                                    for item in replacements)
                             or len({item['id'] for item in replacements}) != len(expected)):
-                        raise ValueError('Codex 返回的批注修改不完整或格式无效，请重试。')
+                        raise ValueError(provider_name + ' 返回的批注修改不完整或格式无效，请重试。')
                     for item in replacements:
                         item['changes'] = (word_changes(expected[item['id']]['selection'], item['replacement'])
                                            if item['replacement'] is not None else None)
@@ -374,7 +386,7 @@ class ChatJob:
                                             if item['replacement'] is not None and not markdown else None)
                     result['replacement'] = None
                 if not isinstance(result, dict) or not isinstance(result.get('reply'), str) or 'replacement' not in result or not (result['replacement'] is None or isinstance(result['replacement'], str)):
-                    raise ValueError('Codex 返回格式无效，请重试。')
+                    raise ValueError(provider_name + ' 返回格式无效，请重试。')
                 if not self.cancelled.is_set():
                     segments = revision_segments(self.context['selection'], result['replacement']) if result['replacement'] is not None and not markdown else None
                     memory_result = {}
@@ -388,3 +400,19 @@ class ChatJob:
                 self.result = {'status': 'error', 'error': str(error)}
         finally:
             self.context = None
+
+    def codex_answer(self, stdout):
+        answer, error = None, ''
+        for line in stdout.decode('utf-8', errors='replace').splitlines():
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            item = event.get('item', {})
+            if event.get('type') == 'item.completed' and item.get('type') == 'agent_message':
+                answer = item.get('text')
+            if event.get('type') in ('error', 'turn.failed'):
+                error = event.get('message') or event.get('error', {}).get('message', '')
+        if self.process.returncode or answer is None:
+            raise ValueError(error or 'Codex 未返回结果，请确认 CLI 登录状态和网络后重试。')
+        return json.loads(answer)

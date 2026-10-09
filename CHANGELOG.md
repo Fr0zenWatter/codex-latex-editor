@@ -1,5 +1,27 @@
 # Changelog / 更新日志
 
+## 0.3.2 — 2026-10-09
+
+- Keep the native `latex-codex` plugin on Codex and move the optional Harness adapter into the independently installed `latex-deepseek` plugin. The DeepSeek package uses a generated, self-contained runtime and retains its own version.
+- Improve PDF text and box selection with compiled row geometry, nearby source lookup and context for repeated text. Verify theorem headings and proof endings before matching formula-heavy prose; reject ambiguous and incomplete selections.
+- Show the chapter timeline as fixed nodes across the preview height, with compact titles, keyboard navigation and PDF scrolling.
+- Shorten both READMEs and document installation, packaging and maintenance in `AGENTS.md`.
+
+原生 `latex-codex` 保持 Codex 后端，DeepSeek 适配拆为独立插件并保留独立版本；改进 PDF 拖选、框选与定理正文定位，章节时间线改为固定节点布局。安装与维护说明集中在 `AGENTS.md`。
+
+Validation / 验证：6 Python checks and 7 JavaScript checks passed, covering local TeX compilation, PDF mapping, UI interactions, native backend isolation and standalone DeepSeek packaging. No real model request or main-chat message was sent.
+
+## 0.3.1-deepseek.1 — 2026-10-08 (prerelease)
+
+- Add `--ai-backend deepseek` for Send, project chat and history summaries through the installed DeepSeek Harness CLI. Preserve local source/PDF previews and per-change Keep / Undo.
+- Discover Harness account and API models and their supported reasoning levels. Parse complete final responses, validate every replacement and prevent selection requests from executing tools.
+- Add optional forwarding of saved comments to the exact DeepSeek main chat that launched the editor, using a user-profile bridge. Check saved source and version, retain failed comments and reuse request identities on retry.
+- Keep Codex as the default backend; hide its native annotation button in DeepSeek mode.
+
+Verified on Windows with DeepSeek Harness 0.2.0-rc.2: a real account-model Send request and local PDF compilation. Main-chat bridge loading and status are verified; submission to an existing user chat remains for a user click. Other platforms have not been tested on hardware.
+
+本版本独立预发布。Send 已接入 DeepSeek，源码和 PDF 校对沿用现有 Keep / Undo；可选主对话桥接绑定启动会话，不按最近记录选择。已实测 Windows 账号模型请求及本地 PDF 编译，主对话实际送达仍需用户从目标对话启动后点击验证。
+
 ## 0.3.0 — 2026-10-08
 
 ### English

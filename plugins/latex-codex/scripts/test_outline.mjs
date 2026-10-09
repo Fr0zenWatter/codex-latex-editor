@@ -38,6 +38,7 @@ class Element {
   replaceChildren(...children) { this.children = []; this.append(...children); }
   remove() { this.parentElement.children = this.parentElement.children.filter(child => child !== this); }
   setAttribute(key, value) { this.attributes[key] = String(value); if (key === 'class') this.classes = new Set(value.split(' ')); }
+  removeAttribute(key) { delete this.attributes[key]; }
   addEventListener(key, value) { this.events[key] = value; }
   dispatchEvent(event) { this.events[event.type]?.(event); }
   getBoundingClientRect() { return {left: 0, top: 0, right: 336, bottom: 344, width: 336, height: 344}; }
@@ -87,6 +88,40 @@ assert.equal(pageNumber.textContent, '2'); assert.equal(pageTotal.textContent, `
 viewer.currentPageNumber = 3; pdfEvents.pagechanging(); flush();
 assert.equal(pageNumber.textContent, '3'); assert(handle.title.includes(`PDF 第 3 页，共 ${pdf.numPages} 页`));
 viewer.currentPageNumber = 2;
+// Scrolling within a page must not replace labels or read layout after writing styles.
+pdfEvents.pagechanging(); flush();
+{
+  const activity = [], restore = [];
+  function watch(object, key, kind) {
+    const descriptor = Object.getOwnPropertyDescriptor(object, key);
+    let value = object[key];
+    Object.defineProperty(object, key, {configurable: true,
+      get() { if (kind === 'read') activity.push(`read:${key}`); return value; },
+      set(next) { if (kind === 'write') activity.push(`write:${key}`); value = next; }});
+    restore.push(() => Object.defineProperty(object, key, {...descriptor, value}));
+  }
+  watch(pageNumber, 'textContent', 'write'); watch(pageTotal, 'textContent', 'write'); watch(handle, 'title', 'write');
+  watch(preview, 'clientHeight', 'read'); watch(preview, 'scrollHeight', 'read');
+  const originalStyle = handle.style, originalPageView = viewer.getPageView;
+  handle.style = new Proxy(originalStyle, {set(object, key, value) { activity.push(`style:${key}`); object[key] = value; return true; }});
+  viewer.getPageView = index => {
+    const view = originalPageView(index), top = view.div.offsetTop;
+    Object.defineProperty(view.div, 'offsetTop', {get() { activity.push('read:offsetTop'); return top; }});
+    return view;
+  };
+  for (const top of [910, 920]) {
+    activity.length = 0; preview.scrollTop = top; preview.events.scroll(); flush();
+    assert(!activity.some(value => value.startsWith('write:')), 'Same-page panning must leave caption DOM unchanged.');
+    const firstStyle = activity.findIndex(value => value.startsWith('style:'));
+    assert(firstStyle >= 0, 'The scroll handle must still follow the PDF.');
+    assert(!activity.slice(firstStyle).some(value => value.startsWith('read:')), 'Read page and viewport geometry before changing scroll handle styles.');
+  }
+  activity.length = 0; viewer.currentPageNumber = 3; pdfEvents.pagechanging(); flush();
+  assert.equal(pageNumber.textContent, '3'); assert(handle.title.includes('PDF 第 3 页'));
+  assert.equal(activity.filter(value => value === 'write:textContent').length, 1, 'A page change updates only the current page label.');
+  handle.style = originalStyle; viewer.getPageView = originalPageView; restore.forEach(fn => fn());
+  viewer.currentPageNumber = 2; preview.scrollTop = 900; pdfEvents.pagechanging(); flush();
+}
 const selectedCell = () => rotor.children.find(cell => cell.classes.has('is-selected'));
 const currentTick = () => rotor.children.find(cell => cell.classes.has('is-current'))?.dataset.index;
 assert.equal(handle.attributes['aria-expanded'], 'false'); assert(drawer.inert);
@@ -243,32 +278,48 @@ advance(400); assert.equal(handle.attributes['aria-expanded'], 'false');
 handle.onclick(); outline.setStyle('wheel'); flush();
 assert.equal(dial.attributes['aria-valuemax'], '15'); assert(subdial.hidden);
 assert.equal(jumps.length, beforeCardDrag, 'Switching styles keeps the PDF at its current heading.');
-// Timeline browsing is linear; the unique ring follows the PDF, not the browsing cursor.
+// Every timeline node is a fixed native button; only clicks select a destination.
 preview.scrollTop = 900; await outline.load(cardsPdf, []); flush();
 outline.setStyle('timeline'); handle.onclick(); flush();
 assert.equal(container.dataset.outlineStyle, 'timeline'); assert(subdial.hidden);
-assert.equal(dial.attributes['aria-valuemax'], '15', 'The timeline includes subsections and deeper headings.');
+assert.equal(dial.attributes.role, 'group'); assert.equal(dial.attributes['aria-valuemax'], undefined);
+assert.equal(rotor.children.length, 15, 'All headings are available at once, including deeper headings.');
+assert(rotor.children.every(cell => cell.tabIndex === 0), 'Timeline nodes retain native keyboard button activation.');
+assert.equal(interaction.style.top, '300px'); assert.equal(interaction.style.height, '584px');
+assert.equal(interaction.style['--dial-scale'], '1', 'The fixed timeline occupies the full pane height.');
 assert.equal(currentTick(), 0);
 assert.equal(find(rotor.children[0], 'pdf-timeline-marker').textContent, '1');
 assert.equal(find(rotor.children[1], 'pdf-timeline-marker').textContent, '');
 assert(rotor.children[0].classes.has('is-major')); assert(!rotor.children[1].classes.has('is-major'));
-assert(!rotor.children[1].style.transform.includes('rotate'), 'Timeline nodes stay upright on a straight line.');
+assert.equal(rotor.children[1].style.transform, undefined, 'Timeline nodes use fixed rows without rotation or translation.');
 const beforeTimeline = jumps.length;
-container.onkeydown(event({key:'ArrowDown',target:dial})); flush();
-assert.equal(dial.attributes['aria-valuetext'], '1.1 Overview'); assert.equal(currentTick(), 0);
-assert.equal(jumps.length, beforeTimeline);
-container.onkeydown(event({key:'Enter',target:dial})); flush();
+const timelineCells = [...rotor.children], timelineStep = rotor.style['--timeline-step'];
+dial.onclick(event({target:rotor.children[1]})); flush();
 assert.equal(currentTick(), 1); assert.equal(jumps.at(-1).destArray[3], 650);
 assert(rotor.children.find(cell=>cell.dataset.index===0).classes.has('is-completed'));
 drawer.events.wheel(event({target:dial,deltaY:80,deltaX:0,deltaMode:0})); advance(140);
-assert.equal(dial.attributes['aria-valuetext'], '1.1.1 Nested'); assert.equal(currentTick(), 1);
+assert.equal(preview.scrollTop, 980, 'Wheel input scrolls the PDF without selecting an outline destination.');
 assert.equal(jumps.length, beforeTimeline+1);
-const timelinePointer = {...pointer,target:selectedCell()};
+assert.deepEqual(rotor.children, timelineCells); assert.equal(rotor.style['--timeline-step'], timelineStep);
+drawer.events.wheel(event({target:dial,deltaY:-90,ctrlKey:true})); flush();assert.equal(zoomDelta,-90);
+const timelinePointer = {...pointer,target:rotor.children[3]};
 dial.onpointerdown(timelinePointer); dial.onpointermove({...timelinePointer,clientY:70});
 dial.onpointerup({...timelinePointer,clientY:70}); dial.onclick(event({target:dial})); flush();
-assert.equal(jumps.length, beforeTimeline+1, 'Dragging the timeline only browses headings.');
+assert.equal(jumps.length, beforeTimeline+1, 'Dragging and clicking the empty line cannot rotate or select nodes.');
+assert(!dial.hasPointerCapture(pointer.pointerId)); assert.deepEqual(rotor.children, timelineCells);
+preview.scrollTop=1800;preview.events.scroll();flush();assert.equal(currentTick(),14);
+assert.equal(interaction.style.top,'300px');assert.deepEqual(rotor.children,timelineCells,'PDF tracking updates the ring without moving or replacing nodes.');
+outline.setStyle('wheel');outline.setStyle('timeline');flush();
+assert.equal(currentTick(),14);assert.equal(rotor.children.length,15,'Reopening retains every fixed node regardless of the active heading.');
+// Long documents still expose every node directly, without a rotating window.
+viewer.pdfDocument=dense;await outline.load(dense,[]);flush();handle.onclick();
+assert.equal(rotor.children.length,150);assert(container.classes.has('is-dense'));
+assert.equal(rotor.children.at(-1).title,`150 ${longTitle.trim()}`);
+dial.onclick(event({target:rotor.children.at(-1)}));flush();assert.equal(currentTick(),149);
+assert.equal(jumps.at(-1).destArray[3],551);assert.equal(rotor.children.length,150);
+viewer.pdfDocument=cardsPdf;preview.scrollTop=900;await outline.load(cardsPdf,[]);flush();
 outline.setStyle('wheel'); flush();
-assert.equal(preview.scrollTop, 900); assert.equal(currentTick(), 1);
+assert.equal(preview.scrollTop, 900); assert.equal(currentTick(), 0);
 // A delayed outline response must not resurrect a cleared/replaced document.
 let resolve;
 const slow = {...pdf, getOutline: () => new Promise(done => { resolve = done; })};
@@ -286,4 +337,4 @@ assert(preview.classes.has('outline-scrollbar'));
 assert.equal(pageNumber.textContent, '7'); assert.equal(pageTotal.textContent, '/ 12');
 handle.onclick(); assert.equal(handle.attributes['aria-expanded'], 'false', 'A page-only handle cannot open an empty outline.');
 outline.clear();
-console.log('PASS: merged scrollbar/outline handle, captured scrolling, keyboard scrolling, delayed hover/leave, continuous region, angular browsing, independent PDF state, click-only navigation, density, resize, reduced motion and stale loads');
+console.log('PASS: scrollbar/outline handle, hover/leave, fixed full-height timeline, direct node clicks, PDF wheel forwarding, native button focus, angular browsing, density, resize, reduced motion and stale loads');
