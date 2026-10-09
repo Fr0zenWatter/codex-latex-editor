@@ -145,7 +145,9 @@ with tempfile.TemporaryDirectory() as directory:
         bib = other.parent / 'references.bib'
         previous_build = json.loads(body)['pdf_revision']
         previous_source_version = state()['version']
+        previous_project_version = state()['project_version']
         bib.write_text(bib.read_text().replace('Test reference', 'Updated reference'), encoding='utf-8')
+        assert state()['project_version'] != previous_project_version and not state()['sync'], 'BibTeX input edits must invalidate automatic preview and synchronization.'
         code, body = request('/compile', {'source': updated, 'version': state()['version']})
         assert code == 200 and json.loads(body)['ok'] and 'This is BibTeX' in json.loads(body)['log'], body
         assert 'Updated reference' in (build / (other.stem + '.bbl')).read_text()

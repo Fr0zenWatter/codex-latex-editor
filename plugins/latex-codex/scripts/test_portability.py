@@ -21,7 +21,7 @@ with patch('editor.shutil.which', side_effect=lambda name: '/tex/pdflatex' if na
 
 with patch('editor.sys.platform', 'darwin'), patch('editor.shutil.which', return_value=None), \
         patch('editor.Path.is_file', return_value=True), patch('editor.os.access', return_value=True):
-    for name in ('pdflatex', 'xelatex', 'bibtex', 'synctex', 'kpsewhich'):
+    for name in ('pdflatex', 'xelatex', 'bibtex', 'biber', 'synctex', 'kpsewhich'):
         assert tex_tool(name) == str(Path('/Library/TeX/texbin') / name)
 with patch('editor.sys.platform', 'darwin'), patch('editor.subprocess.run',
         return_value=SimpleNamespace(returncode=0, stdout='/papers with spaces/main.tex\n'.encode(), stderr=b'')) as run:

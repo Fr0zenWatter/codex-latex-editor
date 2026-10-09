@@ -16,7 +16,7 @@
 
 `latex-codex@latex-codex-shared` 是原生插件。普通安装和更新保持此 ID，不安装 DeepSeek。
 
-先检查已登录的 Codex 桌面应用与 CLI、Python 3.10+、本地 TeX Live / MiKTeX / MacTeX。TeX 环境需提供 `xelatex` / `pdflatex`、`bibtex` 和 `synctex`。缺少依赖时说明缺项，不自动安装 TeX 环境或更改全局设置。前端资源已随插件附带，无需 npm、pip 或 Poppler 安装。PDF 页尺寸与文字位置由自带 PDF.js 读取，服务端只调用本地 TeX / SyncTeX。macOS 优先使用 PATH 中的 TeX，找不到时检查 `/Library/TeX/texbin`，不修改全局 PATH。Windows / Linux 的系统文件选择器使用可选的 tkinter；缺少时仍可通过启动命令打开文稿。macOS 使用系统原生文件选择器。
+先检查已登录的 Codex 桌面应用与 CLI、Python 3.10+、本地 TeX Live / MiKTeX / MacTeX。TeX 环境需提供 `xelatex` / `pdflatex` 和 `synctex`；文献按项目所选后端需要 `bibtex` 或 `biber`。缺少依赖时说明缺项，不自动安装 TeX 环境或更改全局设置。前端资源已随插件附带，无需 npm、pip 或 Poppler 安装。PDF 页尺寸与文字位置由自带 PDF.js 读取，服务端只调用本地 TeX / SyncTeX。macOS 优先使用 PATH 中的 TeX，找不到时检查 `/Library/TeX/texbin`，不修改全局 PATH。Windows / Linux 的系统文件选择器使用可选的 tkinter；缺少时仍可通过启动命令打开文稿。macOS 使用系统原生文件选择器。
 
 用户要求原生插件安装或更新时，在仓库根目录执行：
 
@@ -87,7 +87,7 @@ python plugins/latex-codex/scripts/editor.py /path/to/project/paper/main.tex --p
 
 打开终端打印的回环地址；AI 功能使用已登录的 Codex CLI。完整操作说明见 `plugins/latex-codex/skills/latex-codex/SKILL.md`。
 
-编辑会自动保存到当前源码文件；主编译文件保持固定。默认项目根目录是主文件所在目录，可在“文件 → 项目设置”或启动参数 `--project-root` 中指定包含正文和附录的共同目录。TeX 的相对引用仍从主文件所在目录解析。源码文件选择器和 PDF 反向跳转可打开项目内的 `\input` / `\include` 文件；历史与对话统一保存在项目根目录的 `.latex-codex/history.sqlite3`，源码历史保留项目相对路径，历史面板按时间统一显示主文件与所有子文件的记录；每条记录显示文件名，对比和恢复使用该记录所属的文件。项目内所有 UTF-8 `.tex` / `.md` / `.markdown` 源码在启动及状态轮询时记录，未打开的子文件修改也会被捕获。仅在查看历史“PDF 改动”时，将每处修改前后的 PNG 对比图（包含整句标红）存入 `.latex-codex/pdf-diff-cache/`；普通编译不保存完整 PDF 或 SyncTeX 存档。再次查看直接读图，缺失或损坏时按需编译生成；“重新编译”强制更新这一组对比图。跨页改动按页保存，新增或删除的一侧显示空白说明。缓存可删除，每项目上限 256 MiB，30 天未使用的存档在缓存读写时清理；源码历史不受影响。失败编译或未完成的渲染不覆盖已有对比图。旧版 `.latex-codex/pdf-cache/` 已停用，可删除。永久历史在同一项目数据库中记录各源码文件；子文件的历史 PDF 通过临时源码覆盖编译主文件，使用其余依赖的当前版本。切换源码前保存当前修改；未发送的批注或正在生成的回复需先处理。PDF 选区不可一次跨越多个源码文件。当前不支持 Biber。
+编辑会自动保存到当前源码文件；主编译文件保持固定。默认项目根目录是主文件所在目录，可在“文件 → 项目设置”或启动参数 `--project-root` 中指定包含正文和附录的共同目录。TeX 的相对引用仍从主文件所在目录解析。源码文件选择器和 PDF 反向跳转可打开项目内的 `\input` / `\include` 文件；历史与对话统一保存在项目根目录的 `.latex-codex/history.sqlite3`，源码历史保留项目相对路径，历史面板按时间统一显示主文件与所有子文件的记录；每条记录显示文件名，对比和恢复使用该记录所属的文件。项目内所有 UTF-8 `.tex` / `.md` / `.markdown` 源码在启动及状态轮询时记录，未打开的子文件修改也会被捕获。仅在查看历史“PDF 改动”时，将每处修改前后的 PNG 对比图（包含整句标红）存入 `.latex-codex/pdf-diff-cache/`；普通编译不保存完整 PDF 或 SyncTeX 存档。再次查看直接读图，缺失或损坏时按需编译生成；“重新编译”强制更新这一组对比图。跨页改动按页保存，新增或删除的一侧显示空白说明。缓存可删除，每项目上限 256 MiB，30 天未使用的存档在缓存读写时清理；源码历史不受影响。失败编译或未完成的渲染不覆盖已有对比图。旧版 `.latex-codex/pdf-cache/` 已停用，可删除。永久历史在同一项目数据库中记录各源码文件；子文件的历史 PDF 通过临时源码覆盖编译主文件，使用其余依赖的当前版本。切换源码前保存当前修改；未发送的批注或正在生成的回复需先处理。PDF 选区不可一次跨越多个源码文件。文献编译根据本次 TeX 生成的 `.bcf` / `.aux` 自动选择 Biber / BibTeX，处理后再运行两遍 TeX；控制文件和文献内容未变时复用结果。项目内 `.bib` / `.bst` 修改会使自动预览和源码定位失效。Biber 从主文稿所在目录解析相对文献路径，产物保留在临时构建目录；历史和校对预览共用此流程。缺工具或处理失败保留上一份正常 PDF 并报告失败，不自动安装。切换文献包导致旧辅助文件不兼容时仅清理临时文献产物并重试一次。远程或通配文献输入不缓存；项目根外的文献修改尚不自动跟踪；`makeindex` 等其他外部处理器目前不自动调用。检查在 `test_bibliography.py` 和 `test_editor.py`。
 
 ## 维护
 

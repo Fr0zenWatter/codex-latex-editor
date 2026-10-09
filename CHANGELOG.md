@@ -1,5 +1,16 @@
 # Changelog / 更新日志
 
+## 0.3.3 — 2026-10-09
+
+- Automatically run Biber for the current biblatex `.bcf` build job, followed by two TeX passes, without changing `backend=biber`. Keep the existing BibTeX workflow.
+- Reuse unchanged bibliography results and refresh the live PDF when project-local `.bib` / `.bst` inputs change. Preserve relative bibliography paths and temporary build outputs.
+- Report missing or failed processors and retain the last successful PDF. Recover from incompatible temporary bibliography auxiliaries when switching packages.
+- Include bibliography dependencies in history/proofread overlays before the first successful live compilation, and reject proofreading results when bibliography inputs change during generation.
+
+自动支持 `backend=biber` 文稿，解析引用并生成参考文献；项目内文献修改会刷新预览。兼容 BibTeX 和相对路径，失败保留正常 PDF，并补上首次历史／校对预览的文献依赖。
+
+Validation / 验证：Windows with MiKTeX 26.5 and Biber 2.21; real plugin UI and PDF output verified. Regression checks cover fresh builds, cache reuse, bibliography/citation/style changes, relative paths, both TeX engines, history/proofread previews, BibTeX compatibility and safe failures. macOS tool discovery is simulated; macOS/Linux hardware has not been tested.
+
 ## 0.3.2 — 2026-10-09
 
 - Keep the native `latex-codex` plugin on Codex and move the optional Harness adapter into the independently installed `latex-deepseek` plugin. The DeepSeek package uses a generated, self-contained runtime and retains its own version.

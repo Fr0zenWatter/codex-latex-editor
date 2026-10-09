@@ -18,6 +18,7 @@ import tempfile
 import threading
 import time
 import unicodedata
+import xml.etree.ElementTree as ET
 import zipfile
 import zlib
 import sys
@@ -1514,7 +1515,8 @@ def project_files(root, extensions=SOURCE_EXTENSIONS):
 
 
 def project_dependencies(root, main_file, build):
-    files = set(project_files(root, ('.tex',))) if document_type(main_file) == 'latex' else {main_file}
+    # Bibliography processors read these outside TeX's .fls recorder.
+    files = set(project_files(root, ('.tex', '.bib', '.bst'))) if document_type(main_file) == 'latex' else {main_file}
     recorder = Path(build) / (main_file.stem + '.fls')
     if recorder.is_file():
         directory = root
@@ -1671,28 +1673,40 @@ def engine_flags(engine):
     return ['--disable-installer'] if b'miktex' in (probe.stdout + probe.stderr).lower() else []
 
 
-def bibliography_signature(path, build, env):
-    lines = []
-    for aux in sorted(Path(build).rglob('*.aux')):
-        lines.extend(re.findall(r'^\\(?:citation|bibdata|bibstyle|@input)\{[^\n]*', aux.read_text(encoding='utf-8', errors='replace'), re.M))
-    digest = hashlib.sha256('\n'.join(lines).encode())
-    for kind, names in re.findall(r'\\(bibdata|bibstyle)\{([^}]+)\}', '\n'.join(lines)):
-        for name in names.split(','):
+def bibliography_signature(path, build, env, bcf=None):
+    filenames = []
+    if bcf is not None:
+        control = bcf.read_bytes()
+        try:
+            resources = ET.fromstring(control).findall('.//{*}datasource')
+        except ET.ParseError:
+            return None
+        for resource in resources:
+            if resource.get('type') != 'file' or resource.get('glob', 'false') != 'false' or not resource.text:
+                return None  # Unknown dependencies: safely rerun the processor.
+            filenames.append(resource.text.strip())
+    else:
+        lines = []
+        for aux in sorted(Path(build).rglob('*.aux')):
+            lines.extend(re.findall(r'^\\(?:citation|bibdata|bibstyle|@input)\{[^\n]*', aux.read_text(encoding='utf-8', errors='replace'), re.M))
+        control = '\n'.join(lines).encode()
+        for kind, names in re.findall(r'\\(bibdata|bibstyle)\{([^}]+)\}', '\n'.join(lines)):
             suffix = '.bib' if kind == 'bibdata' else '.bst'
-            name = name.strip()
-            filename = name if name.endswith(suffix) else name + suffix
-            dependency = path.parent / filename
-            if not dependency.is_file():
-                finder = tex_tool('kpsewhich')
-                if not finder:
-                    return None  # Unknown dependencies: safely rerun BibTeX.
-                result = subprocess.run([finder, filename], cwd=path.parent, env=env, capture_output=True, timeout=10)
-                found = result.stdout.decode('utf-8', errors='replace').strip()
-                dependency = path.parent / found
-                if not found or not dependency.is_file():
-                    return None
-            digest.update(str(dependency).encode())
-            digest.update(dependency.read_bytes())
+            filenames.extend(name.strip() if name.strip().endswith(suffix) else name.strip() + suffix for name in names.split(','))
+    digest = hashlib.sha256((b'biber\0' if bcf is not None else b'bibtex\0') + control)
+    for filename in filenames:
+        dependency = path.parent / filename
+        if not dependency.is_file():
+            finder = tex_tool('kpsewhich')
+            if not finder:
+                return None
+            result = subprocess.run([finder, filename], cwd=path.parent, env=env, capture_output=True, timeout=10)
+            found = result.stdout.decode('utf-8', errors='replace').strip()
+            dependency = path.parent / found
+            if not found or not dependency.is_file():
+                return None
+        digest.update(str(dependency).encode())
+        digest.update(dependency.read_bytes())
     return digest.hexdigest()
 
 
@@ -1724,25 +1738,38 @@ def compile_tex(path, build, source, entry=None, project_root=None, directory=No
         logs.append(result.stdout.decode('utf-8', errors='replace'))
         return result.returncode == 0
 
-    ok = run(command)
+    bcf = Path(build) / (path.stem + '.bcf')
     aux = Path(build) / (path.stem + '.aux')
-    if ok and aux.exists() and '\\bibdata{' in aux.read_text(encoding='utf-8', errors='replace'):
-        bibtex = tex_tool('bibtex')
-        if not bibtex:
-            raise FileNotFoundError('BibTeX is not on PATH.')
-        env = os.environ.copy()
+    cached = Path(build) / '.bib-inputs.sha256'
+    bcf.unlink(missing_ok=True)  # Only this TeX pass can request Biber.
+    ok = run(command)
+    if not ok and aux.with_suffix('.bbl').is_file():
+        # Switching bibliography packages can make the previous .aux/.bbl unreadable.
+        logs.append('Retrying TeX without cached bibliography auxiliaries.')
+        for product in [*Path(build).rglob('*.aux'), aux.with_suffix('.bbl'), bcf, cached]:
+            product.unlink(missing_ok=True)
+        ok = run(command)
+    processor = 'biber' if bcf.is_file() else 'bibtex' if aux.exists() and '\\bibdata{' in aux.read_text(encoding='utf-8', errors='replace') else None
+    if ok and processor:
+        executable = tex_tool(processor)
+        if not executable:
+            raise FileNotFoundError(f'{"Biber" if processor == "biber" else "BibTeX"} is not on PATH; check the existing TeX installation.')
+        env = tex_env.copy()
         for key in ('BIBINPUTS', 'BSTINPUTS'):
-            env[key] = str(path.parent) + os.pathsep + str(root) + os.pathsep + env.get(key, '')
-        signature = bibliography_signature(path, build, env)
-        cached = Path(build) / '.bib-inputs.sha256'
+            env[key] = os.pathsep.join((str(build), str(directory), str(path.parent), str(root), env.get(key, '')))
+        signature = bibliography_signature(path, build, env, bcf if processor == 'biber' else None)
         if signature is None or not aux.with_suffix('.bbl').is_file() or not cached.is_file() or cached.read_text() != signature:
-            ok = run([bibtex, path.stem], cwd=build, env=env)
+            cached.unlink(missing_ok=True)
+            if processor == 'biber':
+                ok = run([executable, '--input-directory', str(build), '--output-directory', str(build), path.stem], cwd=directory, env=env)
+            else:
+                ok = run([executable, str(aux.with_suffix(''))], cwd=directory, env=env)
             if ok:
                 cached.write_text(signature or '')
                 ok = run(command) and run(command)
     if ok and 'Rerun to get cross-references right' in logs[-1]:
         ok = run(command)
-    # ponytail: bounded BibTeX sequence; use latexmk for Biber or unusual rerun rules.
+    # shortcut: bounded bibliography/cross-reference passes; use latexmk for unusual rerun rules.
     return ok, '\n'.join(logs), name
 
 
@@ -2011,7 +2038,7 @@ def compile_source_snapshot(server, path, source, proofread=False):
             main_entry.parent.mkdir(parents=True, exist_ok=True)
             main_entry.write_bytes(main_source.encode('utf-8'))
         # Explicit ../ inputs must exist beside the temporary main file on MiKTeX.
-        dependencies = set(project_files(root)) | getattr(server, 'dependencies', set())
+        dependencies = set(project_files(root, (*SOURCE_EXTENSIONS, '.bib', '.bst'))) | getattr(server, 'dependencies', set())
         for dependency in dependencies - {path, main_file}:
             if dependency.is_file() and dependency.is_relative_to(root):
                 target = overlay / dependency.relative_to(root)
@@ -2695,7 +2722,7 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
                 if self.path == '/proofread':
                     if data.get('path') != str(path) or data.get('version') != snapshot(path)['version']:
                         raise FileConflict('源码文件已变化，请重新生成校对预览。')
-                    dependencies = set(project_files(root)) | self.server.dependencies
+                    dependencies = set(project_files(root, (*SOURCE_EXTENSIONS, '.bib', '.bst'))) | self.server.dependencies
                     fingerprint = project_digest(dependencies)
                     result = proofread_pdf(self.server, path, data.get('source'), data.get('items'))
                     if fingerprint != project_digest(dependencies):
