@@ -184,6 +184,7 @@ with tempfile.TemporaryDirectory() as directory:
             code, body = request('/synctex', {'direction':'range', 'version':revision, 'pdf_revision':pdf_revision, 'first':line, 'last':line})
             assert code == 200 and any(region['page'] == page for region in json.loads(body)['regions']), body
             assert all(region['rect'][3]-region['rect'][1] <= 72 for region in json.loads(body)['regions']), 'Selection regions exclude whole-page containers.'
+            assert json.loads(body)['lines'][str(line)] == json.loads(body)['regions'], 'Per-line regions share the real compiled geometry.'
         for invalid in [{'direction': 'forward', 'line': 0},
                         {'direction': 'forward', 'line': 5, 'column': True},
                         {'direction': 'backward', 'page': 9, 'x': .2, 'y': .3},

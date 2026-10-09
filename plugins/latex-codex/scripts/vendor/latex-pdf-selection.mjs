@@ -4,6 +4,7 @@ import {pdfTextRect} from './latex-pdf-analysis.mjs';
 export function boxedPdfContent(content, page, box, excluded = []) {
   const fragments = [], parts = [];
   let gap = false, contiguous = true;
+  let fullText = '', first = null, last = 0;
   const lineBreak = () => {
     if (!parts.length || parts.at(-1) === '\n') return;
     parts.push('\n');if (fragments.length) fragments.at(-1).text += '\n';
@@ -11,18 +12,21 @@ export function boxedPdfContent(content, page, box, excluded = []) {
   for (const item of content.items) {
     if (typeof item.str !== 'string') continue;
     // PDF.js emits line breaks as empty items with zero-size geometry.
-    if (!item.str) { if (item.hasEOL) lineBreak();continue; }
+    if (!item.str) { if (item.hasEOL) { fullText += '\n';lineBreak(); }continue; }
     const rect = pdfTextRect(item, content.styles);
     const [left,bottom,right,top] = rect, width = right-left, height = top-bottom;
     if (!(width > 0 && height > 0)) continue;
     const x = (left+right)/2, y = (bottom+top)/2;
     if (excluded.some(([l,b,r,t]) => x >= l && x <= r && y >= b && y <= t)) continue;
+    const offset = fullText.length;
+    fullText += item.str;if (item.hasEOL) fullText += '\n';
     const overlapX = Math.max(0, Math.min(right,box[2])-Math.max(left,box[0]));
     const overlapY = Math.max(0, Math.min(top,box[3])-Math.max(bottom,box[1]));
     if (overlapX*overlapY < width*height*.25) {
       if (fragments.length && item.str.trim()) gap = true;
       continue;
     }
+    first ??= offset;last = offset+item.str.length;
     if (item.str.trim()) {
       if (gap) contiguous = false;
       fragments.push({page,rect,text:item.str});gap = false;
@@ -36,7 +40,8 @@ export function boxedPdfContent(content, page, box, excluded = []) {
     const point = anchor(fragments[index]);
     if (!points.some(p => p.x === point.x && p.y === point.y)) points.push(point);
   }
-  return {kind:'box',contiguous,points,fragments,rectangles:fragments.map(({page,rect}) => ({page,rect})),text:parts.join('').trim()};
+  return {kind:'box',contiguous,points,fragments,rectangles:fragments.map(({page,rect}) => ({page,rect})),text:parts.join('').trim(),
+    context:{before:fullText.slice(Math.max(0,first-80),first),after:fullText.slice(last,last+80)}};
 }
 
 export function attachPdfBoxSelection({preview,viewer,capture,onSelect,message,excludedRects = () => []}) {

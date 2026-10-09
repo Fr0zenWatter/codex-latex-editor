@@ -13,9 +13,11 @@ assert.equal(selected.text,'A Bnd2','Copy keeps real spaces, and geometry includ
 assert.equal(selected.fragments.length,5);
 assert.equal(selected.points.length,4);
 assert.equal(selected.contiguous,true,'A box covering every intervening glyph can use similar source matching.');
+assert.deepEqual(selected.context,{before:'12',after:'outside'},'Box context follows the glyph stream without adding unselected text to the selection.');
 assert.equal(boxedPdfContent(content,1,[0,0,1,1]),null);
 assert.equal(boxedPdfContent(content,1,[20,70,20.5,80]),null,'A slight edge touch must not select a neighboring glyph.');
 assert.equal(boxedPdfContent(content,1,[0,50,85,95],[[0,60,15,85]]).text,'A Bnd2','Exclude margin line numbers without excluding formula digits.');
+assert.equal(boxedPdfContent(content,1,[0,50,85,95],[[0,60,15,85]]).context.before,'','Excluded margin numbers never become disambiguating context.');
 const cropped = {styles:content.styles,items:[glyph('alpha',20,70,10,25),glyph('missing',90,70,10,35),glyph('beta',20,55,10,20)]};
 assert.equal(boxedPdfContent(cropped,1,[18,50,50,85]).contiguous,false,'Missing middle glyphs disable similar matching, even when the two selected rows look adjacent.');
 assert.equal(boxedPdfContent({...cropped,items:[cropped.items[0],glyph('253',2,70,6,10),cropped.items[2]]},1,[18,50,50,85],[[0,0,15,100]]).contiguous,true,'Excluded margin numbers are not prose gaps.');

@@ -761,15 +761,8 @@ async function synchronize(direction,position,quiet=false,isCurrent=()=>true){
     if(direction==='selection'){
       if(selectionChat.busy)throw new Error(t('Codex 正在回复，请稍后发送。'));
       const locations=data.map(point=>point.line);
-      const mathRange=()=>sourcePdfMathRange(saved,locations,position,compiledLabels,compiledCitations,
+      const range=await sourcePdfSelectionRange(saved,locations,position,compiledLabels,compiledCitations,
         (first,last)=>syncRequest({direction:'range',version:revision,pdf_revision:build,first,last}),mainSource||saved,documentType==='markdown');
-      // A geometric box can select only part of a fraction: prefer its intact math environment.
-      let range=position.kind==='box'?await mathRange():null;
-      try{range??=sourcePdfTextRange(saved,locations,position.text,compiledLabels,compiledCitations,mainSource||saved,position.kind==='box',position.contiguous===true);}
-      catch(error){
-        range=position.kind==='box'?null:await mathRange();
-        if(!range)throw error;
-      }
       if(!isCurrent())return;
       if(busy||version!==revision||pdfBuild!==build||editor.getValue()!==saved)throw new Error(t('PDF 或源码已变化，请重新选择 PDF 文字。'));
       if(editor.getOption('keyMap').startsWith('vim'))CodeMirror.Vim.handleKey(editor,'<Esc>');
@@ -853,10 +846,10 @@ function sourceTheoremEnvironments(source,macroSource,normalize){
   }
   return ranges.sort((a,b)=>a.from-b.from);
 }
-function sourcePdfTextRange(source,locations,text,labels={},citations={},macroSource=source,box=false,allowSimilar=false){
+function sourcePdfTextRange(source,locations,text,labels={},citations={},macroSource=source,box=false,allowSimilar=false,matching={}){
   const fail=()=>{throw new Error(t('无法唯一匹配选中的 PDF 文字，请在源码中选择。'));};
   if(typeof text!=='string'||!text.trim())fail();
-  const nearby=sourceParagraphRange(source,locations),lines=source.split('\n');
+  const nearby=matching.bounds||sourceParagraphRange(source,locations),lines=source.split('\n');
   let start=lines.slice(0,nearby.from.line).reduce((offset,line)=>offset+line.length+1,0);
   let end=start+lines.slice(nearby.from.line,nearby.to.line+1).join('\n').length;
   // A run-in title shares the PDF row with its body; SyncTeX may tag both to the body line.
@@ -878,7 +871,35 @@ function sourcePdfTextRange(source,locations,text,labels={},citations={},macroSo
   text=text.replace(/[\u0000-\u0008\u000e-\u001f]/g,'');
   let needle=normalize(text);
   if(!needle)fail();
-  let haystack='';let offsets=[];
+  let haystack='',boundary=null;let offsets=[];
+  const choose=candidates=>{
+    const unique=new Map();
+    for(const candidate of candidates){
+      const from=offsets[candidate.index]?.[0],to=offsets[candidate.index+candidate.length-1]?.[1];
+      if(from===undefined||to===undefined||boundary&&!boundary(candidate.index)||matching.accept&&!matching.accept(from,to))continue;
+      unique.set(from+':'+to,candidate);
+    }
+    candidates=[...unique.values()];
+    if(candidates.length===1)return candidates[0];
+    if(!candidates.length||!matching.context)return null;
+    // Nearby visible words distinguish repeated selections, even on the same source line.
+    const variants=value=>[normalize(value),normalize(value.replace(/-\s*\n\s*/g,''))];
+    const before=variants(matching.context.before||''),after=variants(matching.context.after||'');
+    const common=(a,b,reverse)=>{
+      let n=0;while(n<Math.min(a.length,b.length)&&a[reverse?a.length-n-1:n]===b[reverse?b.length-n-1:n])n++;
+      return n;
+    };
+    const ranked=candidates.map(candidate=>({candidate,score:
+      Math.max(...before.map(value=>common(value,haystack.slice(Math.max(0,candidate.index-80),candidate.index),true)))+
+      Math.max(...after.map(value=>common(value,haystack.slice(candidate.index+candidate.length,candidate.index+candidate.length+80),false)))}))
+      .sort((a,b)=>b.score-a.score);
+    return ranked[0].score>=8&&ranked[0].score-ranked[1].score>=4?ranked[0].candidate:null;
+  };
+  const occurrences=(value=needle)=>{
+    const candidates=[];
+    for(let index=haystack.indexOf(value);index>=0;index=haystack.indexOf(value,index+1))candidates.push({index,length:value.length});
+    return choose(candidates);
+  };
   const tokens=/\\(?:label|[A-Za-z]*ref|[A-Za-z]*cite[A-Za-z]*|url|href|includegraphics|input|include|bibliography|bibliographystyle)(?:\*|\[[^\]]*\])*(?:\{[^{}]*\})+|\\(?:[A-Za-z@]+|.)|%[^\n]*|[^]/gu;
   for(const token of snippet.matchAll(tokens)){
     const value=/^[\\%]/.test(token[0])?'\0':normalize(token[0]);
@@ -887,6 +908,7 @@ function sourcePdfTextRange(source,locations,text,labels={},citations={},macroSo
   }
   let found=haystack.indexOf(needle);
   if(found<0){needle=normalize(text.replace(/-\s*\n\s*/g,''));found=haystack.indexOf(needle);}
+  if(found>=0)found=occurrences()?.index??-1;
   let approximate=false,similar=false,length=needle.length,proseAnchored=false,decorations=[];
   if(found<0){
     if(snippet.length>12000||needle.length>3000)fail();
@@ -897,9 +919,10 @@ function sourcePdfTextRange(source,locations,text,labels={},citations={},macroSo
       value=normalize(value);haystack+=value;
       for(let i=0;i<value.length;i++)offsets.push([start+from,start+to]);
     };
+    const citationNote=value=>(value||'').replace(/---|--/g,dash=>dash.length===3?'—':'–');
     let skip=0;const citationSpans=[];
     const boundaries=new Map(environments.flatMap(range=>[[range.from,{to:range.body}],[range.close,{to:range.to}]]));
-    const visibleTokens=/\\(?:sub)?paragraph\*?(?:\[[^\]]*\])?\{|\\(?:textbf|textit|textrm|textsf|texttt|textnormal|emph|underline)\{([^{}]*)\}|\\(?:color)(?:\[[^\]]*\])?\{[^{}]*\}|\\(?:textbf|textit|textrm|textsf|texttt|textnormal|emph|underline)\{|\\textcolor(?:\[[^\]]*\])?\{[^{}]*\}\{|\\(?:label|[A-Za-z]*ref|[A-Za-z]*cite[A-Za-z]*|url|href|includegraphics|input|include|bibliography|bibliographystyle)(?:\*|\[[^\]]*\])*(?:\{[^{}]*\})+|\\(?:[A-Za-z@]+|.)|%[^\n]*|[^]/gu;
+    const visibleTokens=/\\(?:sub)?paragraph\*?(?:\[[^\]]*\])?\{|\\href(?:\[[^\]]*\])?\{[^{}]*\}\{|\\url\{([^{}]*)\}|\\(?:textbf|textit|textrm|textsf|texttt|textnormal|emph|underline)\{([^{}]*)\}|\\(?:color)(?:\[[^\]]*\])?\{[^{}]*\}|\\(?:textbf|textit|textrm|textsf|texttt|textnormal|emph|underline)\{|\\textcolor(?:\[[^\]]*\])?\{[^{}]*\}\{|\\(?:label|[A-Za-z]*ref|[A-Za-z]*cite[A-Za-z]*|url|href|includegraphics|input|include|bibliography|bibliographystyle)(?:\*|\[[^\]]*\])*(?:\{[^{}]*\})+|\\(?:[A-Za-z@]+|.)|%[^\n]*|[^]/gu;
     for(const token of snippet.matchAll(visibleTokens)){
       if(token.index<skip)continue;
       const boundary=boundaries.get(start+token.index);
@@ -920,18 +943,20 @@ function sourcePdfTextRange(source,locations,text,labels={},citations={},macroSo
       }else{
         const reference=token[0].match(/^\\(eqref|ref)\*?\{([^{}]+)\}$/);
         const number=reference&&Object.hasOwn(labels,reference[2])?labels[reference[2]]:null;
-        // ponytail: numeric cite/citep without notes; author-year/custom styles need their rendered labels.
-        const citation=token[0].match(/^\\(cite|citep)\*?\{([^{}]+)\}$/);
-        const keys=citation?.[2].split(',').map(key=>key.trim());
-        const cited=keys?.every(key=>Object.hasOwn(citations,key))?'['+keys.map(key=>citations[key]).join(',')+']':null;
+        // ponytail: numeric cite/citep with plain notes; macro-rich notes and author-year styles remain opaque.
+        const citation=token[0].match(/^\\(?:cite|citep)\*?(?:\[([^\[\]{}\\$]*)\])?(?:\[([^\[\]{}\\$]*)\])?\{([^{}]+)\}$/);
+        const keys=citation?.[3].split(',').map(key=>key.trim());
+        const before=citationNote(citation?.[2]!==undefined?citation[1]:''),after=citationNote(citation?.[2]??citation?.[1]);
+        const cited=keys?.every(key=>Object.hasOwn(citations,key))?
+          '['+(before?before+' ':'')+keys.map(key=>citations[key]).join(',')+(after?', '+after:'')+']':null;
         const environment=environments.find(range=>range.body<=start+token.index&&range.close>start+token.index);
-        const invisible=/^(?:[{}]|\\(?:(?:sub)?paragraph|color|textcolor|textbf|textit|textrm|textsf|texttt|textnormal|emph|underline|bfseries|itshape|rmfamily|sffamily|ttfamily|normalfont)\b)/.test(token[0])||
+        const invisible=/^(?:[{}]|\\(?:(?:sub)?paragraph|href|color|textcolor|textbf|textit|textrm|textsf|texttt|textnormal|emph|underline|bfseries|itshape|rmfamily|sffamily|ttfamily|normalfont)\b)/.test(token[0])||
           (environment&&/^(?:%|\\label\{|\\qedhere\b)/.test(token[0]));
         const escaped=token[0].match(/^\\([%&#_{}$])$/);
-        const value=cited??(number!==null?(reference[1]==='eqref'?'('+number+')':number):token[1]??(invisible?'':escaped?.[1]??(/^[\\%]/.test(token[0])?'\0':token[0])));
+        const value=cited??(number!==null?(reference[1]==='eqref'?'('+number+')':number):token[1]??token[2]??(invisible?'':escaped?.[1]??(/^[\\%]/.test(token[0])?'\0':token[0])));
         const begin=haystack.length;
         append(value,token.index,token.index+token[0].length);
-        if(citation)citationSpans.push([begin,haystack.length]);
+        if(citation&&!before&&!after)citationSpans.push([begin,haystack.length]);
       }
     }
     found=haystack.indexOf(needle);
@@ -950,11 +975,9 @@ function sourcePdfTextRange(source,locations,text,labels={},citations={},macroSo
         }
         clean+=candidate.slice(cursor);
         if(!clean||!removed.length)continue;
-        const match=haystack.indexOf(clean);
-        if(match<0)continue;
         // Verify each removed glyph at its source boundary, never strip prose globally.
         const ignorable=value=>!value.replace(/%[^\n]*|\\label\{[^{}]*\}|\\qedhere\b|\s/g,'');
-        const valid=removed.every(mark=>environments.some(range=>{
+        boundary=match=>removed.every(mark=>environments.some(range=>{
           if(/^[□◻∎]$/.test(mark.text)){
             const last=offsets[match+mark.at-1]?.[1];
             return range.proof&&last>=range.body&&last<=range.close&&ignorable(source.slice(last,range.close));
@@ -962,16 +985,22 @@ function sourcePdfTextRange(source,locations,text,labels={},citations={},macroSo
           const next=offsets[match+mark.at]?.[0];
           return new RegExp('^(?:'+range.heading+')$','u').test(mark.text)&&next>=range.body&&next<range.close&&ignorable(source.slice(range.body,next));
         }));
-        if(valid){needle=clean;length=clean.length;found=match;decorations=removed;break;}
+        const match=occurrences(clean);
+        if(match){needle=clean;length=clean.length;found=match.index;decorations=removed;break;}
+        boundary=null;
       }
     }
-    if(found<0&&box&&/^\s*\d+[.)]\s+/.test(text)){
+    if(found<0&&/^\s*\d+[.)]\s+/.test(text)){
       // Ignore an automatic enumerate label only at an actual source item boundary.
       for(const candidate of [needle,normalize(text)]){
-        const body=candidate.replace(/^\d+[.)]/,''),match=haystack.indexOf(body);
-        if(match>=0&&/\\item(?:\[[^\]]*\])?\s*$/.test(source.slice(start,offsets[match][0]))){
-          needle=body;length=needle.length;found=match;break;
+        const body=candidate.replace(/^\d+[.)]/,'');
+        if(!body)continue;
+        boundary=index=>/\\item(?:\[[^\]]*\])?\s*$/.test(source.slice(start,offsets[index][0]));
+        const match=occurrences(body);
+        if(match){
+          needle=body;length=needle.length;found=match.index;break;
         }
+        boundary=null;
       }
     }
     if(found<0&&citationSpans.length){
@@ -985,7 +1014,6 @@ function sourcePdfTextRange(source,locations,text,labels={},citations={},macroSo
         }
         anchored+=haystack.slice(cursor);mapped.push(...offsets.slice(cursor));
         const match=anchored.indexOf(anchoredNeedle);
-        if(match>=0&&anchored.indexOf(anchoredNeedle,match+1)>=0)fail();
         haystack=anchored;offsets=mapped;needle=anchoredNeedle;found=match;length=needle.length;proseAnchored=true;
       }
     }
@@ -1008,17 +1036,21 @@ function sourcePdfTextRange(source,locations,text,labels={},citations={},macroSo
         }
         [costs,next]=[next,costs];[starts,nextStarts]=[nextStarts,starts];
       }
-      let best=limit+1,candidate=null,ambiguous=false;
+      let best=limit+1,candidates=[];
       for(let j=1;j<=haystack.length;j++){
         const begin=starts[j],size=j-begin;
         if(!size||costs[j]>limit||size<needle.length*.8||size>needle.length*1.25)continue;
-        if(costs[j]<best){best=costs[j];candidate={index:begin,length:size};ambiguous=false;}
-        else if(costs[j]===best&&(offsets[begin][0]!==offsets[candidate.index][0]||offsets[j-1][1]!==offsets[candidate.index+candidate.length-1][1]))ambiguous=true;
+        if(matching.accept&&!matching.accept(offsets[begin][0],offsets[j-1][1]))continue;
+        if(costs[j]<best){best=costs[j];candidates=[];}
+        if(costs[j]===best)candidates.push({index:begin,length:size});
       }
-      if(!candidate||ambiguous)fail();
+      const candidate=choose(candidates);
+      if(!candidate)fail();
       found=candidate.index;length=candidate.length;similar=true;
-    }else if(haystack.indexOf(needle,found+1)>=0)fail();
-  }else if(haystack.indexOf(needle,found+1)>=0)fail();
+    }else{
+      const candidate=occurrences();if(!candidate)fail();found=candidate.index;
+    }
+  }
   const position=index=>{
     const prefix=source.slice(0,index),line=prefix.split('\n').length-1;
     return {line,ch:index-prefix.lastIndexOf('\n')-1};
@@ -1041,7 +1073,7 @@ function sourcePdfTextRange(source,locations,text,labels={},citations={},macroSo
   }
   for(const [open,close] of groups){
     if((open>=from&&open<to&&close>to)||(open<from&&close>from&&close<=to)){
-      const prefix=source.slice(0,open),command=prefix.match(/\\(?:textbf|textit|textrm|textsf|texttt|textnormal|emph|underline|textcolor(?:\[[^\]]*\])?\{[^{}]*\})$/);
+      const prefix=source.slice(0,open),command=prefix.match(/\\(?:textbf|textit|textrm|textsf|texttt|textnormal|emph|underline|(?:textcolor|href)(?:\[[^\]]*\])?\{[^{}]*\})$/);
       const heading=prefix.match(/\\(?:sub)?paragraph\*?(?:\[[^\]]*\])?$/);
       if(heading&&((open<from&&normalize(source.slice(open+1,from)))||(close>to&&normalize(source.slice(to,close-1)))))fail();
       // Do not expand arguments of unknown commands into unrelated source.
@@ -1060,6 +1092,63 @@ function sourcePdfTextRange(source,locations,text,labels={},citations={},macroSo
     if(range.from<to&&range.to>from){from=Math.min(from,range.from);to=Math.max(to,range.to);approximate=true;mathBlock=true;}
   }
   return {from:position(from),to:position(to),...(approximate?{approximate:true}:{}),...(box&&similar?{similar:true}:{}),...(mathBlock?{mathBlock:true}:{})};
+}
+function pdfFragmentInRegions(fragment,regions){
+  const [x1,y1,x2,y2]=fragment.rect,x=(x1+x2)/2,y=(y1+y2)/2;
+  return regions.some(region=>{
+    const [left,bottom,right,top]=region.rect;
+    const overlap=Math.min(Math.max(y1,y2),top+2)-Math.max(Math.min(y1,y2),bottom-2);
+    return fragment.page===region.page&&x>=left-2&&x<=right+2&&
+      ((y>=bottom-2&&y<=top+2)||overlap>=Math.abs(y2-y1)*.25);
+  });
+}
+async function sourcePdfSelectionRange(source,locations,selection,labels,citations,regionsForLines,macroSource=source,markdown=false){
+  const box=selection.kind==='box',matching={context:box&&!selection.contiguous?null:selection.context};
+  const textRange=options=>sourcePdfTextRange(source,locations,selection.text,labels,citations,macroSource,box,selection.contiguous===true,options);
+  const mathRange=(near=locations,regions=regionsForLines)=>sourcePdfMathRange(source,near,selection,labels,citations,regions,macroSource,markdown);
+  // A box may contain only the numerator of a fraction; keep its complete formula.
+  let range=box?await mathRange():null,error;
+  if(range)return range;
+  try{return textRange(matching);}catch(failure){error=failure;}
+  if(!box){range=await mathRange();if(range)return range;}
+  if(!selection.fragments?.length||selection.fragments.length>10000)throw error;
+  const lines=source.split('\n'),lineCount=lines.length-(lines.at(-1)===''?1:0);
+  let first=Math.max(1,Math.min(...locations)-12),last=Math.min(lineCount,Math.max(...locations)+12);
+  try{
+    const paragraph=sourceParagraphRange(source,locations);
+    if(Math.max(last,paragraph.to.line+1)-Math.min(first,paragraph.from.line+1)<=400){
+      first=Math.min(first,paragraph.from.line+1);last=Math.min(lineCount,Math.max(last,paragraph.to.line+1));
+    }
+  }catch(failure){/* A blank or document-boundary anchor can still use its nearby rendered rows. */}
+  if(last-first>400)throw error;
+  // The server caches the compiled line index; one query supplies every nearby candidate.
+  let indexed;
+  try{indexed=await regionsForLines(first,last);}catch(failure){if(failure.status===400)throw error;throw failure;}
+  if(!indexed.lines||!Object.keys(indexed.lines).length)throw error;
+  const regions=(from,to)=>{
+    const rows=[];for(let line=from;line<=to;line++)rows.push(...(indexed.lines[line]||[]));
+    return rows;
+  };
+  const starts=[0];for(let i=0;i<source.length;i++)if(source[i]==='\n')starts.push(i+1);
+  const lineAt=offset=>{
+    let low=0,high=starts.length;
+    while(low+1<high){const mid=(low+high)>>1;if(starts[mid]<=offset)low=mid;else high=mid;}
+    return low+1;
+  };
+  const checks=new Map(),fragments=selection.fragments.filter(fragment=>fragment.text.trim());
+  const accept=(from,to)=>{
+    const start=lineAt(from),end=lineAt(to-1),key=start+':'+end;
+    if(!checks.has(key)){
+      const rows=regions(start,end);
+      checks.set(key,fragments.length>0&&fragments.every(fragment=>pdfFragmentInRegions(fragment,rows)));
+    }
+    return checks.get(key);
+  };
+  try{return textRange({...matching,accept,bounds:{from:{line:first-1,ch:0},to:{line:last-1,ch:lines[last-1].length}}});}
+  catch(failure){/* Try nearby complete formulas when TeX tags them to adjacent prose. */}
+  range=await mathRange([first,last],async(from,to)=>({regions:regions(from,to)}));
+  if(range)return range;
+  throw error;
 }
 async function sourcePdfMathRange(source,locations,selection,labels,citations,regionsForLines,macroSource=source,markdown=false){
   // PDF math reading order is not TeX order. Verify its compiled position instead.
@@ -1087,14 +1176,7 @@ async function sourcePdfMathRange(source,locations,selection,labels,citations,re
   const runs=[];
   for(const fragment of selection.fragments){
     if(!fragment.text.trim())continue;
-    const [x1,y1,x2,y2]=fragment.rect,x=(x1+x2)/2,y=(y1+y2)/2;
-    const matches=formulas.filter(range=>range.regions?.some(region=>{
-      const [left,bottom,right,top]=region.rect;
-      const overlap=Math.min(Math.max(y1,y2),top+2)-Math.max(Math.min(y1,y2),bottom-2);
-      // PDF text-layer boxes can extend above tall sums/integrals; their centre may miss the row.
-      return fragment.page===region.page&&x>=left-2&&x<=right+2&&
-        ((y>=bottom-2&&y<=top+2)||overlap>=Math.abs(y2-y1)*.25);
-    }));
+    const matches=formulas.filter(range=>pdfFragmentInRegions(fragment,range.regions||[]));
     if(matches.length>1)return null;
     const formula=matches[0]||null,last=runs.at(-1);
     if(last&&last.formula===formula)last.text.push(fragment.text);
@@ -1102,11 +1184,12 @@ async function sourcePdfMathRange(source,locations,selection,labels,citations,re
   }
   if(!runs.some(run=>run.formula))return null;
   const intervals=[];let similar=false;
-  for(const run of runs){
+  for(const [index,run] of runs.entries()){
     if(run.formula){intervals.push([run.formula.from,run.formula.to]);continue;}
     try{
       const context=[Math.max(1,Math.min(...locations)-1),Math.min(lineStarts.length,Math.max(...locations)+1)];
-      const range=sourcePdfTextRange(source,context,run.text.join(selection.kind==='box'?'':'\n'),labels,citations,macroSource,selection.kind==='box',selection.contiguous===true);
+      const surrounding=selection.context&&selection.contiguous!==false?{before:index===0?selection.context.before:'',after:index===runs.length-1?selection.context.after:''}:null;
+      const range=sourcePdfTextRange(source,context,run.text.join(selection.kind==='box'?'':'\n'),labels,citations,macroSource,selection.kind==='box',selection.contiguous===true,{context:surrounding});
       similar ||= !!range.similar;
       intervals.push([offset(range.from),offset(range.to)]);
     }catch(error){return null;}
@@ -1150,17 +1233,22 @@ function selectedPdfPoints(){
   if(!selection||selection.isCollapsed||selection.rangeCount!==1||!selection.toString().trim())return null;
   const range=selection.getRangeAt(0);
   if(!preview.contains(range.startContainer)||!preview.contains(range.endContainer))return null;
-  let first,last;
+  let first,last,fullText='',contextStart=null,contextEnd=0;
   const spans=Array.from(preview.querySelectorAll('.textLayer span')),margins=pdfMarginNumbers(spans),parts=[],rectangles=[],fragments=[],anchors=[];
   // Use clipped glyph rectangles in DOM order, including reverse drags and selections across pages.
   for(const span of spans){
     if(margins.has(span))continue;
     const node=span.firstChild;
-    if(node?.nodeType!==3||!range.intersectsNode(node))continue;
+    if(node?.nodeType!==3)continue;
+    const value=node.nodeValue??node.textContent??'',offset=fullText.length;
+    fullText+=value;if(span.nextElementSibling?.tagName==='BR')fullText+='\n';
+    if(!range.intersectsNode(node))continue;
     const part=range.cloneRange();part.selectNodeContents(node);
     if(node===range.startContainer)part.setStart(node,range.startOffset);
     if(node===range.endContainer)part.setEnd(node,range.endOffset);
     if(part.collapsed)continue;
+    contextStart??=offset+(node===range.startContainer?range.startOffset:0);
+    contextEnd=offset+(node===range.endContainer?range.endOffset:value.length);
     parts.push(part.toString());
     if(span.nextElementSibling?.tagName==='BR')parts.push('\n');
     if(!part.toString().trim())continue;
@@ -1179,7 +1267,8 @@ function selectedPdfPoints(){
   if(anchors.length>2)for(const index of [Math.floor(anchors.length/3),Math.floor(anchors.length*2/3)]){
     const anchor=anchors[index];if(!points.some(point=>point.page===anchor.page&&point.x===anchor.x&&point.y===anchor.y))points.push(anchor);
   }
-  return first?{points,rectangles,fragments,text:margins.size?parts.join(''):selection.toString()}:null;
+  return first?{points,rectangles,fragments,text:margins.size?parts.join(''):selection.toString(),
+    context:{before:fullText.slice(Math.max(0,contextStart-80),contextStart),after:fullText.slice(contextEnd,contextEnd+80)}}:null;
 }
 function paintPdfAnnotations(items,edit){
   localReviewItems=items;localReviewEdit=edit;
@@ -2765,11 +2854,15 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
                                 'root':main_file.parent,
                                 'individual_boxes':True}
                         index = history_pdf_line_index(self.server.selection_sync) or {}
-                        regions = set()
+                        regions, line_regions = set(), {}
                         for line in range(first, last+1):
+                            rows = set()
                             for page, boxes in index.get(line, {}).items():
-                                regions.update((page,rect) for rect in boxes)
-                        self.reply(200, {'regions':[{'page':page,'rect':rect} for page,rect in sorted(regions)]})
+                                rows.update((page,rect) for rect in boxes)
+                            if rows:
+                                line_regions[line] = [{'page':page,'rect':rect} for page,rect in sorted(rows)]
+                                regions.update(rows)
+                        self.reply(200, {'regions':[{'page':page,'rect':rect} for page,rect in sorted(regions)], 'lines':line_regions})
                     else:
                         self.reply(200, locate(path, self.server.build.name, self.server.page_boxes, data, main_file, root))
                     return

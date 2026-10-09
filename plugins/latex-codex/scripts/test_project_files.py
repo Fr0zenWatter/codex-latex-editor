@@ -94,6 +94,7 @@ with tempfile.TemporaryDirectory(prefix='latex project ') as directory:
             mapping['version'] = current['version']
             code, ranges = request('/synctex', {**mapping, 'direction':'range', 'first':2, 'last':2})
             assert code == 200 and ranges['regions'], (str(file), ranges)
+            assert ranges['lines']['2'] == ranges['regions'], 'Per-line lookup uses the active child source tag, not the main file.'
         print('PASS: nested input/include forward and inverse navigation, source ranges, stable main PDF and included labels')
 
         current = switch(appendix)

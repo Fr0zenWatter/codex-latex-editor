@@ -575,6 +575,20 @@ context.fetch=async()=>{downloads++;return{ok:true,arrayBuffer:async()=>new Arra
   assert.throws(()=>matched('We use $x$ in this estimate. We use $x$ in this estimate.','We use x ◆ in this estimate.'),/唯一匹配/);
   assert.throws(()=>matched('We use $x$ in this estimate.','We completely changed the argument.'),/唯一匹配/);
   assert.equal(matched('{On the matrix} level','On the matrix level'),'{On the matrix} level','Invisible grouping braces must not defeat a prose match.');
+  const repeated='First context: repeated phrase. Second context: repeated phrase.';
+  const contextual=context.sourcePdfTextRange(repeated,[1],'repeated phrase',{}, {},repeated,false,false,
+    {context:{before:'Second context: ',after:'.'}});
+  assert.equal(contextual.from.ch,repeated.lastIndexOf('repeated phrase'),'PDF context disambiguates repeated text on the same source line.');
+  assert.throws(()=>context.sourcePdfTextRange(repeated,[1],'repeated phrase',{}, {},repeated,false,false,
+    {context:{before:' context: ',after:'.'}}),/唯一匹配/,'Shared surrounding words must not resolve a genuine tie.');
+  assert.equal(matched('Before $x+x$ after.','x'),'$x+x$','Two rendered symbols mapped to the same intact formula are one source candidate.');
+  const linked=String.raw`See \href{https://example.com}{the \textbf{documentation}} for details.`;
+  assert.equal(matched('Before. '+linked+' After.','See the documentation for details.'),linked,'Visible hyperlink labels preserve nested formatting and the paired command.');
+  assert.equal(matched(String.raw`Read \url{https://example.com/a} now.`,'Read https://example.com/a now.'),String.raw`Read \url{https://example.com/a} now.`);
+  const numbered=String.raw`\item Alpha.`;
+  assert.equal(matched(numbered,'1. Alpha.'),'Alpha.','Native drag selections share the source-aware automatic list label rule.');
+  const repeatedList=context.sourcePdfTextRange('Alpha.\n'+numbered,[1,2],'1. Alpha.');
+  assert.equal(repeatedList.from.line,1,'A generated list label resolves only an item, even when identical prose appears first.');
   assert.equal(matched(String.raw`Before. {\color{red}Finite} element methods. After.`, 'Finite element methods.'),String.raw`{\color{red}Finite} element methods.`);
   assert.equal(matched(String.raw`Before. \textbf{A \emph{nested} phrase} follows. After.`, 'A nested phrase follows.'),String.raw`\textbf{A \emph{nested} phrase} follows.`);
   assert.equal(matched(String.raw`Before. \textcolor{blue}{A nested $x$ phrase} follows. After.`, 'A nested x phrase follows.'),String.raw`\textcolor{blue}{A nested $x$ phrase} follows.`);
@@ -599,6 +613,34 @@ context.fetch=async()=>{downloads++;return{ok:true,arrayBuffer:async()=>new Arra
   assert.deepEqual(exact('Before. '+citationSentence+' After.',[1,1],citationPdf,{},compiledCites),{from:{line:0,ch:8},to:{line:0,ch:8+citationSentence.length},approximate:true},'Citations and inline math preserve the exact sentence, excluding adjacent prose.');
   assert.deepEqual(exact(String.raw`See \cite{BankXuZheng2007,BankNguyen2011}.`,[1,1],'[10, 6]',{},compiledCites),{from:{line:0,ch:4},to:{line:0,ch:41},approximate:true},'Selecting citation text keeps the entire source macro.');
   assert.deepEqual(exact(String.raw`See \citep{ BankXu2003b }.`,[1,1],'[9]',{},compiledCites),{from:{line:0,ch:4},to:{line:0,ch:25},approximate:true});
+  const notedCite=String.raw`\cite[Lemma~7.2(iii) and Theorem~7.5, pp.~74--75]{Jech2003}`;
+  const notedPdf='[6, Lemma 7.2(iii) and Theorem 7.5, pp. 74–75]';
+  assert.equal(matchedNoted('See '+notedCite+'.',notedPdf),notedCite,'A citation with a postnote maps to the entire command.');
+  const twoNotes=String.raw`\citep*[see][pp.~74--75]{Jech2003}`;
+  assert.equal(matchedNoted('Before. '+twoNotes+' After.','[see 6, pp. 74–75]'),twoNotes,'Numeric natbib supports a prenote and postnote.');
+  const mixedNotes=String.raw`The ultrafilter lemma \cite[Lemma~7.2]{Jech2003} is used alongside this related construction \cite{other}.`;
+  assert.equal(matchedNoted(mixedNotes,'The ultrafilter lemma [6, Lemma 7.2] is used alongside this related construction [9].'),mixedNotes,'The prose fallback for an unknown plain citation must preserve known citation notes.');
+  assert.throws(()=>exact(mixedNotes,[1],'The ultrafilter lemma [6, Lemma 7.2] is used alongside this related construction [9].'),/唯一匹配/,'Notes cannot be discarded when their compiled number is unavailable.');
+  function matchedNoted(source,text){
+    const range=exact(source,[1,source.split('\n').length],text,{}, {Jech2003:'6'});
+    const offset=pos=>source.split('\n').slice(0,pos.line).reduce((sum,line)=>sum+line.length+1,0)+pos.ch;
+    return source.slice(offset(range.from),offset(range.to));
+  }
+  const ultrafilter=String.raw`For example, for any $x\in X$, the family
+$\{A\subseteq X:x\in A\}$ is an ultrafilter on $X$.
+The ultrafilter lemma (see, e.g.,
+\cite[Lemma~7.2(iii) and Theorem~7.5, pp.~74--75]{Jech2003}),
+a consequence of Zorn's lemma, states that any family of subsets of
+$X$ whose finite intersections are nonempty is contained in an
+ultrafilter on $X$.`;
+  const ultrafilterPdf="For example, for any x ∈ X, the family {A ⊆ X : x ∈ A} is an ultrafilter on X. The ultrafilter lemma (see, e.g., "+notedPdf+"), a consequence of Zorn’s lemma, states that any family of subsets of X whose finite intersections are nonempty is contained in an ultrafilter on X.";
+  for(const box of [false,true]){
+    const range=context.sourcePdfTextRange(ultrafilter,[1,7],ultrafilterPdf,{}, {Jech2003:'6'},ultrafilter,box,true);
+    assert.equal(range.from.line,0);assert.equal(range.from.ch,0);
+    assert.equal(range.to.line,6);assert.equal(range.to.ch,ultrafilter.split('\n').at(-1).length,'Dragging and complete boxes preserve the exact paragraph edges.');
+  }
+  assert.throws(()=>context.sourcePdfTextRange(ultrafilter,[1,7],ultrafilterPdf.replace('finite intersections ',''),{}, {Jech2003:'6'},ultrafilter,true,false),/唯一匹配/,'Gapped boxes still cannot skip prose.');
+  assert.throws(()=>matchedNoted(String.raw`See \cite[\unknown{Lemma}]{Jech2003}.`,'[6, Lemma]'),/唯一匹配/,'Unknown commands in citation notes remain a matching barrier.');
   assert.throws(()=>exact(String.raw`See \cite{BankXu2003b,missing}.`,[1,1],'[9, 8]',{},compiledCites),/唯一匹配/,'Partially known citations cannot guess missing labels.');
   assert.deepEqual(exact('Before. '+citationSentence+' After.',[1,1],citationPdf),{from:{line:0,ch:8},to:{line:0,ch:8+citationSentence.length},approximate:true},'Unique prose anchors locate a sentence without compiled citation numbers.');
   assert.deepEqual(exact(citationSentence,[1,1],citationPdf,{}, {BankXu2003b:'9'}),{from:{line:0,ch:0},to:{line:0,ch:citationSentence.length},approximate:true},'Known and unknown citations share the same prose fallback.');
@@ -644,6 +686,37 @@ Following prose.`;
   };
   assert.deepEqual(JSON.parse(JSON.stringify(await context.sourcePdfMathRange(calloutMath,[2],calloutSelection,{},{},calloutRegions,calloutMath,true))),{from:{line:1,ch:2},to:{line:1,ch:49},approximate:true,mathBlock:true},'Markdown callout markers do not prevent compiled geometry from selecting a complete display formula.');
   assert.equal(await context.sourcePdfMathRange(calloutMath,[2],calloutSelection,{},{},calloutRegions),null,'LaTeX prose before a formula still prevents geometry-only matching.');
+  const repeatedRows='The bound holds.\nThe bound holds.';
+  const rowSelection={kind:'box',contiguous:true,text:'The bound holds.',fragments:[fragment('The bound holds.',1,100)]};
+  let rowQueries=0;
+  const indexedRows=async()=>{rowQueries++;return {lines:{1:[{page:1,rect:[0,190,120,220]}],2:[{page:1,rect:[0,95,120,115]}]}};};
+  const geometric=await context.sourcePdfSelectionRange(repeatedRows,[2],rowSelection,{}, {},indexedRows);
+  assert.equal(geometric.from.line,1,'Compiled row geometry resolves repeated prose without expanding the selection.');
+  assert.equal(rowQueries,1,'One cached line-index query supplies all nearby candidates.');
+  await assert.rejects(()=>context.sourcePdfSelectionRange(repeatedRows,[2],rowSelection,{}, {},async()=>({lines:{
+    1:[{page:1,rect:[0,95,120,115]}],2:[{page:1,rect:[0,95,120,115]}]}})),/唯一匹配/,'Shared row boxes need more evidence than an approximate SyncTeX line.');
+  const adjacent='Earlier unrelated prose.\n\nThe target phrase is here.\n\nLater unrelated prose.';
+  const nearbySelection={...rowSelection,text:'target phrase',fragments:[fragment('target phrase',1,100)]};
+  const nearbyIndex=async()=>({lines:{3:[{page:1,rect:[0,95,120,115]}]}});
+  const nearby=await context.sourcePdfSelectionRange(adjacent,[1],nearbySelection,{}, {},nearbyIndex);
+  assert.deepEqual(JSON.parse(JSON.stringify(nearby)),{from:{line:2,ch:4},to:{line:2,ch:17}},'An adjacent paragraph is retried and verified against the selected PDF row.');
+  await context.sourcePdfSelectionRange(adjacent+'\n',[1],nearbySelection,{}, {},async(first,last)=>{
+    assert.equal(last,5,'A final newline must not request a phantom source line rejected by the server.');return nearbyIndex();
+  });
+  await assert.rejects(()=>context.sourcePdfSelectionRange(adjacent,[1],nearbySelection,{}, {},async()=>({lines:{3:[{page:2,rect:[0,95,120,115]}]}})),/唯一匹配/,'Nearby text on another PDF page cannot pass the retry.');
+  await assert.rejects(()=>context.sourcePdfSelectionRange(adjacent,[1],nearbySelection,{}, {},async()=>{throw Object.assign(new Error('stale build'),{status:409});}),/stale build/,'A stale retry retains its version error.');
+  let exactQueries=0;
+  await context.sourcePdfSelectionRange('A unique target phrase.',[1],nearbySelection,{}, {},async()=>{exactQueries++;return {};});
+  assert.equal(exactQueries,0,'Ordinary unique prose does not add a line-index request.');
+  const adjacentMath=String.raw`Earlier unrelated prose.
+
+\begin{align*}
+\custom{x}&=y.
+\end{align*}`;
+  const mathRetry=await context.sourcePdfSelectionRange(adjacentMath,[1],{...rowSelection,text:'unreadable math',fragments:[fragment('unreadable math',1,100)]},
+    {}, {},async()=>({lines:{4:[{page:1,rect:[0,95,120,115]}]}}));
+  assert.equal(mathRetry.from.line,2);assert.equal(mathRetry.to.line,4);
+  assert.equal(mathRetry.mathBlock,true,'Nearby formula geometry handles a custom macro despite a displaced SyncTeX anchor.');
   const macroPreamble=String.raw`\newcommand{\R}{\mathbb R}
 \newcommand{\calB}{\mathcal B}
 \newcommand{\T}{^\top}`;
@@ -674,8 +747,8 @@ After.`;
   assert(vm.runInContext('marginSpans.every(span=>pdfMarginNumbers(allPdfSpans).has(span))',context));
   // Real selection endpoint geometry uses each page's viewport, not the context-menu click point.
   const pages=[{...pdfImage,dataset:{pageNumber:'1'}},{...pdfImage,dataset:{pageNumber:'2'},getBoundingClientRect:()=>({left:0,top:720})}];
-  const nodes=[{nodeType:3,text:'First paragraph',rect:{left:20,right:100,top:30,bottom:50,width:80,height:20}},
-    {nodeType:3,text:'continues here.',rect:{left:50,right:130,top:770,bottom:790,width:80,height:20}}];
+  const nodes=[{nodeType:3,nodeValue:'First paragraph',text:'First paragraph',rect:{left:20,right:100,top:30,bottom:50,width:80,height:20}},
+    {nodeType:3,nodeValue:'continues here.',text:'continues here.',rect:{left:50,right:130,top:770,bottom:790,width:80,height:20}}];
   const range={startContainer:nodes[0],endContainer:nodes[1],startOffset:6,endOffset:15,
     getBoundingClientRect:()=>({top:30,bottom:790}),
     intersectsNode:node=>nodes.includes(node),cloneRange(){return {selectNodeContents(node){this.node=node;},
@@ -692,12 +765,14 @@ After.`;
   assert(pdfClick.prevented,JSON.stringify(vm.runInContext('({panMode,readOnly:editor.getOption("readOnly"),points:selectedPdfPoints()})',context)));assert(element('#pdf-menu').open);assert(element('#pdf-chat-quick-menu').focused);
   const points=JSON.parse(JSON.stringify(vm.runInContext('pdfSelection.points',context)));
   assert.deepEqual(points,[{page:1,x:60,y:660},{page:2,x:90,y:640}]);
+  assert.equal(vm.runInContext('pdfSelection.context.before',context),'First ','Native text endpoints capture the unselected leading context.');
   element('#pdf-menu').hidePopover();pdfSelected=false;preview.oncontextmenu(pdfClick);
   assert(!element('#pdf-menu').open,'No selection keeps the native menu.');
   pdfSelected=true;preview.oncontextmenu({...pdfClick,shiftKey:true});assert(!element('#pdf-menu').open);
   let lookups=0;
   context.fetch=async(url,options)=>{
     assert.equal(url,'/synctex');const body=JSON.parse(options.body);
+    if(body.direction==='range')return {ok:true,json:async()=>({regions:[],lines:{}})};
     assert.equal(body.direction,'backward');assert.equal(body.version,'v');assert.equal(body.pdf_revision,'second');lookups++;
     return {ok:true,json:async()=>({line:body.page===1?4:5,column:1})};
   };
@@ -906,6 +981,9 @@ After.`;
   };
   assert.equal(theoremMatch(theoremSource,theoremPdf,[2]),theoremSource,'Generated theorem headings map to the complete, balanced environment even when SyncTeX returns its body.');
   assert.equal(theoremMatch(theoremSource,theoremPdf,[3]),theoremSource,'SyncTeX may tag theorem text to the end line.');
+  const plainTheorem='\\begin{theorem}\nEvery square is nonnegative.\n\\end{theorem}';
+  assert.equal(theoremMatch('\\begin{proof}\nEvery square is nonnegative.\n\\end{proof}\n'+plainTheorem,
+    'Theorem 1. Every square is nonnegative.'),plainTheorem,'Each repeated generated heading candidate must match its own environment boundary.');
   assert.equal(theoremMatch(proofSource,'Proof. '+proofBody+' □',[3]),proofSource,'Proof heading and optional QED glyph are source-aware decorations.');
   assert.equal(theoremMatch(proofSource,'Proof. '+proofBody),proofSource,'A vector-drawn QED need not appear in the PDF text.');
   assert.equal(theoremMatch(theoremSource+'\n'+proofSource,theoremPdf+' Proof. '+proofBody+' ∎',[2,6]),theoremSource+'\n'+proofSource,'Theorem and proof can be selected together without unpaired delimiters.');
@@ -937,7 +1015,8 @@ Every square is nonnegative.
   const boxData={kind:'box',text:'short selectable',points:[{page:1,x:30,y:50}],fragments:[{page:1,rect:[20,40,100,60],text:'short selectable'}],rectangles:[{page:1,rect:[20,40,100,60]}],source:boxSource,version:'box-v',pdf_revision:'box-pdf'};
   context.boxData=boxData;context.boxConfig.onSelect(boxData);vm.runInContext('pdfBoxSelection.selection=boxData',context);
   pdfSelected=false;preview.oncontextmenu(pdfClick);assert(element('#pdf-menu').open,'Box selection has a comment menu without any native DOM Range.');
-  context.fetch=async(url,options)=>{assert.equal(JSON.parse(options.body).direction,'backward');return {ok:true,json:async()=>({line:1,column:1})};};
+  context.fetch=async(url,options)=>{const body=JSON.parse(options.body);if(body.direction==='range')return {ok:true,json:async()=>({regions:[],lines:{}})};
+    assert.equal(body.direction,'backward');return {ok:true,json:async()=>({line:1,column:1})};};
   await element('#pdf-chat-quick-menu').onclick();
   assert.deepEqual(JSON.parse(JSON.stringify(editor.selection)),{from:{line:0,ch:2},to:{line:0,ch:18}},'Boxed prose uses the existing source/comment flow.');
   let copied;preview.events.copy({clipboardData:{setData(type,text){assert.equal(type,'text/plain');copied=text;}},preventDefault(){}});
@@ -948,6 +1027,21 @@ Every square is nonnegative.
   const similarSelection=editor.selection;
   await context.synchronize('selection',{...boxData,text:'short selectab1e',contiguous:false});
   assert.equal(editor.selection,similarSelection,'A gapped box cannot change the source selection through a similar match.');
+  const previousBoxFetch=context.fetch;
+  source=repeatedRows;vm.runInContext('saved='+JSON.stringify(repeatedRows),context);
+  const repeatedBox={...boxData,...rowSelection,source:repeatedRows};
+  context.fetch=async(url,options)=>({ok:true,json:async()=>JSON.parse(options.body).direction==='range'?
+    await indexedRows():{line:2,column:1}});
+  assert.equal(await context.synchronize('selection',repeatedBox),true,'The annotation entry uses compiled row disambiguation, not only the isolated matcher.');
+  assert.equal(editor.selection.from.line,1);
+  const beforeRetryChange=editor.selection;let finishRetry;
+  context.fetch=async(url,options)=>JSON.parse(options.body).direction==='range'?new Promise(resolve=>finishRetry=resolve):
+    {ok:true,json:async()=>({line:2,column:1})};
+  const delayedRetry=context.synchronize('selection',repeatedBox);
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(typeof finishRetry,'function');
+  source+=' edited during row lookup';finishRetry({ok:true,json:indexedRows});await delayedRetry;
+  assert.equal(editor.selection,beforeRetryChange,'A late neighborhood result cannot replace the selection after source edits.');
+  source=boxSource;vm.runInContext('saved=boxSource',context);context.fetch=previousBoxFetch;
   vm.runInContext("version='changed'",context);preview.oncontextmenu(pdfClick);
   assert.equal(vm.runInContext('pdfSelection.version',context),'box-v','Opening the box menu never restamps a stale selection as current.');
   const boxesOpened=chatOpened.length;await element('#pdf-chat-quick-menu').onclick();assert.equal(chatOpened.length,boxesOpened);
@@ -963,6 +1057,7 @@ Every square is nonnegative.
   let automaticBoxLookups=0;
   context.fetch=async(url,options)=>{
     assert.equal(url,'/synctex','Automatically opening a comment must never submit an AI request.');
+    if(JSON.parse(options.body).direction==='range')return {ok:true,json:async()=>({regions:[],lines:{}})};
     assert.equal(JSON.parse(options.body).direction,'backward');automaticBoxLookups++;
     return {ok:true,json:async()=>({line:1,column:1})};
   };
@@ -1079,5 +1174,6 @@ Every square is nonnegative.
   console.log('PASS: slow state polling stays single-flight and resumes after completion');
   console.log('PASS: transient connection recovery, safe Send retry and no duplicate saves');
   console.log('PASS: exact PDF text ranges, whitespace, ligatures, line hyphenation, ambiguity rejection, both Codex entries and stale mapping protection');
+  console.log('PASS: repeated PDF text context, compiled row disambiguation, adjacent prose/math retries, intact links, shared list labels and unchanged fast-path requests');
   console.log('PASS: context comment menu/shortcut/selection/readonly, zz, PDF zoom, drag/select, versions, scroll retention and load failure');
 })().catch(error=>{console.error(error);process.exitCode=1;});
