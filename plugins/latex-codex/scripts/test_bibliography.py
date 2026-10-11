@@ -1,6 +1,7 @@
-"""Run: python test_bibliography.py (local XeLaTeX, pdfLaTeX, Biber and Node)."""
+"""Run: python test_bibliography.py (local XeLaTeX, pdfLaTeX, Biber, BibTeX and Node)."""
 import json
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import threading
@@ -11,7 +12,34 @@ from urllib.request import ProxyHandler, Request, build_opener
 from editor import compile_source_snapshot, make_server, tex_tool
 
 
-with tempfile.TemporaryDirectory(prefix='latex bibliography ') as directory:
+real_run = subprocess.run
+bibtex_calls = []
+
+
+def strict_bibtex(command, *args, **kwargs):
+    if Path(command[0]).stem.lower() == 'bibtex':
+        # Reproduce TeX Live/MacTeX output restrictions even when testing with MiKTeX.
+        job = command[1]
+        if Path(job).is_absolute() or Path(job).name != job:
+            return subprocess.CompletedProcess(command, 1, b'BibTeX: absolute output path rejected (openout_any=p).\n')
+        assert kwargs['env'].get('openout_any', kwargs['env'].get('OPENOUT_ANY')) == 'p', 'Compilation must preserve TeX security settings.'
+        assert job == path.stem and (Path(kwargs['cwd']) / (job + '.aux')).is_file()
+        for control in Path(kwargs['cwd']).rglob('*.aux'):
+            for kind, names in re.findall(rb'\\(bibdata|bibstyle)\{([^{}\r\n]*)\}', control.read_bytes()):
+                suffix = '.bib' if kind == b'bibdata' else '.bst'
+                for name in names.decode().split(','):
+                    filename = name.strip().strip('"')
+                    if filename.startswith(('./', '../')):
+                        # Kpathsea does not search BIBINPUTS/BSTINPUTS for explicit relative names.
+                        resource = filename if filename.endswith(suffix) else filename + suffix
+                        assert (Path(kwargs['cwd']) / resource).is_file(), filename
+        bibtex_calls.append((job, Path(kwargs['cwd'])))
+    return real_run(command, *args, **kwargs)
+
+
+with tempfile.TemporaryDirectory(prefix='latex bibliography ') as directory, \
+        patch.dict('os.environ', {'openout_any': 'p'}), \
+        patch('editor.subprocess.run', side_effect=strict_bibtex):
     root = Path(directory)
     path = root / 'paper' / 'main file.tex'
     path.parent.mkdir()
@@ -78,6 +106,20 @@ with tempfile.TemporaryDirectory(prefix='latex bibliography ') as directory:
         assert 'A citation: [1].' in pdf_text() and 'Example Book' in pdf_text()
         assert path.read_bytes() == original
 
+        previous_pdf = server.pdf
+        bibliography = (build / (path.stem + '.bbl')).read_bytes()
+        signature = (build / '.bib-inputs.sha256').read_bytes()
+        previous_aux = (build / (path.stem + '.aux')).read_bytes()
+        code, result = compile_current(source.replace(r'\printbibliography', r'\NoSuchCommand' + '\n' + r'\printbibliography'))
+        assert code == 200 and not result['ok'] and result['log'].count('This is XeTeX') == 1, result
+        assert 'Retrying TeX without cached bibliography auxiliaries.' not in result['log']
+        assert server.pdf == previous_pdf
+        assert (build / (path.stem + '.bbl')).read_bytes() == bibliography
+        assert (build / '.bib-inputs.sha256').read_bytes() == signature
+        assert (build / (path.stem + '.aux')).read_bytes() == previous_aux
+        code, result = compile_current(source)
+        assert result['ok'] and 'This is Biber' not in result['log'] and result['log'].count('This is XeTeX') == 1, result
+
         code, result = compile_current()
         assert code == 200 and result['ok'] and 'This is Biber' not in result['log'], result
         assert result['log'].count('This is XeTeX') == 1
@@ -126,11 +168,10 @@ with tempfile.TemporaryDirectory(prefix='latex bibliography ') as directory:
             assert server.pdf == previous_pdf and not request('/state')[1]['sync']
 
         # A processor failure must retain the last successful PDF and allow a real retry.
-        real_run = subprocess.run
         def failing_biber(command, *args, **kwargs):
             if Path(command[0]).stem.lower() == 'biber':
                 return subprocess.CompletedProcess(command, 1, b'ERROR - Deliberate Biber failure\n')
-            return real_run(command, *args, **kwargs)
+            return strict_bibtex(command, *args, **kwargs)
         bib.write_text(bib.read_text().replace('Updated Book', 'Retry Book'), encoding='utf-8')
         with patch('editor.subprocess.run', side_effect=failing_biber):
             code, result = compile_current(source)
@@ -144,6 +185,35 @@ with tempfile.TemporaryDirectory(prefix='latex bibliography ') as directory:
             r'\printbibliography', r'\bibliographystyle{plain}\bibliography{../bibliography/references}')
         code, result = compile_current(legacy)
         assert result['ok'] and 'This is BibTeX' in result['log'] and 'This is Biber' not in result['log'], result
+        bibliography = (build / (path.stem + '.bbl')).read_bytes()
+        signature = (build / '.bib-inputs.sha256').read_bytes()
+        code, result = compile_current(legacy.replace(r'A citation:', r'\NoSuchCommand A citation:'))
+        assert not result['ok'] and result['log'].count('This is XeTeX') == 1, result
+        assert (build / (path.stem + '.bbl')).read_bytes() == bibliography
+        assert (build / '.bib-inputs.sha256').read_bytes() == signature
+        code, result = compile_current(legacy)
+        assert result['ok'] and 'This is BibTeX' not in result['log'] and result['log'].count('This is XeTeX') == 1, result
+        previous_pdf = server.pdf
+        original_bib = bib.read_bytes()
+        original_aux = (build / (path.stem + '.aux')).read_bytes()
+        bib.write_bytes(original_bib + b'\n% Force BibTeX processing\n')
+        for timeout in (False, True):
+            def failing_bibtex(command, *args, **kwargs):
+                if Path(command[0]).stem.lower() == 'bibtex':
+                    assert list(Path(kwargs['cwd']).glob('latex-bibtex-*'))
+                    if timeout:
+                        raise subprocess.TimeoutExpired(command, 45)
+                    return subprocess.CompletedProcess(command, 1, b'ERROR - Deliberate BibTeX failure\n')
+                return strict_bibtex(command, *args, **kwargs)
+            with patch('editor.subprocess.run', side_effect=failing_bibtex):
+                code, result = compile_current()
+                assert code == 200 and not result['ok'], result
+                assert server.pdf == previous_pdf
+                assert (build / (path.stem + '.aux')).read_bytes() == original_aux
+                assert not list(build.glob('latex-bibtex-*')), 'Failed or timed-out BibTeX must clean staged inputs.'
+        bib.write_bytes(original_bib)
+        code, result = compile_current()
+        assert result['ok'] and 'This is BibTeX' in result['log'], result
         child = path.parent / 'parts' / 'chapter.tex'
         child.parent.mkdir()
         child.write_text(r'A nested citation: \cite{other}.', encoding='utf-8')
@@ -154,7 +224,7 @@ with tempfile.TemporaryDirectory(prefix='latex bibliography ') as directory:
         style = path.parent / 'local.bst'
         plain_style = subprocess.run([tex_tool('kpsewhich'), 'plain.bst'], capture_output=True, check=True).stdout.decode().strip()
         style.write_bytes(Path(plain_style).read_bytes())
-        code, result = compile_current(legacy.replace('{plain}', '{local}'))
+        code, result = compile_current(legacy.replace('{plain}', '{./local}'))
         assert result['ok'], result
         previous = request('/state')[1]['project_version']
         style.write_bytes(style.read_bytes() + b'\n% Local style edit\n')
@@ -162,9 +232,24 @@ with tempfile.TemporaryDirectory(prefix='latex bibliography ') as directory:
         assert changed['project_version'] != previous and not changed['sync']
         code, result = compile_current()
         assert result['ok'] and 'This is BibTeX' in result['log'], result
+        # BibTeX must also resolve relative resources in temporary history/proofread overlays.
+        local_source = legacy.replace('{plain}', '{./local}').replace(
+            r'A citation: \cite{demo}.', r'\include{parts/chapter}')
+        originals = {file: file.read_bytes() for file in (path, bib, style, child, child.with_suffix('.aux'))}
+        formal_pdf = server.pdf
+        for proofread in (False, True):
+            preview = compile_source_snapshot(server, path, local_source, proofread=proofread)
+            try:
+                assert 'Second Book' in pdf_text(preview['pdf'])
+                assert not list(Path(preview['directory'].name).glob('latex-bibtex-*'))
+            finally:
+                preview['directory'].cleanup()
+        assert server.pdf == formal_pdf and all(file.read_bytes() == content for file, content in originals.items())
+        assert len(bibtex_calls) >= 7 and all(cwd != path.parent for _, cwd in bibtex_calls)
+        assert not list(build.glob('latex-bibtex-*'))
         code, result = compile_current(source)
         assert result['ok'] and 'This is Biber' in result['log'] and 'Retry Book' in pdf_text(), result
-        print('PASS: Biber fresh builds, cache reuse, bibliography/citation/style changes, relative paths, both TeX engines, stale requests and safe failures')
+        print('PASS: Biber/BibTeX strict output paths, nested auxiliaries, local styles, history/proofread overlays, cache reuse after source errors, package-switch recovery, fresh builds, bibliography/citation/style changes, relative paths, both TeX engines, stale requests and safe failures')
     finally:
         server.shutdown()
         worker.join()

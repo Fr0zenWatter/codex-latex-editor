@@ -47,11 +47,16 @@ export function boxedPdfContent(content, page, box, excluded = []) {
 export function attachPdfBoxSelection({preview,viewer,capture,onSelect,message,excludedRects = () => []}) {
   const document = preview.ownerDocument, window = document.defaultView;
   const cache = new WeakMap();
-  let drag = null, selection = null, epoch = 0, marks = [];
+  let drag = null, selection = null, epoch = 0, marks = [], paintFrame = null;
   const removeMarks = () => { marks.forEach(mark => mark.remove()); marks = []; };
   const release = id => { if (preview.hasPointerCapture(id)) preview.releasePointerCapture(id); };
+  const cancelFrame = () => {
+    if (paintFrame !== null) window.cancelAnimationFrame(paintFrame);
+    paintFrame = null;
+  };
   const clear = () => {
     const old = drag; drag = null; selection = null; epoch++;
+    cancelFrame();
     preview.classList.remove('box-selecting');removeMarks();onSelect(null);
     if (old) release(old.id);
   };
@@ -63,12 +68,19 @@ export function attachPdfBoxSelection({preview,viewer,capture,onSelect,message,e
     return viewport.convertToPdfPoint(x*viewport.width/state.element.clientWidth,y*viewport.height/state.element.clientHeight);
   };
   const rectangle = (a,b) => [Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.max(a[0],b[0]),Math.max(a[1],b[1])];
-  const paint = (state,rect,className) => {
+  const paint = (state,rect,className,mark = null) => {
     const a = state.view.viewport.convertToViewportPoint(rect[0],rect[1]);
     const b = state.view.viewport.convertToViewportPoint(rect[2],rect[3]);
-    const mark = document.createElement('div');mark.className = className;mark.setAttribute('aria-hidden','true');
+    if (!mark) {
+      mark = document.createElement('div');mark.className = className;mark.setAttribute('aria-hidden','true');
+      state.element.append(mark);marks.push(mark);
+    }
     Object.assign(mark.style,{left:Math.min(a[0],b[0])+'px',top:Math.min(a[1],b[1])+'px',width:Math.abs(b[0]-a[0])+'px',height:Math.abs(b[1]-a[1])+'px'});
-    state.element.append(mark);marks.push(mark);return mark;
+    return mark;
+  };
+  const paintDrag = state => {
+    state.box = rectangle(state.anchor,toPdf(state,...state.pointer));
+    state.frame = paint(state,state.box,'pdf-box-frame',state.frame);
   };
   const readPage = (pdf,page) => {
     if (!cache.has(pdf)) cache.set(pdf,new Map());
@@ -116,16 +128,21 @@ export function attachPdfBoxSelection({preview,viewer,capture,onSelect,message,e
       if (!drag || drag.id !== event.pointerId) return false;
       if (!(event.buttons & 1)) { clear();return true; }
       event.preventDefault();
-      if (!drag.frame && Math.hypot(event.clientX-drag.x,event.clientY-drag.y) < 4) return true;
-      drag.box = rectangle(drag.anchor,toPdf(drag,event.clientX,event.clientY));
-      removeMarks();drag.frame = paint(drag,drag.box,'pdf-box-frame');preview.classList.add('box-selecting');
+      if (!drag.started && Math.hypot(event.clientX-drag.x,event.clientY-drag.y) < 4) return true;
+      if (!drag.started) { drag.started = true;preview.classList.add('box-selecting'); }
+      drag.pointer = [event.clientX,event.clientY];
+      if (paintFrame === null) paintFrame = window.requestAnimationFrame(() => {
+        paintFrame = null;
+        if (drag) paintDrag(drag);
+      });
       return true;
     },
     end(event) {
       if (!drag || drag.id !== event.pointerId) return false;
       const state = drag;drag = null;preview.classList.remove('box-selecting');release(state.id);
-      if (event.type !== 'pointerup' || !state.frame) { clear();return true; }
-      state.box = rectangle(state.anchor,toPdf(state,event.clientX,event.clientY));
+      cancelFrame();
+      if (event.type !== 'pointerup' || !state.started) { clear();return true; }
+      state.pointer = [event.clientX,event.clientY];paintDrag(state);
       void finish(state);return true;
     },
     bounds() {

@@ -1,6 +1,16 @@
 import {translations} from './latex-locales.mjs';
 
 export const english = {
+  '调整项目对话栏宽度':'Resize project chat',
+  'AI 行内补全':'AI inline completion',
+  'AI 补全模型':'AI completion model',
+  'AI 补全思考等级':'AI completion reasoning effort',
+  '停顿后显示简短灰色建议；使用已登录的 Codex，消耗账户额度。':'Short gray suggestions after a pause; uses your signed-in Codex and account quota.',
+  'Tab 接受 AI 建议，Esc 取消。':'Tab accepts the AI suggestion; Esc dismisses it.',
+  'AI 正在补全…':'AI is completing…',
+  'AI 暂无建议，继续输入后再试。':'No AI suggestion yet; continue typing to try again.',
+  'AI 补全暂不可用：{message}':'AI completion unavailable: {message}',
+  'AI 补全超时。':'AI completion timed out.',
   '发送到 DeepSeek 主对话':'Send to DeepSeek main chat',
   '正在转交主对话…':'Sending to main chat…',
   '批注已转交 DeepSeek 主对话。':'Comments sent to DeepSeek main chat.',
@@ -52,6 +62,9 @@ export const english = {
   '框选失败：{message}':'Box selection failed: {message}',
   '框选后自动弹出 PDF 批注对话框（无需右键）':'Automatically open PDF comments after box selection (no right-click)',
   '源码字号':'Source font size', '保存设置':'Save settings',
+  '源码定位 PDF 快捷键':'Source to PDF shortcut',
+  '直接输入组合键名称，如 Ctrl+E；Enter 或离开输入框保存，Esc 取消。':'Type a shortcut name, such as Ctrl+E; Enter or leave the field to save, Esc to cancel.',
+  '快捷键无效，已保留原设置。请使用 Ctrl / Alt / Cmd 组合键或 F1–F12。':'Invalid shortcut. Previous setting kept. Use a Ctrl / Alt / Cmd combination or F1–F12.',
   '设置更改会自动保存，并在下次打开时恢复。':'Settings are saved automatically and restored next time.',
   '正在保存设置…':'Saving settings…', '设置已保存，下次打开会恢复。':'Settings saved. They will be restored next time.',
   '设置保存失败：{message}':'Could not save settings: {message}',
@@ -119,6 +132,7 @@ export const english = {
   '已精确选中对应 LaTeX 文字 · 第 {from}–{to} 行':'Selected exact LaTeX text · Lines {from}–{to}',
   '已匹配相似 LaTeX 选区 · 第 {from}–{to} 行':'Matched similar LaTeX selection · Lines {from}–{to}',
   '已按 PDF 位置选中正文及完整公式 · 第 {from}–{to} 行':'Selected prose and complete math by PDF position · Lines {from}–{to}',
+  '已按 PDF 位置近似选中源码 · 第 {from}–{to} 行':'Approximately selected source by PDF position · Lines {from}–{to}',
   '源码范围无效。':'Invalid source range.',
   'PDF 或源码已变化，请重新选择 PDF 文字。':'The PDF or source changed. Select the PDF text again.',
   '无法确定对应段落，请在源码中选择。':'Unable to locate the paragraph. Select it in the source editor.',
@@ -153,12 +167,16 @@ export const english = {
   '定位光标到 PDF':'Locate cursor in PDF', '跳到光标对应的 PDF 位置':'Jump to cursor location in PDF',
   '自动编译':'Automatic compilation', '编译选项':'Compilation options',
   '{name} · 自动保存，手动编译':'{name} · Autosave, manual compilation', '正在保存…':'Saving…', '已保存 · 自动编译已关闭':'Saved · Automatic compilation is off',
+  '{name} · 自动保存，自动编译已暂停':'{name} · Autosave, automatic compilation paused',
+  '已保存 · 自动编译已暂停，请手动编译':'Saved · Automatic compilation paused; compile manually',
+  '跳转到 {name} 第 {line} 行':'Go to {name}, line {line}',
+  '源码已变化，请重新编译后跳转错误行。':'Source changed. Compile again before jumping to the error line.',
   '保存并编译':'Save and compile', '正在编译…':'Compiling…', '本机编译 · PDF 预览':'Local compiler · PDF preview',
   '空格拖动 · Alt + 空格缩放':'Space: pan · Alt+Space: zoom',
   '拖动':'Pan', '选字':'Select text', '切换拖动页面与选择文字':'Switch between panning and text selection',
   '缩小 PDF':'Zoom out', '放大 PDF':'Zoom in', '适合宽度':'Fit width', 'PDF 缩放':'PDF zoom', '滚轮或拖动缩放，点击恢复适合宽度':'Scroll or drag to zoom; click to fit width', '滚轮或拖动缩放，方向键微调':'Scroll or drag to zoom; arrow keys fine-tune', '恢复适合宽度':'Reset to fit width', '编译后的 PDF':'Compiled PDF',
   '编译日志':'Compilation log', '源码操作':'Source actions', '注释 / 取消注释':'Toggle comment', '询问 Codex / 修改选区':'Ask Codex / Edit selection',
-  '停止输入 0.8 秒后自动保存并编译':'Autosave and compile after 0.8 s', '尚未保存…':'Unsaved changes…', '请先处理文件冲突':'Resolve the file conflict first',
+  '停止输入 3 秒后自动保存并编译':'Autosave and compile after 3 s', '尚未保存…':'Unsaved changes…', '请先处理文件冲突':'Resolve the file conflict first',
   '正在保存并编译…':'Saving and compiling…', '已保存 · 编译成功':'Saved · Compilation succeeded', '已保存 · 编译失败，请查看日志':'Saved · Compilation failed; see log',
   '已保存 · 编译成功，PDF 预览加载失败':'Saved · Compiled, but PDF preview failed to load', '文件已被外部修改，请先重新读取':'File changed externally; reload first',
   '保存状态待确认，请重新读取':'Save status uncertain; reload to check', '请在系统窗口中选择 .tex 文件…':'Select a .tex file in the file picker…',
@@ -186,7 +204,7 @@ export const english = {
   '停止':'Stop', '发送':'Send', '修改标记颜色':'Replacement color', '修改标记颜色：无':'Replacement color: None', 'Codex 悬浮对话':'Quick Codex conversation',
   '拖动悬浮对话框':'Move quick conversation', '悬浮对话输入':'Quick conversation input', '询问 Codex…':'Ask Codex…', '选择模型和思考等级':'Choose model and reasoning effort',
   '发送 · Ctrl+Enter':'Send · Ctrl+Enter', '模型和思考等级':'Model and reasoning effort',
-  '{name} · 停止输入 0.8 秒后自动保存并编译':'{name} · Autosave and compile after 0.8 s', '请求失败':'Request failed',
+  '{name} · 停止输入 3 秒后自动保存并编译':'{name} · Autosave and compile after 3 s', '请求失败':'Request failed',
   '本地编辑器连接中断，请稍后重试。':'Connection to the local editor was interrupted. Please try again.',
   '打开失败：{message}':'Unable to open: {message}', '读取失败：{message}':'Unable to load: {message}', '定位失败：{message}':'Unable to locate: {message}',
   '最低':'Minimal', '低':'Low', '中':'Medium', '高':'High', '很高':'Very high', '最高':'Maximum', '极高':'Ultra',
@@ -213,7 +231,7 @@ export const supportedLanguages = ['en', 'zh-CN', 'zh-TW', 'ja', 'fr', 'de', 'es
 export let language = 'en';
 const bindings = new Map();
 const preferenceKeys = ['language','revision-color','outline-style','theme','custom-themes',
-  'editor-mode','source-font-size','chat-color','auto-compile','pdf-box-auto-comment','proofread-editor','proofread-pdf','proofread-project','writing-style','split'].map(name=>'latex-codex-'+name);
+  'editor-mode','source-font-size','forward-shortcut','chat-color','auto-compile','pdf-box-auto-comment','proofread-editor','proofread-pdf','proofread-project','writing-style','split','inline-completion','completion-model','completion-effort'].map(name=>'latex-codex-'+name);
 let persisted = null, pending = {}, saveTimer, saveQueue = Promise.resolve();
 function preferenceData() {
   if (persisted === null) {
@@ -306,11 +324,66 @@ export function initSettings() {
       preferences.setItem('latex-codex-pdf-box-auto-comment', $('pdf-box-auto-comment').checked ? 'on' : 'off');
       for (const name of ['proofread-editor','proofread-pdf']) preferences.setItem('latex-codex-'+name, $(name).checked ? 'on' : 'off');
       preferences.setItem('latex-codex-proofread-project', $('proofread-project').checked ? 'on' : 'off');
+      preferences.setItem('latex-codex-inline-completion', $('inline-completion').checked ? 'on' : 'off');
+      preferences.setItem('latex-codex-completion-model', $('completion-model').value);
+      preferences.setItem('latex-codex-completion-effort', $('completion-effort').value);
       await savePreferences(true);
     } catch {}
     finally { $('settings-save').disabled = false; }
   };
   window.addEventListener?.('pagehide', () => { savePreferences().catch(() => {}); });
+  const completionToggle = $('inline-completion'), completionEffort = $('completion-effort'), completionModel = $('completion-model');
+  const completionOption = (value, name) => {
+    const option = document.createElement('option'); option.value = value; option.textContent = name;
+    return option;
+  };
+  const savedCompletionModel = preferences.getItem('latex-codex-completion-model') || '';
+  completionModel.replaceChildren(completionOption('', t('跟随 Codex 默认')),
+    ...(savedCompletionModel ? [completionOption(savedCompletionModel, savedCompletionModel)] : []));
+  completionModel.value = savedCompletionModel;
+  let completionModels = null, completionModelsLoading = false;
+  function updateCompletionControls() {
+    const selected = completionModels?.find(model => model.id === completionModel.value);
+    for (const option of completionEffort.options) option.disabled = !!selected && !selected.efforts.includes(option.value);
+    if (selected && !selected.efforts.includes(completionEffort.value)) {
+      completionEffort.value = ['low','medium','high'].find(effort => selected.efforts.includes(effort)) || 'low';
+    }
+    completionModel.disabled = completionEffort.disabled = !completionToggle.checked;
+  }
+  async function loadCompletionModels() {
+    if (completionModels || completionModelsLoading) return;
+    completionModelsLoading = true; setText($('completion-model-status'), '正在读取可用模型…');
+    try {
+      const response = await fetch('/chat/models');
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || response.status);
+      completionModels = data.models;
+      const value = completionModel.value;
+      completionModel.replaceChildren(completionOption('', t('跟随 Codex 默认')),
+        ...completionModels.map(model => completionOption(model.id, model.name)),
+        ...(value && !completionModels.some(model => model.id === value) ? [completionOption(value, value)] : []));
+      completionModel.value = value;
+      const oldEffort = completionEffort.value; updateCompletionControls();
+      if (oldEffort !== completionEffort.value) {
+        preferences.setItem('latex-codex-completion-effort', completionEffort.value);
+        window.dispatchEvent(new Event('latex-completion-change'));
+      }
+      $('completion-model-status').textContent = '';
+    } catch (error) { $('completion-model-status').textContent = error.message; }
+    finally { completionModelsLoading = false; }
+  }
+  completionToggle.checked = preferences.getItem('latex-codex-inline-completion') === 'on';
+  completionEffort.value = preferences.getItem('latex-codex-completion-effort') || 'low';
+  if (!['low','medium','high'].includes(completionEffort.value)) completionEffort.value = 'low';
+  updateCompletionControls();
+  completionToggle.onchange = completionEffort.onchange = completionModel.onchange = () => {
+    if (!['low','medium','high'].includes(completionEffort.value)) completionEffort.value = 'low';
+    updateCompletionControls();
+    preferences.setItem('latex-codex-inline-completion', completionToggle.checked ? 'on' : 'off');
+    preferences.setItem('latex-codex-completion-model', completionModel.value);
+    preferences.setItem('latex-codex-completion-effort', completionEffort.value);
+    window.dispatchEvent(new Event('latex-completion-change'));
+  };
   const projectReview = $('proofread-project');
   projectReview.checked = preferences.getItem('latex-codex-proofread-project') === 'on';
   projectReview.onchange = () => {
@@ -359,12 +432,13 @@ export function initSettings() {
   languageSelect.onchange = applyLanguage; colorSelect.onchange = applyColor; applyLanguage(); applyColor();
   for (const name of ['file', 'settings', 'compile']) {
     const menu = $(name + '-menu'), button = $(name + '-menu-button');
-    menu.addEventListener('beforetoggle', event => {
+    menu.addEventListener('beforetoggle', async event => {
       button.setAttribute('aria-expanded', String(event.newState === 'open'));
       if (event.newState !== 'open') return;
       const rect = (name === 'compile' ? $('compile') : button).getBoundingClientRect();
       menu.style.top = rect.bottom + 6 + 'px';
       menu.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 280)) + 'px';
+      if (name === 'settings') await loadCompletionModels();
     });
     if (name === 'file') menu.addEventListener('click', event => { if (event.target.closest('button,a')) menu.hidePopover(); });
   }

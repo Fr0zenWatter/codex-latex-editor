@@ -4,7 +4,8 @@ import {english, initSettings, resolveLanguage, setText, t} from './vendor/latex
 import {translations} from './vendor/latex-locales.mjs';
 const elements=new Map(), stored=new Map(), properties={}, events=[];
 function element(id) {
-  if(!elements.has(id)) elements.set(id,{value:'',dataset:{},attributes:{},style:{},events:{},textContent:'',
+  if(!elements.has(id)) elements.set(id,{value:'',dataset:{},attributes:{},style:{},events:{},textContent:'',options:[],
+    replaceChildren(...children){this.options=children;},
     setAttribute(key,value){this.attributes[key]=value;},getAttribute(key){return this.attributes[key];},
     getBoundingClientRect(){return {left:900,bottom:40};},
     addEventListener(key,fn){this.events[key]=fn;},hidePopover(){this.hidden=true;}});
@@ -15,13 +16,53 @@ const source=element('source');source.textContent='历史 is literal source text
 const status=element('status');setText(status,'已定位到 PDF 第 {page} 页',{page:12});
 const tooltip=element('tooltip');tooltip.attributes['data-i18n-title']='设置';
 const themeGroup=element('theme-group');themeGroup.attributes['data-i18n-label']='浅色';
-globalThis.document={querySelector:selector=>element(selector.slice(1)),documentElement:{style:{setProperty:(key,value)=>properties[key]=value}},
+globalThis.document={querySelector:selector=>element(selector.slice(1)),createElement:()=>({value:'',textContent:''}),documentElement:{style:{setProperty:(key,value)=>properties[key]=value}},
   querySelectorAll:selector=>selector==='[data-i18n]'?[label]:selector==='[data-i18n-title]'?[tooltip]:selector==='[data-i18n-label]'?[themeGroup]:[]};
 globalThis.window={innerWidth:1000,dispatchEvent:event=>events.push(event.type)};
 Object.defineProperty(globalThis,'navigator',{value:{language:'zh-CN'},configurable:true});
 globalThis.localStorage={getItem:key=>stored.get(key),setItem:(key,value)=>stored.set(key,value)};
 initSettings();
 assert.equal(label.textContent,'历史');assert.equal(properties['--revision-color'],'#b85c1c');
+assert.equal(element('inline-completion').checked,false);
+assert.equal(element('completion-effort').value,'low');
+assert.equal(element('completion-effort').disabled,true);
+assert.equal(element('completion-model').disabled,true);
+assert.equal(element('completion-model').value,'');
+element('completion-effort').options=['low','medium','high'].map(value=>({value}));
+element('inline-completion').checked=true;element('inline-completion').onchange();
+assert.equal(stored.get('latex-codex-inline-completion'),'on');
+assert.equal(element('completion-effort').disabled,false);
+const completionCatalog=[{id:'gpt-6-luna',name:'GPT-6-Luna',efforts:['low','medium','high']},
+  {id:'restricted',name:'Restricted',efforts:['low']}];
+globalThis.fetch=async route=>{assert.equal(route,'/chat/models');return {ok:true,json:async()=>({models:completionCatalog})};};
+await element('settings-menu').events.beforetoggle({newState:'open'});
+assert.deepEqual(element('completion-model').options.map(option=>option.value),['','gpt-6-luna','restricted']);
+element('completion-model').value='gpt-6-luna';element('completion-model').onchange();
+assert.equal(stored.get('latex-codex-completion-model'),'gpt-6-luna');
+element('completion-effort').value='medium';element('completion-effort').onchange();
+element('completion-model').value='restricted';element('completion-model').onchange();
+assert.equal(element('completion-effort').value,'low');
+assert.equal(stored.get('latex-codex-completion-effort'),'low');
+assert.equal(element('completion-effort').options.find(option=>option.value==='high').disabled,true);
+element('completion-model').value='gpt-6-luna';element('completion-model').onchange();
+element('completion-effort').value='medium';element('completion-effort').onchange();
+initSettings();assert.equal(element('inline-completion').checked,true);
+assert.equal(element('completion-effort').value,'medium');
+assert.equal(element('completion-model').value,'gpt-6-luna');
+globalThis.fetch=async()=>{throw new Error('Offline');};
+await element('settings-menu').events.beforetoggle({newState:'open'});
+assert.equal(element('completion-model').value,'gpt-6-luna','Catalog failures must preserve the saved model.');
+assert.equal(element('completion-model-status').textContent,'Offline');
+stored.set('latex-codex-completion-model','restricted');stored.set('latex-codex-completion-effort','high');
+initSettings();
+globalThis.fetch=async()=>({ok:true,json:async()=>({models:completionCatalog})});
+await element('settings-menu').events.beforetoggle({newState:'open'});
+assert.equal(stored.get('latex-codex-completion-effort'),'low','Restoring a model must normalize unsupported saved effort.');
+element('completion-model').value='gpt-6-luna';element('completion-model').onchange();
+element('inline-completion').checked=false;element('inline-completion').onchange();
+assert.equal(element('completion-effort').disabled,true);
+assert.equal(stored.get('latex-codex-inline-completion'),'off');
+assert(events.includes('latex-completion-change'));
 assert.equal(element('pdf-box-auto-comment').checked,true,'Automatic PDF comments default to on.');
 assert.equal(element('proofread-editor').checked,true);assert.equal(element('proofread-pdf').checked,true);
 assert.equal(element('proofread-project').checked,false);
@@ -116,7 +157,7 @@ console.log('PASS: seven languages, system preferences, English fallback, comple
 
 // User preferences override per-port browser storage, and failed saves retain retryable changes.
 globalThis.localStorage={getItem:key=>stored.get(key),setItem:(key,value)=>stored.set(key,value)};
-const remoteSettings={'latex-codex-language':'ja','latex-codex-source-font-size':'19'};
+const remoteSettings={'latex-codex-language':'ja','latex-codex-source-font-size':'19','latex-codex-forward-shortcut':'Ctrl-E'};
 element('user-preferences').textContent=JSON.stringify(remoteSettings);
 stored.set('latex-codex-source-font-size','12');
 const persistent=await import('./vendor/latex-settings.mjs?persistent');
@@ -128,6 +169,7 @@ globalThis.fetch=async(route,options)=>{
 };
 persistent.preferences.setItem('latex-codex-source-font-size','20');
 persistent.preferences.setItem('latex-codex-revision-color','blue');
+persistent.preferences.setItem('latex-codex-forward-shortcut','Shift-Cmd-E');
 persistent.preferences.setItem('latex-codex-writing-style',JSON.stringify({name:'Personal',prompt:'Preserve notation.'}));
 persistent.initSettings();
 element('pdf-box-auto-comment').checked=true;element('pdf-box-auto-comment').onchange();
@@ -137,17 +179,21 @@ element('proofread-pdf').checked=true;element('proofread-pdf').onchange();
 await persistent.savePreferences();
 assert.equal(remoteSettings['latex-codex-source-font-size'],'20');
 assert.equal(remoteSettings['latex-codex-revision-color'],'blue');
+assert.equal(remoteSettings['latex-codex-forward-shortcut'],'Shift-Cmd-E');
 assert.equal(remoteSettings['latex-codex-pdf-box-auto-comment'],'on');
 stored.clear();element('user-preferences').textContent=JSON.stringify(remoteSettings);
 const reopened=await import('./vendor/latex-settings.mjs?reopened');
 assert.equal(reopened.preferences.getItem('latex-codex-source-font-size'),'20');
 assert.equal(reopened.preferences.getItem('latex-codex-language'),'ja');
+assert.equal(reopened.preferences.getItem('latex-codex-forward-shortcut'),'Shift-Cmd-E');
 assert.deepEqual(JSON.parse(reopened.preferences.getItem('latex-codex-writing-style')),{name:'Personal',prompt:'Preserve notation.'});
 reopened.initSettings();assert.equal(element('pdf-box-auto-comment').checked,true);
 assert.equal(element('proofread-editor').checked,false);assert.equal(element('proofread-pdf').checked,true);
 element('proofread-pdf').checked=false;
 element('pdf-box-auto-comment').checked=false;
+delete remoteSettings['latex-codex-forward-shortcut'];
 await element('settings-save').onclick();
+assert.equal(remoteSettings['latex-codex-forward-shortcut'],'Shift-Cmd-E','Save settings must retain the canonical shortcut.');
 assert.equal(remoteSettings['latex-codex-pdf-box-auto-comment'],'off','Save settings also writes the current checkbox value.');
 assert.equal(remoteSettings['latex-codex-proofread-editor'],'off');assert.equal(remoteSettings['latex-codex-proofread-pdf'],'off');
 globalThis.fetch=async()=>{throw new Error('Offline');};

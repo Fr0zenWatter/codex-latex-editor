@@ -1,6 +1,7 @@
 import {t, preferences} from './latex-settings.mjs';
 import {attachProofread} from './latex-proofread.mjs';
 import {writingStyles, readWritingStyle, restoreWritingStyle, annotationRequest} from './latex-writing-styles.mjs';
+import {renderChatMarkdown} from './latex-markdown.mjs';
 
 export function colorReplacement(text, color, segments) {
   if (!color || !text || !segments || segments.map(part => part[0]).join('') !== text) return text;
@@ -14,6 +15,50 @@ export function colorReplacement(text, color, segments) {
 export function attachSelectionChat(editor, request, paintAnnotations = () => {}, recordAnnotations = async () => {}) {
   const $ = id => document.querySelector('#' + id);
   const panel = $('chat-panel'), input = $('chat-input'), messages = $('chat-messages'), status = $('chat-status');
+  const resizer = document.createElement('div');resizer.className = 'chat-resizer';resizer.tabIndex = 0;
+  resizer.setAttribute('role','separator');resizer.setAttribute('aria-orientation','vertical');
+  resizer.setAttribute('aria-controls','chat-panel');
+  const labelResizer = () => { resizer.title = t('调整项目对话栏宽度');resizer.setAttribute('aria-label',resizer.title); };
+  labelResizer();panel.prepend(resizer);
+  let panelDrag = null, panelFrame = null;
+  function setPanelWidth(value) {
+    const max = panel.parentElement.clientWidth * .9, min = Math.min(280,max);
+    const width = Math.max(min,Math.min(max,value));panel.style.width = width + 'px';
+    resizer.setAttribute('aria-valuemin',String(Math.round(min)));resizer.setAttribute('aria-valuemax',String(Math.round(max)));
+    resizer.setAttribute('aria-valuenow',String(Math.round(width)));
+  }
+  function endPanelResize(event) {
+    if (!panelDrag || (event?.pointerId !== undefined && event.pointerId !== panelDrag.id)) return;
+    if (panelFrame !== null) window.cancelAnimationFrame(panelFrame);panelFrame = null;
+    if (event?.type === 'pointerup') panelDrag.next = panelDrag.width + panelDrag.x - event.clientX;
+    setPanelWidth(panelDrag.next);
+    const id = panelDrag.id;panelDrag = null;panel.parentElement.classList.remove('chat-resizing');
+    if (resizer.hasPointerCapture(id)) resizer.releasePointerCapture(id);
+  }
+  resizer.onpointerdown = event => {
+    if (event.button !== 0 || panel.hidden) return;
+    event.preventDefault();endPanelResize();
+    const width = panel.getBoundingClientRect().width;
+    panelDrag = {id:event.pointerId,x:event.clientX,width,next:width};
+    resizer.setPointerCapture(event.pointerId);panel.parentElement.classList.add('chat-resizing');
+  };
+  resizer.onpointermove = event => {
+    if (!panelDrag || event.pointerId !== panelDrag.id) return;
+    if (!(event.buttons & 1)) { endPanelResize(event);return; }
+    event.preventDefault();panelDrag.next = panelDrag.width + panelDrag.x - event.clientX;
+    if (panelFrame === null) panelFrame = window.requestAnimationFrame(() => {
+      panelFrame = null;if (panelDrag) setPanelWidth(panelDrag.next);
+    });
+  };
+  resizer.onpointerup = resizer.onpointercancel = resizer.onlostpointercapture = endPanelResize;
+  resizer.onkeydown = event => {
+    if (!['ArrowLeft','ArrowRight'].includes(event.key) || panel.hidden) return;
+    event.preventDefault();endPanelResize();setPanelWidth(panel.getBoundingClientRect().width + (event.key === 'ArrowLeft' ? 20 : -20));
+  };
+  window.addEventListener('blur', () => endPanelResize());
+  window.addEventListener('resize', () => {
+    endPanelResize();if (panel.style.width) setPanelWidth(Number.parseFloat(panel.style.width));
+  });
   let memoryRevision=null,memoryLoading=null,memoryEpoch=0;
   let history = [], marker = null, job = null, generation = 0, sending = false, proposal = null;
   const quick = $('chat-quick'), quickInput = $('chat-quick-input');
@@ -230,9 +275,11 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     $('chat-quick-status').textContent = text; $('chat-quick-status').dataset.error = String(error);
     sizeQuick();
   }
-  function annotationNotice(text, error = false) {
-    $('annotations-status').textContent = text;
-    $('annotations-status').dataset.error = String(error);
+  function annotationNotice(text, error = false, markdown = false) {
+    const body = $('annotations-status');
+    body.classList.toggle('chat-markdown', markdown);
+    if (markdown) renderChatMarkdown(body, text);else body.textContent = text;
+    body.dataset.error = String(error);
     $('annotations-review').showPopover();
   }
   function refreshAnnotations() {
@@ -374,7 +421,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   function message(who, text) {
     const item = document.createElement('div'); item.className = 'chat-message';
     const label = document.createElement('b'); label.textContent = who;
-    const body = document.createElement('div'); body.textContent = text;
+    const body = document.createElement('div');body.className = 'chat-markdown';renderChatMarkdown(body, text);
     item.append(label, body); messages.append(item); messages.scrollTop = messages.scrollHeight;
   }
   async function loadMemory() {
@@ -421,6 +468,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   }
   function showPanel() {
     panel.hidden = false;
+    setPanelWidth(panel.getBoundingClientRect().width);
     refreshContext();
     loadMemory().catch(e=>notice(e.message));
     loadModels();
@@ -440,6 +488,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     if (id) { try { await request('/chat/cancel', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})}); } catch(e) { notice(e.message); } }
   }
   function reset(preserveAnnotations = false) {
+    endPanelResize();
     stop();
     if (!preserveAnnotations) quickInput.value = '';
     quick.hidePopover();
@@ -519,7 +568,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     event.preventDefault();
     return saveAnnotation();
   };
-  $('chat-close').onclick = () => { panel.hidden = true; editor.focus(); };
+  $('chat-close').onclick = () => { endPanelResize();panel.hidden = true; editor.focus(); };
   $('chat-end').onclick = async()=>{
     if (annotationCommitting) return;
     await stop();
@@ -530,7 +579,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   $('chat-use-selection').onclick = useSelection;
   $('chat-stop').onclick = () => { stop(); notice(t('已停止，可继续提问。')); };
   panel.addEventListener('keydown', event => {
-    if (event.key === 'Escape') { event.preventDefault(); panel.hidden = true; editor.focus(); }
+    if (event.key === 'Escape') { event.preventDefault();endPanelResize();panel.hidden = true; editor.focus(); }
   });
   input.addEventListener('keydown', event => {
     if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); $('chat-form').requestSubmit(); }
@@ -577,7 +626,8 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
         message('Codex', result.reply);
         if (batch) {
           await reviewAnnotations(batch, result.replacements, result.reply);
-          annotationNotice(annotations.some(item => item.review) ? t('请逐处选择 Keep 或 Undo；也可在批注列表处理。') : result.reply);
+          const reviewing = annotations.some(item => item.review);
+          annotationNotice(reviewing ? t('请逐处选择 Keep 或 Undo；也可在批注列表处理。') : result.reply, false, !reviewing);
         } else if (result.replacement !== null) {
           proposal = {doc, original:selection, replacement:result.replacement, segments:result.segments};
           renderProposal(); $('chat-proposal').hidden = false;
@@ -676,6 +726,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   editor.on('swapDoc', () => reset());
   window.addEventListener('latex-proofread-change', refreshAnnotations);
   window.addEventListener('latex-language-change', () => {
+    labelResizer();
     const effort = effortSelect.value;
     updateEfforts(); effortSelect.value = effort; renderQuickSettings(); renderProposal();
     renderStyle();

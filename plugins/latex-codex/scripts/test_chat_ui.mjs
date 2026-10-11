@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import {attachSelectionChat,colorReplacement} from './vendor/latex-chat.mjs';
 import {initSettings} from './vendor/latex-settings.mjs';
 import {writingStyles,readWritingStyle,restoreWritingStyle,annotationRequest} from './vendor/latex-writing-styles.mjs';
+import DOMPurify from './vendor/purify.mjs';
+// This DOM stub checks rendering and chat flow; sanitization runs in the browser checks.
+DOMPurify.sanitize = html => html;
 const promptFile=(name,text)=>({name,size:new TextEncoder().encode(text).length,arrayBuffer:async()=>new TextEncoder().encode(text).buffer});
 assert.equal(writingStyles.length,4);
 assert(writingStyles.every(style=>style.prompt.length>0 && style.prompt.length<=12000));
@@ -21,18 +24,27 @@ for(const value of [null,'broken','null','{}',JSON.stringify({id:'missing'}),
 const elements = new Map();
 function el(id) {
   if (!elements.has(id)) elements.set(id, {value:'',textContent:'',hidden:true,children:[],style:{},dataset:{},attributes:{},
+    get options(){return this.children;},
     setAttribute(name,value){this.attributes[name]=value;},
     setPointerCapture(id){this.capture=id;},hasPointerCapture(id){return this.capture===id;},releasePointerCapture(){this.capture=null;},matches(){return !!this.open;},
-    append(...nodes){this.children.push(...nodes);},replaceChildren(...nodes){this.children=nodes;},
-    events:{},offsetWidth:320,offsetHeight:46,getBoundingClientRect(){return {left:950,top:750,bottom:780};},
+    append(...nodes){this.children.push(...nodes);},prepend(...nodes){this.children.unshift(...nodes);},replaceChildren(...nodes){this.children=nodes;},
+    events:{},offsetWidth:320,offsetHeight:46,getBoundingClientRect(){return {left:950,top:750,bottom:780,width:Number.parseFloat(this.style.width)||this.offsetWidth};},
     scrollHeight:68,contains(node){return !!node && node===this;},
-    clientWidth:500,querySelector(){return null;},
+    clientWidth:500,querySelector(){return null;},querySelectorAll(){return [];},
+    classList:{values:new Set(),add(name){this.values.add(name);},remove(name){this.values.delete(name);},
+      toggle(name,on){if(on)this.values.add(name);else this.values.delete(name);},contains(name){return this.values.has(name);}},
     focus(){this.events.focus?.();},showPopover(){this.open=true;},hidePopover(){this.open=false;this.events.beforetoggle?.({newState:'closed'});},addEventListener(name,handler){this.events[name]=handler;}});
   return elements.get(id);
 }
 globalThis.document = {querySelector:el,querySelectorAll:()=>[],documentElement:{style:{setProperty(){}}},createElement:()=>el(Symbol())};
 const windowEvents = {};
-globalThis.window = {innerWidth:1000,innerHeight:800,addEventListener(name,handler){windowEvents[name]=handler;}};
+let frameId=0;const animationFrames=new Map();
+const flushFrames=()=>{const callbacks=[...animationFrames.values()];animationFrames.clear();callbacks.forEach(fn=>fn());};
+globalThis.window = {innerWidth:1000,innerHeight:800,addEventListener(name,handler){
+  const previous=windowEvents[name];windowEvents[name]=event=>{previous?.(event);handler(event);};
+},
+  requestAnimationFrame(fn){animationFrames.set(++frameId,fn);return frameId;},cancelAnimationFrame(id){animationFrames.delete(id);}};
+el('#chat-panel').parentElement=el('main');el('main').clientWidth=1000;
 window.dispatchEvent=()=>{};
 const storedPreferences=new Map([['latex-codex-language','zh-CN']]);
 globalThis.localStorage={getItem:key=>storedPreferences.get(key)??null,setItem:(key,value)=>storedPreferences.set(key,value)};
@@ -60,7 +72,14 @@ const events={},editor={
     }
   },
 };
-let calls=[],answer={status:'done',reply:'Suggestion',replacement:'revised',segments:[['revised','color']]},deferred=null;
+const formattedReply = String.raw`**Suggestion** and *brief*, $x_1^2$ and \(y+1\).
+
+\[
+z=x+y
+\]
+
+` + '`$literal$ **code**`';
+let calls=[],answer={status:'done',reply:formattedReply,replacement:'revised',segments:[['revised','color']]},deferred=null;
 const request=async(url,options)=>{
   calls.push({url,body:options?JSON.parse(options.body):null});
   if(url==='/chat/history')return {messages:[],revision:0};
@@ -126,6 +145,50 @@ await el('#chat-form').onsubmit({preventDefault(){}});
 assert.equal(calls.find(call=>call.url==='/chat').body.model,'test-model');
 assert.equal(calls.find(call=>call.url==='/chat').body.effort,'high');
 assert.equal(el('#chat-proposal').hidden,false);
+const replyBody=el('#chat-messages').children.at(-1).children[1];
+assert.equal(replyBody.className,'chat-markdown');
+assert(replyBody.innerHTML.includes('<strong>Suggestion</strong>') && replyBody.innerHTML.includes('<em>brief</em>'));
+assert.equal((replyBody.innerHTML.match(/class="katex"/g)||[]).length,3,'Chat replies render inline and display LaTeX.');
+assert(replyBody.innerHTML.includes('<code>$literal$ **code**</code>'),'Code preserves literal Markdown and math.');
+assert(!replyBody.innerHTML.includes('katex-error'));
+const resizer=el('#chat-panel').children[0],panelWidth=()=>Number.parseFloat(el('#chat-panel').style.width);
+assert.equal(resizer.attributes.role,'separator');assert.equal(resizer.attributes['aria-orientation'],'vertical');
+assert.equal(resizer.title,'调整项目对话栏宽度');assert.equal(resizer.tabIndex,0);
+const resizePointer={pointerId:12,button:0,buttons:1,clientX:600,preventDefault(){}};
+const beforeResizeSource=source,beforeResizeCalls=calls.length;
+el('#chat-input').value='Keep this question draft.';
+resizer.onpointerdown(resizePointer);
+resizer.onpointermove({...resizePointer,clientX:590});resizer.onpointermove({...resizePointer,clientX:580});
+assert.equal(animationFrames.size,1);assert.equal(panelWidth(),320,'Pointer events defer width changes until the next screen frame.');
+flushFrames();assert.equal(panelWidth(),340,'Dragging the left border left widens the chat.');
+resizer.onpointerup({...resizePointer,type:'pointerup',clientX:570});assert.equal(panelWidth(),350,'Release uses the final pointer position.');
+assert.equal(resizer.capture,null);assert.equal(animationFrames.size,0);assert(!el('main').classList.contains('chat-resizing'));
+resizer.onkeydown({key:'ArrowRight',preventDefault(){}});assert.equal(panelWidth(),330);
+resizer.onpointerdown(resizePointer);resizer.onpointermove({...resizePointer,clientX:2000});
+resizer.onpointerup({...resizePointer,type:'pointerup',clientX:2000});assert.equal(panelWidth(),280,'Keep the chat usable at minimum width.');
+resizer.onpointerdown(resizePointer);resizer.onpointermove({...resizePointer,clientX:-2000});
+resizer.onpointerup({...resizePointer,type:'pointerup',clientX:-2000});assert.equal(panelWidth(),900,'Leave part of the workspace visible.');
+el('main').clientWidth=400;windowEvents.resize();assert.equal(panelWidth(),360,'Clamp resized chat width when the window becomes smaller.');
+el('main').clientWidth=1000;el('#chat-panel').style.width='320px';
+resizer.onpointerdown({...resizePointer,button:2});assert.equal(resizer.capture,null);
+for (const cancel of [()=>resizer.onpointercancel(resizePointer),()=>windowEvents.blur(),
+  ()=>resizer.onpointermove({...resizePointer,buttons:0})]) {
+  resizer.onpointerdown(resizePointer);
+  resizer.onpointermove({...resizePointer,pointerId:13,clientX:0});assert.equal(animationFrames.size,0,'Ignore another pointer.');
+  resizer.onpointermove({...resizePointer,clientX:580});cancel();flushFrames();
+  const width=panelWidth();resizer.onpointermove({...resizePointer,clientX:0});assert.equal(panelWidth(),width);
+  assert.equal(resizer.capture,null);assert.equal(animationFrames.size,0);assert(!el('main').classList.contains('chat-resizing'));
+}
+const beforeKeyboardResize=panelWidth();
+resizer.onpointerdown(resizePointer);resizer.onpointermove({...resizePointer,clientX:580});
+resizer.onkeydown({key:'ArrowLeft',preventDefault(){}});flushFrames();
+assert.equal(panelWidth(),beforeKeyboardResize+40);assert.equal(resizer.capture,null,'Keyboard adjustment ends a pending pointer drag.');
+assert.equal(source,beforeResizeSource);assert.equal(calls.length,beforeResizeCalls,'Resizing never sends a question or compiles.');
+assert.equal(el('#chat-input').value,'Keep this question draft.');el('#chat-input').value='';
+resizer.onpointerdown(resizePointer);resizer.onpointermove({...resizePointer,clientX:580});el('#chat-close').onclick();
+flushFrames();assert.equal(resizer.capture,null);assert.equal(animationFrames.size,0);
+const closedWidth=panelWidth();chat.open();assert.equal(panelWidth(),closedWidth,'Closing and reopening retains the width in this page.');
+console.log('PASS: chat width drag, frame coalescing, exact release, keyboard, bounds, window resize, cancellation and unchanged draft/source');
 const chooseColor=value=>{el('#chat-color').value=value;el('#chat-color').onchange();};
 chooseColor('blue');
 assert.equal(el('#chat-color').value,'blue');
@@ -354,7 +417,7 @@ const reviewSettings=(sourceOn,pdfOn)=>{
 const queueReview=async()=>{
   source='before chosen after';selection={from:{line:0,ch:7},to:{line:0,ch:13}};
   chat.openQuick({left:100,top:100});el('#chat-quick-input').value='Replace this';await el('#chat-quick-form').onsubmit({preventDefault(){}});
-  answer={status:'done',reply:'Changed.',replacement:null,replacements:[{id:painted.at(-1).id,replacement:'new'}]};
+  answer={status:'done',reply:'**Changed.** $x$',replacement:null,replacements:[{id:painted.at(-1).id,replacement:'new'}]};
   await el('#annotations-send').onclick();
 };
 chooseColor('');reviewSettings(false,true);await queueReview();
@@ -371,7 +434,11 @@ assert.equal(source,'prefix before chosen after');assert.equal(annotationSaves.l
 assert(el('#annotations-list').children.includes(pdfOnly.review.root));
 await keepReview(pdfOnly);assert.equal(source,'prefix before new after');
 await queueReview();assert.equal(source,'before new after');assert.equal(painted.length,0,'Both disabled applies new Send results directly.');
+assert(el('#annotations-status').classList.contains('chat-markdown'));
+assert(el('#annotations-status').innerHTML.includes('<strong>Changed.</strong>') && el('#annotations-status').innerHTML.includes('class="katex"'),
+  'Completed annotation feedback shares Markdown and math rendering.');
 saveFailure=true;await queueReview();assert.equal(source,'before chosen after');assert.equal(painted.length,1);assert(!painted[0].review);
+assert(!el('#annotations-status').classList.contains('chat-markdown'),'Errors return to ordinary status text.');
 saveFailure=false;await el('#annotations-send').onclick();assert.equal(source,'before new after');assert.equal(painted.length,0);
 reviewSettings(true,false);await queueReview();assert(painted[0].review);assert.equal(source,'before chosen after');undoReview(painted[0]);
 reviewSettings(false,true);el('#filename').title='note.md';await queueReview();
@@ -481,7 +548,7 @@ source='before chosen after';selection={from:{line:0,ch:7},to:{line:0,ch:13}};do
 let resumedBody;
 const resumedRequest=async(url,options)=>{
   if(url==='/chat/history')return {revision:4,messages:[{role:'user',content:'Keep energy norm.',selection:'Old passage.'},
-    {role:'assistant',content:JSON.stringify({reply:'Terminology remembered.',replacement:null})}]};
+    {role:'assistant',content:JSON.stringify({reply:String.raw`**Terminology** remembered. $\alpha$`,replacement:null})}]};
   if(url==='/chat'){resumedBody=JSON.parse(options.body);return {id:'resumed-job'};}
   if(url==='/chat?id=resumed-job')return {status:'done',reply:'Continued.',replacement:null,memory_revision:6};
   return request(url,options);
@@ -489,12 +556,13 @@ const resumedRequest=async(url,options)=>{
 const resumed=attachSelectionChat(editor,resumedRequest);resumed.open();
 await new Promise(resolve=>setTimeout(resolve,0));
 assert.equal(el('#chat-messages').children.length,2);
-assert.equal(el('#chat-messages').children[1].children[1].textContent,'Terminology remembered.');
+const restoredReply=el('#chat-messages').children[1].children[1].innerHTML;
+assert(restoredReply.includes('<strong>Terminology</strong>') && restoredReply.includes('class="katex"'),'Reopened project history renders the original Markdown reply.');
 el('#chat-input').value='Explain this new selection.';await el('#chat-form').onsubmit({preventDefault(){}});
 assert.equal(resumedBody.remember,true);assert.equal(resumedBody.memory_revision,4);
 assert(resumedBody.messages.some(message=>message.content==='Keep energy norm.'));
 assert.equal(resumedBody.selection,'chosen');
-console.log('PASS: project chat rehydration and remembered context across selections');
+console.log('PASS: Markdown/math replies, annotation feedback, code isolation, project history rendering and remembered context across selections');
 
 // DeepSeek forwarding preserves failed comments and retries the same request identity.
 document.documentElement.dataset={aiBackend:'deepseek'};

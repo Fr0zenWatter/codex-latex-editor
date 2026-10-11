@@ -66,6 +66,17 @@ export function markdownHtml(source, sanitizeHtml = escape) {
   }).join('');
 }
 
+export function renderChatMarkdown(container, source) {
+  // Generated replies must not cause automatic image requests.
+  container.innerHTML = DOMPurify.sanitize(markdownHtml(source), {FORBID_TAGS:['img']});
+  for (const link of container.querySelectorAll('a')) {
+    link.target = '_blank';link.rel = 'noopener noreferrer';
+  }
+  for (const input of container.querySelectorAll('input')) {
+    input.disabled = true;input.type = 'checkbox';
+  }
+}
+
 export function attachMarkdownPreview(container, editor) {
   let current = null;
   function render(source) {

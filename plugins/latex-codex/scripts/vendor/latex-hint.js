@@ -5,7 +5,7 @@
     section subsection subsubsection paragraph chapter part label ref eqref pageref autoref cref Cref cite citep citet nocite
     bibliography bibliographystyle bibitem item text textbf textit textrm texttt emph footnote url href
     includegraphics caption centering input include newcommand renewcommand providecommand newenvironment newtheorem
-    frac dfrac tfrac sqrt sum prod int iint iiint oint lim min max inf sup arg det dim ker log ln exp sin cos tan
+    frac dfrac tfrac binom dbinom tbinom overset underset stackrel sqrt sum prod int iint iiint oint lim min max inf sup arg det dim ker log ln exp sin cos tan
     alpha beta gamma delta epsilon varepsilon zeta eta theta vartheta iota kappa lambda mu nu xi pi varpi rho varrho
     sigma varsigma tau upsilon phi varphi chi psi omega Gamma Delta Theta Lambda Xi Pi Sigma Upsilon Phi Psi Omega
     mathbb mathcal mathscr mathfrak mathrm mathbf mathsf mathit boldsymbol bm operatorname
@@ -21,6 +21,22 @@
     itemize enumerate description figure figure* table table* tabular tabular* tabularx longtable
     theorem lemma proposition corollary definition assumption remark proof example
     document abstract center flushleft flushright minipage quote quotation verbatim tikzpicture`).split(/\s+/).filter(Boolean);
+  const commandArguments = new Map();
+  for (const [count, names] of [
+    [1, `documentclass usepackage title author date section subsection subsubsection paragraph chapter part
+      label ref eqref pageref autoref cref Cref cite citep citet nocite bibliography bibliographystyle bibitem
+      text textbf textit textrm texttt emph footnote url includegraphics caption input include sqrt
+      mathbb mathcal mathscr mathfrak mathrm mathbf mathsf mathit boldsymbol bm operatorname
+      overline underline hat widehat tilde widetilde bar vec dot ddot hspace vspace tag color thanks`],
+    [2, 'frac dfrac tfrac binom dbinom tbinom overset underset stackrel href textcolor'],
+  ]) for (const name of names.split(/\s+/).filter(Boolean)) commandArguments.set('\\' + name, count);
+
+  function insertCommand(cm, data, item) {
+    const following = cm.getRange(data.to, CodeMirror.Pos(cm.lastLine(), Infinity));
+    const argumentsText = /^\s*[{[]/.test(following) ? '' : '{}'.repeat(item.argumentCount);
+    cm.replaceRange(item.text + argumentsText, data.from, data.to, 'complete');
+    if (argumentsText) cm.setCursor(CodeMirror.Pos(data.from.line, data.from.ch + item.text.length + 1));
+  }
 
   function insertEnvironment(cm, data, item) {
     const name = item.displayText, line = cm.getLine(data.from.line);
@@ -62,7 +78,10 @@
     const prefix = command[0], names = new Set(commands);
     for (const found of source.matchAll(/\\[A-Za-z@]+\*?/g)) if (found[0] !== prefix) names.add(found[0]);
     const rest = line.slice(cursor.ch).match(/^[A-Za-z@]*\*?/)[0];
-    return {list: [...names].filter(name => name.startsWith(prefix)),
+    return {list: [...names].filter(name => name.startsWith(prefix)).map(name => {
+      const argumentCount = commandArguments.get(name);
+      return argumentCount ? {text: name, displayText: name + '{}'.repeat(argumentCount), argumentCount, hint: insertCommand} : name;
+    }),
       from: CodeMirror.Pos(cursor.line, command.index), to: CodeMirror.Pos(cursor.line, cursor.ch + rest.length)};
   });
 })(CodeMirror);

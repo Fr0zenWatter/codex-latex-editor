@@ -36,6 +36,11 @@ assert(wrappedBox.rectangles.every(({rect})=>rect[3]>rect[1]),'Fallback font met
 
 const tick = async () => { for(let i=0;i<8;i++) await Promise.resolve(); };
 let reads=0, requests=0, deferred=null, fail=false;
+let geometryReads=0, createdMarks=0, removedMarks=0, styleWrites=0, pageTop=20, frameId=0;
+const animationFrames = new Map();
+const flushFrames = () => {
+  const pending = [...animationFrames.values()];animationFrames.clear();pending.forEach(fn=>fn());
+};
 const pdf = {getPage:async () => {requests++;return {getTextContent:async options => {
   reads++;assert(options.disableCombineTextItems && options.disableNormalization);
   if(fail)throw new Error('glyph read failed');
@@ -43,10 +48,13 @@ const pdf = {getPage:async () => {requests++;return {getTextContent:async option
 }};}};
 const viewport = {width:200,height:200,convertToPdfPoint:(x,y)=>[x/2,100-y/2],convertToViewportPoint:(x,y)=>[x*2,200-y*2]};
 const page = {dataset:{pageNumber:'1'},clientLeft:0,clientTop:0,clientWidth:200,clientHeight:200,children:[],
-  getBoundingClientRect:()=>({left:10,top:20}),append(mark){mark.parent=this;this.children.push(mark);}};
-const document = {defaultView:{getComputedStyle:target=>({cursor:target.cursor}),getSelection:()=>({removeAllRanges(){}})},
-  createElement:()=>({style:{},setAttribute(){},remove(){this.parent.children.splice(this.parent.children.indexOf(this),1);},
-    getBoundingClientRect(){const left=10+parseFloat(this.style.left),top=20+parseFloat(this.style.top);return {left,top,bottom:top+parseFloat(this.style.height)};}})};
+  getBoundingClientRect:()=>{geometryReads++;return {left:10,top:pageTop};},append(mark){mark.parent=this;this.children.push(mark);}};
+const document = {defaultView:{getComputedStyle:target=>({cursor:target.cursor}),getSelection:()=>({removeAllRanges(){}}),
+  requestAnimationFrame(fn){animationFrames.set(++frameId,fn);return frameId;},cancelAnimationFrame(id){animationFrames.delete(id);}},
+  createElement:()=>{createdMarks++;return {
+    style:new Proxy({},{set(target,key,value){styleWrites++;target[key]=value;return true;}}),setAttribute(){},
+    remove(){removedMarks++;this.parent.children.splice(this.parent.children.indexOf(this),1);},
+    getBoundingClientRect(){const left=10+parseFloat(this.style.left),top=pageTop+parseFloat(this.style.top);return {left,top,bottom:top+parseFloat(this.style.height)};}};}};
 const preview = {ownerDocument:document,classList:{add(){},remove(){}},captured:null,
   setPointerCapture(id){this.captured=id;},hasPointerCapture(id){return this.captured===id;},releasePointerCapture(){this.captured=null;}};
 const viewer = {pdfDocument:pdf,getPageView:()=>({viewport})};
@@ -68,10 +76,29 @@ assert.equal(preview.captured,null);
 const drag = (reverse=false) => {
   controller.start(reverse?event(148,104):event());
   controller.move(reverse?event():event(148,104));
+  flushFrames();
   assert.equal(page.children.at(-1).className,'pdf-box-frame');
   assert(controller.end(reverse?event(46,40,{type:'pointerup'}):event(148,104,{type:'pointerup'})));
 };
-controller.start(event());controller.move(event(148,104));
+controller.start(event());
+const initialGeometry=geometryReads, initialMarks=createdMarks, initialWrites=styleWrites;
+for (let i=0;i<100;i++) controller.move(event(50+i,50+i/2));
+controller.move(event(148,104));
+assert.equal(animationFrames.size,1,'A burst of pointer events schedules only one visual update.');
+assert.equal(geometryReads,initialGeometry,'Pointer events must not synchronously read page layout.');
+assert.equal(createdMarks,initialMarks);assert.equal(styleWrites,initialWrites);
+flushFrames();
+assert.equal(geometryReads,initialGeometry+1);assert.equal(createdMarks,initialMarks+1);
+assert.equal(styleWrites,initialWrites+4,'One screen frame updates rectangle geometry only once.');
+const frame=page.children[0], initialRemoved=removedMarks;
+assert.equal(frame.style.width,'102px');assert.equal(frame.style.height,'64px');
+for (let i=0;i<100;i++) controller.move(event(138,100));
+flushFrames();
+assert.equal(page.children[0],frame,'Reuse the frame node throughout the drag.');
+assert.equal(createdMarks,initialMarks+1);assert.equal(removedMarks,initialRemoved);
+assert.equal(geometryReads,initialGeometry+2);assert.equal(styleWrites,initialWrites+8);
+pageTop=10;controller.move(event(138,100));flushFrames();
+assert.equal(frame.style.height,'70px','Read current page geometry after scrolling during a drag.');pageTop=20;
 assert.equal(reads,0,'Dragging only paints a rectangle; extraction starts on release.');
 controller.end(event(148,104,{type:'pointerup'}));await tick();
 assert.equal(reads,1);assert.equal(controller.selection.text,selected.text);
@@ -81,9 +108,13 @@ assert.deepEqual(controller.bounds(),{left:50,top:42,bottom:100});
 drag(true);await tick();
 assert.equal(reads,1,'Reverse drags reuse the same page glyph cache.');
 assert.equal(controller.selection.text,selected.text);
-controller.start(event());controller.move(event(148,104));controller.end(event(148,104,{type:'pointercancel'}));await tick();
+controller.start(event());controller.move(event(148,104));controller.end(event(148,104,{type:'pointercancel'}));flushFrames();await tick();
 assert.equal(controller.selection,null);assert.equal(page.children.length,0);assert.equal(reads,1);
-controller.start(event());controller.move(event(148,104,{buttons:0}));assert.equal(preview.captured,null);
+controller.start(event());controller.move(event(148,104));controller.move(event(148,104,{buttons:0}));
+assert.equal(preview.captured,null);assert.equal(animationFrames.size,0);flushFrames();
+assert.equal(page.children.length,0);assert.equal(reads,1);
+controller.start(event());controller.move(event(148,104));controller.clear();flushFrames();
+assert.equal(page.children.length,0);assert.equal(animationFrames.size,0);
 
 viewer.pdfDocument={...pdf};
 let resolve;deferred=new Promise(r=>{resolve=r;});drag();await tick();
@@ -101,7 +132,11 @@ controller.start(event());controller.move(event(600,600));controller.end(event(6
 assert(controller.selection.fragments.every(f=>f.page===1),'A captured drag outside the page stays on its starting page.');
 controller.clear();assert.equal(preview.captured,null);assert.equal(page.children.length,0);
 assert.equal(requests,4);
+controller.start(event());controller.move(event(100,80));
+controller.end(event(148,104,{type:'pointerup'}));flushFrames();await tick();
+assert.equal(controller.selection.text,selected.text,'Releasing before the scheduled frame still selects at the final pointer position.');
+assert.equal(animationFrames.size,0,'No delayed drag frame may overwrite completed highlights.');controller.clear();
 completed.start(event());completed.move(event(148,104));completed.end(event(148,104,{type:'pointerup'}));await tick();
 assert.deepEqual(completedBounds,[{left:50,top:42,bottom:100}],'Completed-selection callbacks can anchor the composer to the final glyph highlights.');
 completed.clear();
-console.log('PASS: geometric text/fraction/script selection, margin exclusion, rotated glyphs, native text gestures, reverse drag, page cache, cancellation and failed reads');
+console.log('PASS: geometric selection, frame-coalesced drag, reused rectangle, live scroll geometry, fast release, native gestures, page cache, cancellation and failed reads');

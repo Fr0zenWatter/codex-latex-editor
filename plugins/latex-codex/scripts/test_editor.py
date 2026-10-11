@@ -85,6 +85,9 @@ with tempfile.TemporaryDirectory() as directory:
         assert request('/pdf')[1] == pdf, 'Failed compile replaced the previous PDF.'
         assert json.loads(body)['pdf_revision'] == revision, 'Failed compile replaced the previous PDF revision.'
         current = state()
+        assert json.loads(body)['project_version'] == current['project_version'], 'A failed compile must report the current project fingerprint, or polling will recompile the same broken source forever.'
+        assert server.project_version != current['project_version'], 'The last successful build fingerprint must remain distinct from failed source.'
+        assert state()['project_version'] == current['project_version'], 'Unchanged failed source must have a stable poll fingerprint.'
         path.write_text(source, encoding='utf-8')
         assert request('/compile', {'source': edited, 'version': current['version']})[0] == 409
         assert path.read_text(encoding='utf-8') == source

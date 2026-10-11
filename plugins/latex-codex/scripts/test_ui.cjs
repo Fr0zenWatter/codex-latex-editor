@@ -4,8 +4,11 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const zoomScript = fs.readFileSync(path.join(__dirname, 'vendor/latex-zoom.mjs'), 'utf8').replace('export function', 'function');
+const codeMirrorScript=fs.readFileSync(path.join(__dirname,'vendor/codemirror.js'),'utf8');
+const normalizeKeyMap=vm.runInNewContext(codeMirrorScript.slice(codeMirrorScript.indexOf('  function normalizeKeyName('),codeMirrorScript.indexOf('  function lookupKey('))+'\nnormalizeKeyMap;', {map:(items,fn)=>items.map(fn)});
 const script = zoomScript + '\n' + fs.readFileSync(path.join(__dirname, 'editor.py'), 'utf8').replace(/\r\n/g, '\n').match(/<script type="module">\n([\s\S]*?)<\/script>/)[1].replace(/^import .*;\n/gm, '');
 const elements = new Map();
+const uiTimerDelays = new Map();
 function element(id) {
   if (!elements.has(id)) elements.set(id, {
     children: [], append(child) { child.parent=this; this.children.push(child); },
@@ -16,7 +19,7 @@ function element(id) {
     dataset: {}, srcWrites: 0, set src(value) { this.imageSource=value; this.srcWrites++; },
     style: {setProperty(key, value) { this[key] = value; }},
     attributes:{},classList: {add() {}, remove() {}, toggle() {}}, setAttribute(key,value) {this.attributes[key]=value;},
-    showPopover(){this.open=true;},hidePopover(){this.open=false;},focus(){this.focused=true;},
+    showPopover(){this.open=true;},hidePopover(){this.open=false;},focus(){this.focused=true;},blur(){this.focused=false;},
     events:{},addEventListener(name,handler){this.events[name]=handler;},getBoundingClientRect(){return {left:120,top:180,width:280,height:28,bottom:208};},
     offsetWidth:240,offsetHeight:42,
     setPointerCapture(id) { this.captured = id; },
@@ -69,7 +72,7 @@ function settleAnimation(){for(let i=0;animationFrames.size&&i<120;i++)flushAnim
 const context = vm.createContext({
   preferences:{getItem(key){return stored.get(key);},setItem(key,value){stored.set(key,value);}},
   t:key=>key, setText:(element,key,values={})=>{element.textContent=key.replace(/\{(\w+)\}/g,(match,name)=>values[name]??match);},initSettings(){}, initScreenshotThemes(){}, applyCustomTheme(){return false;},
-  attachMathHover(){return {setMainSource(){}};},attachNativeAnnotations(){},attachSelectionChat(){return {open(){chatOpened.push('full');},openQuick(anchor){chatOpened.push(anchor);},refreshAnnotations(){},busy:false};},attachHistory(){},mountHistoryTabs(){},katex:{},
+  attachMathHover(){return {setMainSource(){}};},attachInlineCompletion(config){context.inlineCompletionConfig=config;},attachNativeAnnotations(){},attachSelectionChat(){return {open(){chatOpened.push('full');},openQuick(anchor){chatOpened.push(anchor);},refreshAnnotations(){},busy:false};},attachHistory(){},mountHistoryTabs(){},katex:{},
   attachProjectReview(){return {items:[],busy:false,refresh:async()=>{},clear(){}};},
   attachProofreadPdf(){return {update(){},invalidate(){},active:false};},paintProofreadActions(){},
   attachProofreadNavigation(config){config.button.navigation=config;return {update(){}};},proofreadPdfPositions(){return [];},
@@ -85,17 +88,25 @@ const context = vm.createContext({
   requestAnimationFrame(fn){animationFrames.set(++animationFrameId,fn);return animationFrameId;},cancelAnimationFrame(id){animationFrames.delete(id);},
   document: {querySelector: element, createElement: () => element(Symbol()), documentElement: {dataset: {}},body:{dataset:{}}},
   CodeMirror: {Doc:class{constructor(source,mode){this.source=source;this.mode=mode;}},hint:{latex:()=>({list:['\\begin']})},fromTextArea: (_,configuration) => {Object.assign(options,configuration);return editor;},
-    keyName:event=>event.key,e_stop:event=>{event.stopped=true;},signal(){},emacs:{repeated:fn=>fn},commands: {clearSearch(){},keyboardQuit(){emacsQuits++;}}, Vim: {
+    normalizeKeyMap,keyNames:{13:'Enter',16:'Shift',17:'Ctrl',18:'Alt',27:'Esc',69:'E',74:'J',75:'K',91:'Mod',112:'F1',123:'F12',189:'-'},
+    keyName:event=>event.cmKey||event.key,e_stop:event=>{event.stopped=true;},signal(){},emacs:{repeated:fn=>fn},commands: {clearSearch(){},keyboardQuit(){emacsQuits++;}}, Vim: {
     handleKey(cm,key){assert.equal(key,'<Esc>');vimEscapes++;},
     defineAction: (name, fn) => actions[name] = fn,
     mapCommand: (...args) => mappings.push(args),
   }},
   localStorage: {getItem(key) { return stored.get(key); }, setItem(key,value) { stored.set(key,value); }},
   performance:{now:()=>animationTime},
-  window: {innerWidth:1000,innerHeight:800,matchMedia:()=>reducedMotion,addEventListener(name,handler) {(windowHandlers[name]??=[]).push(handler);}}, setInterval() {},setTimeout(fn){uiTimers.set(++uiTimerId,fn);return uiTimerId;},clearTimeout(id){uiTimers.delete(id);},
+  window: {innerWidth:1000,innerHeight:800,matchMedia:()=>reducedMotion,addEventListener(name,handler) {(windowHandlers[name]??=[]).push(handler);}}, setInterval() {},setTimeout(fn,delay){uiTimers.set(++uiTimerId,fn);uiTimerDelays.set(uiTimerId,delay);return uiTimerId;},clearTimeout(id){uiTimers.delete(id);uiTimerDelays.delete(id);},
   fetch: () => new Promise(() => {}),
 });
 vm.runInContext(script, context);
+vm.runInContext("version='completion-v';loading=false;syncBusy=true",context);
+assert.equal(context.inlineCompletionConfig.available(),true,'PDF synchronization must not suppress source completion.');
+vm.runInContext('loading=true',context);
+assert.equal(context.inlineCompletionConfig.available(),true,'Background file polling must not suppress source completion.');
+vm.runInContext('conflict=true',context);
+assert.equal(context.inlineCompletionConfig.available(),false,'Source conflicts still block completion.');
+vm.runInContext("version='';loading=true;syncBusy=conflict=false",context);
 const themeSelect=element('#theme');
 for(const [value,cmTheme] of [['neo','neo'],['solarized-light','solarized light'],['solarized-dark','solarized dark'],['material-palenight','material-palenight'],['cobalt','cobalt']]){
   themeSelect.value=value;themeSelect.onchange();
@@ -104,6 +115,55 @@ for(const [value,cmTheme] of [['neo','neo'],['solarized-light','solarized light'
 }
 assert.equal(options.keyMap,'default','Load the remembered non-Vim mode.');
 for(const key of ['Ctrl-F','Cmd-F']) { options.extraKeys[key](); assert(context.searchOpened); context.searchOpened=false; }
+const shortcutInput=element('#forward-shortcut');
+const originalSynchronize=context.synchronize,forwardCalls=[];
+context.synchronize=direction=>forwardCalls.push(direction);
+assert.equal(shortcutInput.value,'Ctrl+E');
+assert.equal(element('#forward').attributes['aria-keyshortcuts'],'Control+E');
+options.extraKeys['Ctrl-E']();assert.deepEqual(forwardCalls,['forward']);
+function captureShortcut(key,extra={}){
+  const event={key,preventDefault(){this.prevented=true;},stopPropagation(){this.stopped=true;},...extra};
+  shortcutInput.onkeydown(event);return event;
+}
+function enterShortcut(value){shortcutInput.value=value;shortcutInput.onchange();}
+enterShortcut('ctrl + shift + k');
+assert.equal(shortcutInput.value,'Shift+Ctrl+K');
+assert.equal(stored.get('latex-codex-forward-shortcut'),'Shift-Ctrl-K');
+assert(!Object.hasOwn(options.extraKeys,'Ctrl-E'),'Remapping must remove the previous shortcut.');
+options.extraKeys['Shift-Ctrl-K']();assert.equal(forwardCalls.length,2);
+for(const key of ['e','Control','v'])assert(!captureShortcut(key,{ctrlKey:true}).prevented,'Text editing and paste must keep their normal input behavior.');
+shortcutInput.value='Ctrl+E';captureShortcut('Enter',{isComposing:true});
+assert.equal(stored.get('latex-codex-forward-shortcut'),'Shift-Ctrl-K');
+captureShortcut('Enter',{keyCode:229});assert.equal(stored.get('latex-codex-forward-shortcut'),'Shift-Ctrl-K');
+assert(!captureShortcut('Tab').prevented,'Tab must retain keyboard navigation.');
+shortcutInput.focus();captureShortcut('Escape');assert(!shortcutInput.focused);assert.equal(shortcutInput.value,'Shift+Ctrl+K','Escape cancels uncommitted text.');
+enterShortcut('f12');assert.equal(shortcutInput.value,'F12');options.extraKeys.F12();
+shortcutInput.value='meta+e';captureShortcut('Enter');
+assert.equal(shortcutInput.value,'Cmd+E');assert.equal(element('#forward').attributes['aria-keyshortcuts'],'Meta+E');
+enterShortcut('Control+-');assert.equal(shortcutInput.value,'Ctrl+-');
+for(const text of ['E','Ctrl','Unknown+E','Ctrl+Missing','Ctrl++','']){
+  enterShortcut(text);assert.equal(shortcutInput.value,'Ctrl+-');
+  assert.equal(stored.get('latex-codex-forward-shortcut'),'Ctrl--','Invalid input must leave the previous binding and saved value intact.');
+  assert.match(element('#forward-shortcut-help').textContent,/快捷键无效/);
+}
+for(const key of [null,'E','Shift-E','Ctrl','Ctrl-Missing','invalid-Ctrl-E'])assert.equal(context.validForwardShortcut(key),false);
+enterShortcut('Ctrl+E');assert.equal(shortcutInput.value,'Ctrl+E');assert.equal(stored.get('latex-codex-forward-shortcut'),'Ctrl-E');
+context.synchronize=originalSynchronize;
+const keymapScript=script.slice(script.indexOf('const editorMode='),script.indexOf("let version='"));
+for(const remembered of [null,'Shift-Cmd-E','Ctrl-Missing']){
+  const field={value:''},mode={value:'default'},keyOptions={},button={setAttribute(){}},shortcutCalls=[];
+  const startup=vm.createContext({
+    document:{querySelector:selector=>selector==='#editor-mode'?mode:selector==='#forward-shortcut'?field:{}},
+    preferences:{getItem:key=>key==='latex-codex-forward-shortcut'?remembered:'default',setItem(){}},
+    editor:{state:{},getOption:key=>keyOptions[key],setOption(key,value){keyOptions[key]=value;},closeHint(){},setExtending(){}},
+    CodeMirror:context.CodeMirror,forwardButton:button,compile(){},toggleSourceComment(){},completeLatex(){},sourceSearch:{open(){}},
+    synchronize:direction=>shortcutCalls.push(direction)
+  });
+  vm.runInContext(keymapScript,startup);
+  const expected=remembered==='Shift-Cmd-E'?remembered:'Ctrl-E';
+  keyOptions.extraKeys[expected]();assert.deepEqual(shortcutCalls,['forward'],'Startup must bind remembered keys and fall back safely.');
+}
+console.log('PASS: configurable source-to-PDF shortcut, safe text input, normalization, invalid/IME/cancel guards, restore and shared forward handler');
 element('#log').hidden=true;const logPosition=element('#preview').scrollTop;
 element('#log-toggle').onclick();assert(!element('#log').hidden);assert(element('#preview').inert);
 assert.equal(element('#log-toggle').attributes['aria-pressed'],'true');assert.equal(element('#preview').style.visibility,'hidden');
@@ -124,11 +184,20 @@ assert.equal(editor.dialog.onKeyDown(vimCopy,'query',()=>vimDialogClosed++),true
 assert(vimCopy.stopped);assert.equal(vimDialogForwarded,0);assert.equal(vimDialogClosed,0);
 options.keyMap='vim-insert';vm.runInContext('completeLatex(editor)',context);
 editor.hint.extraKeys.Esc(editor,{close(){}});assert.equal(vimEscapes,1);
+options.keyMap='vim-insert';enterShortcut('Alt+J');
+assert.equal(options.keyMap,'vim-insert','Changing the shortcut must preserve Vim Insert mode.');
+assert.equal(typeof options.extraKeys['Alt-J'],'function');
+enterShortcut('Ctrl+E');assert.equal(options.keyMap,'vim-insert');
 modeSelect.value='default';modeSelect.onchange();assert.equal(stored.get('latex-codex-editor-mode'),'default');
 assert(!Object.hasOwn(options.extraKeys,'Ctrl-C'),'Standard editing retains its native keymap.');
 assert.equal(options.showCursorWhenSelecting,true);
 modeSelect.value='emacs';modeSelect.onchange();
 assert.equal(options.keyMap,'emacs');assert.equal(stored.get('latex-codex-editor-mode'),'emacs');
+assert.equal(typeof options.extraKeys['Ctrl-E'],'function','Emacs also uses the chosen source-to-PDF shortcut.');
+const emacsKeySeq={pending:true};editor.state.keySeq=emacsKeySeq;
+enterShortcut('Ctrl+Alt+E');
+assert.equal(options.keyMap,'emacs');assert.equal(editor.state.keySeq,emacsKeySeq,'Remapping must not reset Emacs input state.');
+assert.equal(typeof options.extraKeys['Ctrl-Alt-E'],'function');enterShortcut('Ctrl+E');
 assert.equal(options.showCursorWhenSelecting,true);assert.equal(editor.extending,false);
 for(const key of ['Ctrl-S','Ctrl-Space','Ctrl-/']) assert(!Object.hasOwn(options.extraKeys,key),`${key} must reach the Emacs keymap.`);
 assert.equal(typeof options.extraKeys['Cmd-S'],'function');
@@ -470,10 +539,13 @@ context.fetch=async()=>{downloads++;return{ok:true,arrayBuffer:async()=>new Arra
       markup=markup.replace(/(<msqrt\b[^>]*>)(?!√)/,'$1'+value);node.textContent=text();
     }})):[];
   };
+  element('#filename').title='document.tex';
+  const beforeErrorCursor=cursorChanges,beforeErrorScroll=editor.jump;
   vm.runInContext("showCompileError({line:23,message:'Undefined control sequence.'})",context);
-  assert.equal(editor.marks.size,2);assert.equal(editor.jump.line,22);assert.equal(editor.jump.margin,300);
+  assert.equal(editor.marks.size,2);assert.equal(cursorChanges,beforeErrorCursor);assert.equal(editor.jump,beforeErrorScroll,'Marking an error must preserve the source viewport.');
+  assert.equal(element('#log-jump').textContent,'跳转到 document.tex 第 23 行');assert.equal(element('#log-jump').hidden,false);
   assert(element('#status').textContent.includes('第 23 行'));
-  vm.runInContext('showCompileError(null)',context);assert.equal(editor.marks.size,0);
+  vm.runInContext('showCompileError(null)',context);assert.equal(editor.marks.size,0);assert(element('#log-jump').hidden);
   vm.runInContext("showCompileError({line:101,message:'Out of range'})",context);assert.equal(editor.marks.size,0);
   await vm.runInContext("refreshPreview({pdf_revision:'first'})",context);
   assert.equal(downloads,1);
@@ -500,15 +572,24 @@ context.fetch=async()=>{downloads++;return{ok:true,arrayBuffer:async()=>new Arra
   assert.equal(stored.get('latex-codex-auto-compile'),'off');
   source='saved without compilation';let autoRoute;
   context.fetch=async(url)=>{autoRoute=url;return {ok:true,json:async()=>({version:'saved-v'})};};
-  editorEvents.change();await uiTimers.get(vm.runInContext('timer',context))();
+  editorEvents.change();assert.equal(uiTimerDelays.get(vm.runInContext('timer',context)),800,'Save-only mode keeps its existing delay.');
+  await uiTimers.get(vm.runInContext('timer',context))();
   assert.equal(autoRoute,'/save','Disabling compilation must still autosave.');
   assert.equal(vm.runInContext('saved',context),source);assert.equal(vm.runInContext('pdfVersion',context),'');
   assert.equal(viewer.pdfDocument,pdf,'Save-only keeps the previous PDF mounted.');
   context.fetch=async(url)=>{autoRoute=url;return {ok:true,json:async()=>({version:'saved-v',ok:true,log:'ok',sync:true,pdf_revision:'second'})};};
   automatic.checked=true;automatic.onchange();
+  const waitingCompile=vm.runInContext('timer',context);
+  assert.equal(uiTimerDelays.get(waitingCompile),3000,'Automatic compilation waits for a three-second pause.');
+  source+=' while still typing';autoRoute=null;editorEvents.change();
+  assert.equal(uiTimers.has(waitingCompile),false,'Further typing cancels the previous scheduled compile.');
+  assert.equal(uiTimerDelays.get(vm.runInContext('timer',context)),3000,'Every edit restarts the full pause.');
+  assert.equal(autoRoute,null,'Typing must not compile immediately.');
   await uiTimers.get(vm.runInContext('timer',context))();assert.equal(autoRoute,'/compile','Re-enabling compiles saved edits.');
   automatic.checked=false;automatic.onchange();
-  await vm.runInContext('compile()',context);assert.equal(autoRoute,'/compile','Manual compilation always works.');
+  editorEvents.change();const manualPending=vm.runInContext('timer',context);
+  await element('#compile').onclick();assert.equal(autoRoute,'/compile','The manual button compiles immediately.');
+  assert.equal(uiTimers.has(manualPending),false,'Manual compilation cancels the scheduled automatic save.');
   source='next edit';let finishSave;
   context.fetch=()=>new Promise(resolve=>finishSave=resolve);
   const saving=vm.runInContext('compile(false)',context);
@@ -526,19 +607,67 @@ context.fetch=async()=>{downloads++;return{ok:true,arrayBuffer:async()=>new Arra
 
 
   editor.getValue=()=>source;
-  context.clearTimeout=()=>{};context.setTimeout=()=>{};
   vm.runInContext("busy=false;conflict=false;pdfVersion='';pendingForward=false;saved='compiled source';compiledLabels={old:'1'};compiledCitations={old:'9'}",context);
   context.fetch=()=>new Promise(resolve=>release=resolve);
   const compiling=vm.runInContext('compile()',context),beforeJumps=cursorChanges;
   source='edited during compilation';
   release({ok:true,json:async()=>({ok:false,version:'v',log:'error',engine:'pdflatex',diagnostic:{line:23,message:'Undefined control sequence.'}})});
   await compiling;assert.equal(cursorChanges,beforeJumps,'Stale compilation must not move the cursor.');
+  assert.equal(vm.runInContext('autoCompilePaused',context),true);assert(element('#log-jump').hidden,'An old diagnostic must not navigate a changed draft.');
+  assert.equal(uiTimerDelays.get(vm.runInContext('timer',context)),800,'Edits made during a failed compile must still autosave.');
+  context.fetch=async(url)=>{assert.equal(url,'/save');return {ok:true,json:async()=>({version:'edited-v'})};};
+  await uiTimers.get(vm.runInContext('timer',context))();
+  assert.equal(vm.runInContext('saved',context),source);assert.equal(uiTimers.has(vm.runInContext('timer',context)),false,'Paused autosave must not loop or recompile.');
   assert.equal(vm.runInContext('Object.keys(compiledLabels).length+Object.keys(compiledCitations).length',context),0,'Failed builds cannot reuse compiled labels or citations.');
   assert.equal(editor.marks.size,0);
   context.fetch=async()=>({ok:true,json:async()=>({ok:false,version:'v',log:'error',engine:'pdflatex',diagnostic:{line:23,message:'Undefined control sequence.'}})});
-  await vm.runInContext('compile()',context);assert(!element('#log').hidden,'Compilation failures display the right-side log.');assert.equal(element('#log').textContent,'error');assert.equal(editor.marks.size,2);assert.equal(cursorChanges,beforeJumps+1);
+  await vm.runInContext('compile()',context);assert(!element('#log').hidden,'Compilation failures display the right-side log.');assert.equal(element('#log-text').textContent,'error');assert.equal(editor.marks.size,2);assert.equal(cursorChanges,beforeJumps,'A current error must not move the cursor either.');
+  await element('#log-jump').onclick();assert.equal(cursorChanges,beforeJumps+1);assert.equal(editor.jump.line,22);assert.equal(editor.jump.margin,300,'Only the explicit log action jumps to the error.');
+  assert.equal(vm.runInContext('autoCompilePaused',context),true,'Jumping to an error cannot resume compilation.');
+  source+=' fixing the error';autoRoute=null;editorEvents.change();assert(element('#log-jump').hidden,'Editing invalidates the old error link.');
+  context.fetch=async(url)=>{autoRoute=url;return {ok:true,json:async()=>({version:'fixed-v'})};};
+  await uiTimers.get(vm.runInContext('timer',context))();assert.equal(autoRoute,'/save','Editing after failure saves without compiling.');
+  automatic.checked=false;automatic.onchange();automatic.checked=true;automatic.onchange();
+  assert.equal(vm.runInContext('autoCompilePaused',context),true,'The preference toggle cannot bypass a failed compilation pause.');
+  assert.equal(stored.get('latex-codex-auto-compile'),'on','Failure does not change the global automatic-compilation preference.');
+  vm.runInContext('loading=false;syncBusy=false;historyDialog.open=false',context);
+  let failedCompiles=0,failedPolls=0;
+  context.fetch=async url=>({ok:true,json:async()=>{
+    if(url==='/compile'){failedCompiles++;return {ok:false,version:'v',project_version:'broken-project',log:'error'};}
+    assert.equal(url,'/state');failedPolls++;return {version:'v',project_version:'broken-project'};
+  }});
+  await vm.runInContext('compile()',context);
+  for(let i=0;i<3;i++)await vm.runInContext('load()',context);
+  assert.equal(failedCompiles,1,'State polling must not recompile unchanged failed source.');assert.equal(failedPolls,3);
+  context.fetch=async url=>{assert.equal(url,'/state');return {ok:true,json:async()=>({version:'v',project_version:'changed-child'})};};
+  await vm.runInContext('load()',context);assert.equal(failedCompiles,1,'Project dependency changes cannot resume a failed compilation.');
+  let implicitRoutes=[];
+  context.fetch=async url=>{implicitRoutes.push(url);return {ok:true,json:async()=>({version:'v'})};};
+  await vm.runInContext('compile(true,true)',context);assert.deepEqual(implicitRoutes,['/save'],'Other implicit compile entry points remain save-only while paused.');
+  const previousSync=context.synchronize;context.synchronize=realSynchronize;
+  await vm.runInContext("synchronize('forward')",context);assert.deepEqual(implicitRoutes,['/save'],'Source navigation cannot retry a failed compilation.');
+  context.synchronize=previousSync;
+  context.fetch=async url=>{assert.equal(url,'/compile');failedCompiles++;return {ok:true,json:async()=>({ok:false,version:'v',project_version:'broken-project',log:'error'})};};
+  await vm.runInContext('compile()',context);assert.equal(failedCompiles,2,'A manual retry is still allowed without a source edit.');
+  const beforeChildJump=cursorChanges,childRoutes=[];
+  context.fetch=async(url,options)=>{
+    childRoutes.push(url);
+    if(url==='/compile')return {ok:true,json:async()=>({ok:false,version:'v',project_version:'broken-project',log:'child error',diagnostic:{path:'child.tex',line:23,message:'Undefined control sequence.'}})};
+    assert.equal(url,'/source');assert.equal(JSON.parse(options.body).path,'child.tex');source='Child source.';
+    return {ok:true,json:async()=>({source,version:'child-v',project_version:'broken-project',name:'child.tex',path:'child.tex',main_file:'document.tex'})};
+  };
+  await context.compile();assert.deepEqual(childRoutes,['/compile'],'A child error must not automatically switch sources.');assert.equal(element('#filename').title,'document.tex');assert.equal(cursorChanges,beforeChildJump);
+  assert.equal(element('#log-jump').textContent,'跳转到 child.tex 第 23 行');
+  await element('#log-jump').onclick();assert.deepEqual(childRoutes,['/compile','/source']);assert.equal(element('#filename').title,'child.tex');assert.equal(cursorChanges,beforeChildJump+1);assert.equal(element('#log-text').textContent,'child error');assert(!element('#log').hidden);assert.equal(vm.runInContext('autoCompilePaused',context),true);
+  vm.runInContext("projectVersion='new-child-edit'",context);const beforeStaleJump=cursorChanges;
+  await element('#log-jump').onclick();assert.equal(cursorChanges,beforeStaleJump);assert(element('#log-jump').hidden,'Changed project metadata invalidates error navigation.');
   context.fetch=async()=>({ok:true,json:async()=>({ok:true,version:'v',log:'success',engine:'pdflatex',pdf_revision:'second',labels:{eq:'2.1'},citations:{paper:'9'}})});
-  await vm.runInContext('compile()',context);assert.equal(editor.marks.size,0,'Successful compilation clears the error.');assert(!element('#log').hidden,'Recompiling must not close a log the user is reading.');element('#log-toggle').onclick();assert(element('#log').hidden);
+  await element('#compile').onclick();assert.equal(editor.marks.size,0,'Successful compilation clears the error.');assert.equal(vm.runInContext('autoCompilePaused',context),false,'A successful manual compile resumes automatic compilation.');assert(element('#log-jump').hidden);assert(element('#log').hidden,'A successful compile after an error automatically returns to the PDF.');assert(!element('#preview').inert);assert.equal(element('#log-toggle').attributes['aria-pressed'],'false');assert.equal(element('#log-text').textContent,'success','The latest log remains available after it closes.');element('#log-toggle').onclick();assert(!element('#log').hidden);element('#log-toggle').onclick();assert(element('#log').hidden);
+  source+=' after successful retry';editorEvents.change();assert.equal(uiTimerDelays.get(vm.runInContext('timer',context)),3000,'Successful manual retry restores the normal automatic delay.');
+  context.fetch=async url=>{autoRoute=url;return {ok:true,json:async()=>({ok:true,version:'v',log:'success',pdf_revision:'second',citations:{paper:'9'}})};};
+  await uiTimers.get(vm.runInContext('timer',context))();assert.equal(autoRoute,'/compile','Automatic compilation resumes after a successful manual retry.');
+  context.clearTimeout=()=>{};context.setTimeout=()=>{};
+  console.log('PASS: failures preserve cursor/source scroll, pause all automatic compile paths, keep autosave, explicitly navigate errors and resume only after manual compilation');
   assert.equal(vm.runInContext("compiledCitations.paper",context),'9','Successful preview installs its citation values.');
   vm.runInContext("display({source:'Other file.',version:'other',name:'other.tex',path:'other.tex'})",context);
   assert.equal(vm.runInContext('Object.keys(compiledLabels).length+Object.keys(compiledCitations).length',context),0,'File switches discard the previous build metadata.');
@@ -693,8 +822,9 @@ Following prose.`;
   const geometric=await context.sourcePdfSelectionRange(repeatedRows,[2],rowSelection,{}, {},indexedRows);
   assert.equal(geometric.from.line,1,'Compiled row geometry resolves repeated prose without expanding the selection.');
   assert.equal(rowQueries,1,'One cached line-index query supplies all nearby candidates.');
-  await assert.rejects(()=>context.sourcePdfSelectionRange(repeatedRows,[2],rowSelection,{}, {},async()=>({lines:{
-    1:[{page:1,rect:[0,95,120,115]}],2:[{page:1,rect:[0,95,120,115]}]}})),/唯一匹配/,'Shared row boxes need more evidence than an approximate SyncTeX line.');
+  const tiedRows=await context.sourcePdfSelectionRange(repeatedRows,[2],rowSelection,{}, {},async()=>({lines:{
+    1:[{page:1,rect:[0,95,120,115]}],2:[{page:1,rect:[0,95,120,115]}]}}));
+  assert.equal(tiedRows.from.line,1);assert.equal(tiedRows.positional,true,'Shared row boxes now use the inverse SyncTeX anchor as an explicitly approximate fallback.');
   const adjacent='Earlier unrelated prose.\n\nThe target phrase is here.\n\nLater unrelated prose.';
   const nearbySelection={...rowSelection,text:'target phrase',fragments:[fragment('target phrase',1,100)]};
   const nearbyIndex=async()=>({lines:{3:[{page:1,rect:[0,95,120,115]}]}});
@@ -723,9 +853,40 @@ Following prose.`;
   const missingRange=await context.sourcePdfSelectionRange(readable+'\n'+readable,[2],{...damagedSelection,text:missingGlyphs}, {}, {},indexedRows);
   assert.equal(missingRange.from.line,1);assert.equal(missingRange.to.ch,readable.length,'The wider retry also permits a longer source projection when PDF glyphs are missing.');
   await assert.rejects(()=>context.sourcePdfSelectionRange(readable,[1],damagedSelection,{}, {},async()=>({lines:{}})),/唯一匹配/,'A damaged passage needs compiled position evidence before using the wider tolerance.');
-  await assert.rejects(()=>context.sourcePdfSelectionRange(readable,[1],{...damagedSelection,contiguous:false}, {}, {},async()=>({lines:{1:[{page:1,rect:[0,95,120,115]}]}})),/唯一匹配/,'A gapped box still cannot widen its text tolerance.');
-  await assert.rejects(()=>context.sourcePdfSelectionRange(readable+'\n'+readable,[2],damagedSelection,{}, {},async()=>({lines:{1:[{page:1,rect:[0,95,120,115]}],2:[{page:1,rect:[0,95,120,115]}]}})),/唯一匹配/,'Equal text and position candidates still remain ambiguous.');
+  const gapped=await context.sourcePdfSelectionRange(readable,[1],{...damagedSelection,contiguous:false}, {}, {},async()=>({lines:{1:[{page:1,rect:[0,95,120,115]}]}}));
+  assert.equal(gapped.positional,true);assert.equal(gapped.to.ch,readable.length,'A gapped box can locate the containing source row without claiming an exact text match.');
+  const tiedDamaged=await context.sourcePdfSelectionRange(readable+'\n'+readable,[2],damagedSelection,{}, {},async()=>({lines:{1:[{page:1,rect:[0,95,120,115]}],2:[{page:1,rect:[0,95,120,115]}]}}));
+  assert.equal(tiedDamaged.from.line,1);assert.equal(tiedDamaged.positional,true,'Equal text and position candidates use the closer inverse anchor.');
   await assert.rejects(()=>context.sourcePdfSelectionRange(readable,[1],damagedSelection,{}, {},async()=>({lines:{1:[{page:2,rect:[0,95,120,115]}]}})),/唯一匹配/,'The more tolerant retry cannot use text from another PDF page.');
+  for(const kind of ['text','box']){
+    const unreadable=await context.sourcePdfSelectionRange(readable+'\n'+readable,[2],{...damagedSelection,kind,text:'◆◆◆◆',contiguous:false}, {}, {},indexedRows);
+    assert.equal(unreadable.from.line,1);assert.equal(unreadable.to.ch,readable.length);assert.equal(unreadable.positional,true,'Compiled positions can locate a row despite completely unreadable selected text.');
+  }
+  const opaqueProse=String.raw`Before.
+The values $\unsupported{x}$ and $\unsupported{y}$ agree.
+After.`;
+  const opaqueRange=await context.sourcePdfSelectionRange(opaqueProse,[2],{...damagedSelection,text:'The values x and y agree.'}, {}, {},async()=>({lines:{2:[{page:1,rect:[0,95,120,115]}]}}));
+  assert.equal(opaqueRange.from.line,1);assert.equal(opaqueRange.to.ch,opaqueProse.split('\n')[1].length);assert.equal(opaqueRange.positional,true,'Unknown inline formulas no longer block physically located prose.');
+  const groupedProse=String.raw`Before.
+\textbf{A multiline
+group with unreadable glyphs.}
+After.`;
+  const groupedRange=await context.sourcePdfSelectionRange(groupedProse,[3],{...damagedSelection,text:'◆◆◆◆'}, {}, {},async()=>({lines:{3:[{page:1,rect:[0,95,120,115]}]}}));
+  assert.deepEqual(JSON.parse(JSON.stringify(groupedRange.from)),{line:1,ch:0});assert.equal(groupedRange.to.line,2,'Position recovery keeps complete formatting groups.');
+  const proofRows=String.raw`\begin{proof}
+An unreadable proof paragraph.
+Another paragraph.
+\end{proof}`;
+  const proofSelection={...damagedSelection,text:'◆◆◆◆'};
+  const positionalProofBody=await context.sourcePdfSelectionRange(proofRows,[2],proofSelection,{}, {},async()=>({lines:{2:[{page:1,rect:[0,95,120,115]}]}}));
+  assert.equal(positionalProofBody.from.line,1);assert.equal(positionalProofBody.to.line,1,'Body-only positional mapping does not expand the surrounding proof.');
+  const proofStart=await context.sourcePdfSelectionRange(proofRows,[1],proofSelection,{}, {},async()=>({lines:{1:[{page:1,rect:[0,95,120,115]}]}}));
+  assert.equal(proofStart.from.line,0);assert.equal(proofStart.to.line,3,'A located environment opener keeps its paired closing delimiter.');
+  const sparseFragments=[fragment('one',1,100),fragment('missing',1,160),fragment('three',1,100),fragment('four',1,100)];
+  const sparseRange=await context.sourcePdfSelectionRange(readable,[1],{...damagedSelection,text:'◆◆◆◆',fragments:sparseFragments}, {}, {},async()=>({lines:{1:[{page:1,rect:[0,95,120,115]}]}}));
+  assert.equal(sparseRange.positional,true,'A missing interior glyph region does not prevent positional recovery.');
+  await assert.rejects(()=>context.sourcePdfSelectionRange(readable,[1],{...damagedSelection,text:'◆◆◆◆',fragments:[sparseFragments[0],{...sparseFragments[1],page:2},...sparseFragments.slice(2)]}, {}, {},async()=>({lines:{1:[{page:1,rect:[0,95,120,115]},{page:2,rect:[0,95,120,115]}]}})),/唯一匹配/,'Every selected page needs glyph position support, even when other pages cover enough fragments.');
+  await assert.rejects(()=>context.sourcePdfSelectionRange(readable,[1],{...damagedSelection,text:'◆◆◆◆',fragments:[sparseFragments[1],sparseFragments[0]]}, {}, {},async()=>({lines:{1:[{page:1,rect:[0,95,120,115]}]}})),/唯一匹配/,'An unsupported endpoint cannot justify selecting an arbitrary nearby row.');
   const adjacentMath=String.raw`Earlier unrelated prose.
 
 \begin{align*}
@@ -1047,6 +1208,71 @@ Every square is nonnegative.
   assert.throws(()=>theoremMatch(theoremSource+'\n'+proofSource,'we have x2 ≥ 0. Proof. '+proofBody),/唯一匹配/,'Crossing only part of an environment must not create an unbalanced replacement.');
   assert.throws(()=>theoremMatch(proofSource,'The square □ of a real number is nonnegative.'),/唯一匹配/,'A QED glyph is ignored only at the actual proof end.');
   assert.throws(()=>theoremMatch(proofSource,'The square Proof. of a real number is nonnegative.'),/唯一匹配/,'Heading-looking text inside the body is not a generated boundary.');
+  const separationSource=String.raw`\begin{proposition}\label{lem:finite-dimensional-separation}
+  The following conditions are equivalent.
+  \begin{enumerate}
+    \item If $\mathbf x_0,\ldots,\mathbf x_n\in\bQ_{\geq0}^d$ satisfy $\mathbf x_0=\mathbf x_n=\mathbf0$ and $\mathbf x_i-\mathbf x_{i-1}\in H_i$ for $1\leq i\leq n$, then $\mathbf x_0=\cdots=\mathbf x_n=\mathbf0$.
+    \item \eqref{eq:rational-cut-system} has a rational solution.
+  \end{enumerate}
+  In (2), the coefficients $\theta_i(\mathbf e_j)$ can all be chosen in $\bZ$.
+\end{proposition}`;
+  const separationPreamble=String.raw`\newtheorem{proposition}{Proposition}
+\newcommand{\bQ}{\mathbb{Q}}\newcommand{\bZ}{\mathbb{Z}}`;
+  const separationPdf=`Proposition 3.13. The following conditions are equivalent.
+(1) If x0, . . . , xn ∈ Qd
+≥0 satisfy x0 = xn = 0 and xi − xi−1 ∈ Hi for 1 ≤ i ≤ n, then x0 = · · · =
+xn = 0.
+(2) (3.17) has a rational solution.
+In (2), the coeﬀicients θi(ej ) can all be chosen in Z.`;
+  const separationLabels={'eq:rational-cut-system':'3.17'};
+  const selectedSource=(source,range)=>{
+    const offset=pos=>source.split('\n').slice(0,pos.line).reduce((n,line)=>n+line.length+1,0)+pos.ch;
+    return source.slice(offset(range.from),offset(range.to));
+  };
+  for(const kind of ['box','text']){
+    const range=await context.sourcePdfSelectionRange(separationSource,[1,8],{kind,contiguous:true,text:separationPdf},separationLabels,{},
+      ()=>{throw new Error('The numbered theorem must match without a PDF position fallback.');},separationPreamble);
+    assert.equal(selectedSource(separationSource,range),separationSource,'A whole numbered theorem preserves its paired environments and inline formulas.');
+  }
+  const lastSentence=context.sourcePdfTextRange(separationSource,[7],separationPdf.slice(separationPdf.indexOf('In (2)')),separationLabels,{},separationPreamble,true,true);
+  assert.equal(selectedSource(separationSource,lastSentence),separationSource.split('\n')[6].trim(),'A sentence after the list retains its original source range.');
+  assert.throws(()=>context.sourcePdfTextRange(separationSource,[1,8],separationPdf,separationLabels,{},separationPreamble,true,false),/唯一匹配/,'List structure cannot enable similarity for an incomplete box.');
+  const repeatedSeparation=separationSource+'\n'+separationSource;
+  assert.throws(()=>context.sourcePdfTextRange(repeatedSeparation,[1,16],separationPdf,separationLabels,{},separationPreamble,true,true),/唯一匹配/,'Identical numbered theorem bodies remain ambiguous.');
+  const simpleList=String.raw`\begin{enumerate}
+\item Alpha condition.
+\item Beta condition.
+\end{enumerate}`;
+  const listRange=context.sourcePdfTextRange(simpleList,[2,3],'(1) Alpha condition.\n(2) Beta condition.',{}, {},simpleList,true,true);
+  assert.equal(selectedSource(simpleList,listRange),'\\item Alpha condition.\n\\item Beta condition.','Selected item labels map only to their source item boundaries.');
+  const firstItem=context.sourcePdfTextRange(simpleList,[2],'1. Alpha condition.',{}, {},simpleList,true,true);
+  assert.equal(selectedSource(simpleList,firstItem),'Alpha condition.','A selected item keeps the existing body-only range.');
+  const parenthesizedItem=context.sourcePdfTextRange(simpleList,[2],'(1) Alpha condition.',{}, {},simpleList,true,true);
+  assert.equal(selectedSource(simpleList,parenthesizedItem),'Alpha condition.','Parenthesized item labels retain the same body-only range.');
+  const literalNumber=String.raw`\begin{enumerate}
+\item A condition.
+\end{enumerate}
+(2) A separate $x_i^2$ expression follows here.`;
+  const literalRange=context.sourcePdfTextRange(literalNumber,[4],'(2) A separate x2i expression follows here.',{}, {},literalNumber,true,true);
+  assert.equal(selectedSource(literalNumber,literalRange),literalNumber.split('\n')[3],'Literal numeric prose keeps its normal similar match.');
+  assert.throws(()=>context.sourcePdfTextRange(simpleList,[2,3],'(1) Alpha condition.\nBeta condition.',{}, {},simpleList,true,true),/唯一匹配/,'Similarity cannot delete an unselected item marker.');
+  const commentedList=String.raw`\begin{enumerate}
+\item Alpha condition. % The comment must not become visible PDF text.
+\item\label{item:beta} Beta condition.
+\end{enumerate}`;
+  const commentedRange=context.sourcePdfTextRange(commentedList,[2,3],'(1) Alpha condition.\n(2) Beta condition.',{}, {},commentedList,true,true);
+  assert.equal(selectedSource(commentedList,commentedRange),commentedList.slice(commentedList.indexOf('\\item'),commentedList.indexOf('\n\\end')),'Comments and labels preserve source offsets across list items.');
+  const nestedList=String.raw`\begin{enumerate}
+\item Outer condition.
+\begin{enumerate}
+\item Inner condition.
+\end{enumerate}
+\item Another outer condition.
+\end{enumerate}`;
+  const nestedRange=context.sourcePdfTextRange(nestedList,[2,6],'(1) Outer condition.\n(1) Inner condition.\n(2) Another outer condition.',{}, {},nestedList,true,true);
+  assert.equal(selectedSource(nestedList,nestedRange),nestedList.slice(nestedList.indexOf('\\item'),nestedList.lastIndexOf('\n\\end')),'Nested numeric lists keep their internal paired delimiters.');
+  assert.throws(()=>context.sourcePdfTextRange('Before the list.\n'+simpleList,[1,3],'Before the list.\n(1) Alpha condition.',{}, {},simpleList,true,true),/唯一匹配/,'Partial crossings cannot include an unmatched list opener or unselected later items.');
+  console.log('PASS: numbered theorem/list text mapping, partial items, literal numbers, ambiguity and incomplete selection guards');
   const boxSource='A short selectable sentence.';
   source=boxSource;context.boxSource=boxSource;
   vm.runInContext("panMode=false;busy=false;syncBusy=false;conflict=false;version=pdfVersion='box-v';saved=boxSource;pdfBuild='box-pdf'",context);

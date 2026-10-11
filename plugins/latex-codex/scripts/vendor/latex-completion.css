@@ -1,0 +1,16 @@
+.CodeMirror .latex-inline-completion {
+  color: var(--muted);
+  opacity: .65;
+  white-space: pre-wrap;
+  pointer-events: none;
+  user-select: none;
+}
+#inline-completion-status {
+  margin-left: auto;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+#inline-completion-status:empty { display: none; }

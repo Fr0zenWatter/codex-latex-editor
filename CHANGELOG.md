@@ -1,5 +1,19 @@
 # Changelog / 更新日志
 
+## 0.3.4 — 2026-10-11
+
+- Add optional AI inline completion with independent model and reasoning settings. Suggestions stay outside the source until accepted with Tab; Esc dismisses them. Use bounded cursor context, read-only ephemeral calls, cancellation and completed-turn validation.
+- Compile after a full three-second typing pause. Preserve the current file, cursor and scroll position on errors; pause automatic compilation until a manual compile or save shortcut, and navigate to error lines only when requested.
+- Complete common LaTeX commands with required argument braces and an insertion cursor. Add a configurable source-to-PDF shortcut, defaulting to Ctrl+E across normal, Vim and Emacs modes.
+- Render project chat and annotation replies as sanitized Markdown with KaTeX formulas, and allow resizing the project chat panel.
+- Coalesce PDF box dragging by animation frame. Improve numeric list selection and use compiled positions as an explicitly approximate fallback when text or formula matching fails, retaining source/PDF version checks and complete boundaries.
+- Preserve valid bibliography caches and restore auxiliary files after ordinary source errors. Run BibTeX by job basename in the temporary build directory for TeX Live/MacTeX output restrictions; stage explicit relative bibliography/style inputs and clean them after success, failure or timeout.
+- Store Windows preferences in the standard local application data directory, migrating readable legacy settings and recovering when the legacy directory is inaccessible.
+
+新增可选 AI 行内补全、命令参数补全和可配置 Ctrl+E 定位快捷键；改进自动编译、错误跳转、聊天公式显示、聊天栏宽度和 PDF 选区定位。修复文献缓存、BibTeX 临时路径及 Windows 设置保存问题。DeepSeek 保留独立版本。
+
+Validation / 验证：17 targeted Python/JavaScript checks passed on Windows, including real local TeX/PDF mapping, Biber/BibTeX, history/proofread previews and standalone plugin packaging. CLI completion calls are mocked; no real model request or main-chat message was sent. MacTeX discovery and TeX Live output restrictions are simulated; macOS/Linux hardware has not been tested. Diff and new-file whitespace checks passed.
+
 ## 0.3.3 — 2026-10-09
 
 - Automatically run Biber for the current biblatex `.bcf` build job, followed by two TeX passes, without changing `backend=biber`. Keep the existing BibTeX workflow.

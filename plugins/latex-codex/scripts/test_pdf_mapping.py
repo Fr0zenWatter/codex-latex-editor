@@ -20,7 +20,7 @@ import {findMathRanges,documentMacros} from './vendor/latex-hover.mjs';
 Uint8Array.prototype.toHex ??= function(){return Buffer.from(this).toString('hex');};
 Map.prototype.getOrInsertComputed ??= function(key,compute){if(!this.has(key))this.set(key,compute(key));return this.get(key);};
 let input='';for await(const part of process.stdin)input+=part;
-const {base,source,version,pdf_revision,citations}=JSON.parse(input);
+const {base,source,version,pdf_revision,citations,labels}=JSON.parse(input);
 const {getDocument}=await import('./vendor/pdfjs/build/pdf.mjs');
 const task=getDocument({data:new Uint8Array(await(await fetch(base+'/pdf')).arrayBuffer()),verbosity:0,isEvalSupported:false,
   standardFontDataUrl:fileURLToPath(new URL('./vendor/pdfjs/standard_fonts/',import.meta.url)).replaceAll('\\','/'),
@@ -32,18 +32,18 @@ try{
   // Keep unsupported math opaque so the test must use real compiled formula geometry.
   const context=vm.createContext({t:x=>x,findMathRanges,documentMacros,katex:{},document:{createElement:()=>({})}});
   vm.runInContext(code.slice(code.indexOf('function sourceParagraphRange('),code.indexOf('function pdfPoint(')),context);
-  let stream='',indices=[];
-  content.items.forEach((item,index)=>{for(const ch of item.str||'')if(!/\s/.test(ch)){stream+=ch;indices.push(index);}});
-  function select(text,occurrence=0,endText=''){
-    const needle=text.replace(/\s/g,'');let at=-1;
+  function select(text,occurrence=0,endText='',pageContent=content,pageNumber=1){
+    let stream='',indices=[];
+    pageContent.items.forEach((item,index)=>{for(const ch of (item.str||'').normalize('NFKC'))if(!/\s/.test(ch)){stream+=ch;indices.push(index);}});
+    const needle=text.normalize('NFKC').replace(/\s/g,'');let at=-1;
     for(let i=0;i<=occurrence;i++)at=stream.indexOf(needle,at+1);
     assert(at>=0,'The fixture PDF must contain '+text);
-    const ending=endText.replace(/\s/g,''),finish=endText?stream.indexOf(ending,at):at;
+    const ending=endText.normalize('NFKC').replace(/\s/g,''),finish=endText?stream.indexOf(ending,at):at;
     assert(finish>=at,'The fixture PDF must contain the selection end.');
     const last=endText?finish+ending.length-1:at+needle.length-1;
-    const glyphs=content.items.slice(indices[at],indices[last]+1).filter(item=>item.str?.trim());
-    const rects=glyphs.map(item=>pdfTextRect(item,content.styles));
-    return boxedPdfContent(content,1,[Math.min(...rects.map(r=>r[0]))-.01,Math.min(...rects.map(r=>r[1]))-.01,
+    const glyphs=pageContent.items.slice(indices[at],indices[last]+1).filter(item=>item.str?.trim());
+    const rects=glyphs.map(item=>pdfTextRect(item,pageContent.styles));
+    return boxedPdfContent(pageContent,pageNumber,[Math.min(...rects.map(r=>r[0]))-.01,Math.min(...rects.map(r=>r[1]))-.01,
       Math.max(...rects.map(r=>r[2]))+.01,Math.max(...rects.map(r=>r[3]))+.01]);
   }
   let queries=0;
@@ -96,6 +96,20 @@ try{
     assert.equal(offset(range.from),from);assert.equal(offset(range.to),to);
     console.log('PASS: real compiled row verification with more tolerant '+kind+' matching');
   }
+  for(const kind of ['text','box']){
+    const range=await context.sourcePdfSelectionRange(source,[first,last],{...selected,text:'◆◆◆◆',contiguous:false,kind},{},citations,regions);
+    assert.equal(offset(range.from),from);assert.equal(offset(range.to),to);
+    assert.equal(range.positional,true,'Unreadable text and gapped boxes must reach the compiled-position fallback.');
+    console.log('PASS: real PDF '+kind+' positional mapping without readable selected text');
+  }
+  const opaqueMath=select('For example, for any',0,'is contained in an ultrafilter on X.');
+  const render=context.katex.render;
+  context.katex.render=()=>{throw new Error('unsupported math projection');};
+  try{
+    const range=await context.sourcePdfSelectionRange(source,[first,last],opaqueMath,{},citations,regions);
+    assert.equal(offset(range.from),from);assert.equal(offset(range.to),to);assert.equal(range.positional,true);
+    console.log('PASS: real inline formulas recover by compiled position when projection is unsupported');
+  }finally{context.katex.render=render;}
   const lemmaBox=select('Lemma 1',0,'with these properties.');
   assert.equal(lemmaBox.contiguous,true);
   const bodyFrom=source.indexOf('Let $\\cA$'),bodyTo=source.indexOf('\n\n',bodyFrom);
@@ -110,6 +124,17 @@ try{
   const completeRange=await context.sourcePdfSelectionRange(source,[bodyFirst,bodyLast],completeLemma,{}, {},regions);
   assert.equal(offset(completeRange.from),source.indexOf('\\begin{lemma}'));
   assert.equal(offset(completeRange.to),source.indexOf('\\end{lemma}')+'\\end{lemma}'.length,'A complete theorem selection retains paired delimiters.');
+  const listContent=await(await pdf.getPage(2)).getTextContent({disableNormalization:true,disableCombineTextItems:true});
+  const proposition=select('Proposition 1.',0,'can all be chosen in Z.',listContent,2);
+  assert.equal(proposition.contiguous,true,'The whole numbered proposition contains every intervening glyph.');
+  const propositionFrom=source.indexOf('\\begin{proposition}'),propositionTo=source.indexOf('\\end{proposition}')+'\\end{proposition}'.length;
+  const propositionFirst=source.slice(0,propositionFrom).split('\n').length,propositionLast=source.slice(0,propositionTo).split('\n').length;
+  for(const kind of ['text','box']){
+    const range=await context.sourcePdfSelectionRange(source,[propositionFirst,propositionLast],{...proposition,kind},labels,{},
+      ()=>{throw new Error('The real numbered proposition must match without compiled position fallback.');});
+    assert.equal(offset(range.from),propositionFrom);assert.equal(offset(range.to),propositionTo);
+    console.log('PASS: real PDF '+kind+' numbered proposition matches without position fallback');
+  }
 }finally{await task.destroy();}
 '''
 
@@ -118,7 +143,7 @@ with tempfile.TemporaryDirectory() as directory:
     path = Path(directory) / 'main.tex'
     source = r'''\documentclass{article}
 \usepackage{amsmath,amssymb,amsthm}\usepackage[numbers]{natbib}
-\newcommand{\custom}[1]{#1}\newcommand{\cA}{\mathcal{A}}\newcommand{\bZ}{\mathbb{Z}}\newtheorem{lemma}{Lemma}
+\newcommand{\custom}[1]{#1}\newcommand{\cA}{\mathcal{A}}\newcommand{\bZ}{\mathbb{Z}}\newtheorem{lemma}{Lemma}\newcommand{\bQ}{\mathbb{Q}}\newtheorem{proposition}{Proposition}
 \begin{document}
 First context: repeated phrase.\\
 Second context: repeated phrase.
@@ -146,6 +171,18 @@ on the generators with these properties.
 
 Later theorem paragraph.
 \end{lemma}
+\clearpage
+\setcounter{equation}{16}
+\begin{equation}\label{eq:rational-cut-system}0=0.\end{equation}
+\renewcommand{\labelenumi}{(\arabic{enumi})}
+\begin{proposition}\label{lem:finite-dimensional-separation}
+  The following conditions are equivalent.
+  \begin{enumerate}
+    \item If $\mathbf x_0,\ldots,\mathbf x_n\in\bQ_{\geq0}^d$ satisfy $\mathbf x_0=\mathbf x_n=\mathbf0$ and $\mathbf x_i-\mathbf x_{i-1}\in H_i$ for $1\leq i\leq n$, then $\mathbf x_0=\cdots=\mathbf x_n=\mathbf0$.
+    \item \eqref{eq:rational-cut-system} has a rational solution.
+  \end{enumerate}
+  In (2), the coefficients $\theta_i(\mathbf e_j)$ can all be chosen in $\bZ$.
+\end{proposition}
 \begin{thebibliography}{1}
 \bibitem{Jech2003} Test reference.
 \end{thebibliography}
@@ -168,7 +205,7 @@ Later theorem paragraph.
         compiled = request('/compile', {'source':state['source'], 'version':state['version']})
         assert compiled['ok'], compiled
         result = subprocess.run(['node', '--input-type=module', '-e', NODE], cwd=Path(__file__).parent,
-            input=json.dumps({'base':base, 'source':source, 'version':compiled['version'], 'pdf_revision':compiled['pdf_revision'], 'citations':compiled['citations']}),
+            input=json.dumps({'base':base, 'source':source, 'version':compiled['version'], 'pdf_revision':compiled['pdf_revision'], 'citations':compiled['citations'], 'labels':compiled['labels']}),
             text=True, encoding='utf-8', capture_output=True, timeout=30)
         assert result.returncode == 0, result.stdout + result.stderr
         print(result.stdout, end='')

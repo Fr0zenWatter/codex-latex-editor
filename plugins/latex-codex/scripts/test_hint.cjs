@@ -13,7 +13,7 @@ function complete(text, source = '', type = '') {
     getValue: () => source + '\n' + line, getTokenTypeAt: () => type});
 }
 function apply(text, result, name) {
-  const item = result.list.find(item => (item.displayText || item) === name);
+  const item = result.list.find(item => (item.text || item) === name || item.displayText === name);
   assert(item, name);
   const line = text.replace('|', '');
   return line.slice(0, result.from.ch) + (item.text || item) + line.slice(result.to.ch);
@@ -29,14 +29,32 @@ function expand(text, name, options = {}) {
     getOption: key => ({indentUnit: 2, indentWithTabs: false, ...options})[key],
     replaceRange: (text, from, to) => { value = value.slice(0, offset(from)) + text + value.slice(offset(to)); },
     setCursor: pos => cursor = pos};
-  const data = hint(cm), item = data.list.find(item => item.displayText === name);
+  const data = hint(cm), item = data.list.find(item => (item.text || item) === name || item.displayText === name);
   assert(item, name);
   if (item.hint) item.hint(cm, data, item);
-  else cm.replaceRange(item.text, data.from, data.to);
+  else cm.replaceRange(item.text || item, data.from, data.to);
   return {text: value, cursor};
 }
 assert(complete('\\|').list.includes('\\begin'));
-assert(complete('\\fr|').list.includes('\\frac'));
+assert(complete('\\fr|').list.some(item => item.text === '\\frac' && item.displayText === '\\frac{}{}'));
+for (const name of ['frac', 'dfrac', 'tfrac', 'binom', 'overset', 'href', 'textcolor']) {
+  const result = expand(`x \\${name}| + y`, '\\' + name);
+  assert.equal(result.text, `x \\${name}{}{} + y`);
+  assert.equal(result.cursor.line, 0);
+  assert.equal(result.cursor.ch, 2 + name.length + 2, 'Cursor belongs inside the first argument.');
+}
+for (const name of ['sqrt', 'textbf', 'mathcal', 'section', 'label', 'cite', 'includegraphics']) {
+  assert.equal(expand(`\\${name}|`, '\\' + name).text, `\\${name}{}`);
+}
+assert.equal(expand('\\fr|', '\\frac').text, '\\frac{}{}');
+assert.equal(expand('\\fr|ac{a}{b}', '\\frac').text, '\\frac{a}{b}');
+assert.equal(expand('\\fr|  {a}{b}', '\\frac').text, '\\frac  {a}{b}');
+assert.equal(expand('\\fr|\n{a}{b}', '\\frac').text, '\\frac\n{a}{b}');
+assert.equal(expand('\\sq|[3]{x}', '\\sqrt').text, '\\sqrt[3]{x}');
+assert.equal(expand('\\sq| x', '\\sqrt').text, '\\sqrt{} x');
+assert.equal(expand('\\al|', '\\alpha').text, '\\alpha');
+assert.equal(expand('\\my|\n\\newcommand{\\myOperator}{x}', '\\myOperator').text,
+  '\\myOperator\n\\newcommand{\\myOperator}{x}', 'Unknown macros must not get guessed arguments.');
 assert.equal(apply('x \\fr|ac{a}{b}', complete('x \\fr|ac{a}{b}'), '\\frac'), 'x \\frac{a}{b}');
 assert.equal(apply('\\begin{|', complete('\\begin{|'), 'equation'), '\\begin{equation}');
 assert.equal(apply('\\begin{eq|uation}', complete('\\begin{eq|uation}'), 'equation'), '\\begin{equation}');
@@ -64,4 +82,4 @@ assert.equal(expand('\\begin{ali|}\n% \\end{align}', 'align').text,
 assert.equal(expand('\\end{ali|}', 'align').text, '\\end{align}');
 assert.equal(expand('\t\\begin{cus|}\n\\newenvironment{customenv}{}{}', 'customenv', {indentWithTabs: true}).text,
   '\t\\begin{customenv}\n\t\t\n\t\\end{customenv}\n\\newenvironment{customenv}{}{}');
-console.log('PASS: hints, paired/star/custom environments, cursor, indentation, nested/existing ends and comments');
+console.log('PASS: hints, command argument templates and cursor, preserved arguments, paired/star/custom environments, indentation, nested/existing ends and comments');
