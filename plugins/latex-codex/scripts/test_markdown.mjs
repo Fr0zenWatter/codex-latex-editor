@@ -1,6 +1,8 @@
 // Run: node test_markdown.mjs (stdlib only).
 import assert from 'node:assert/strict';
 import {markdownHtml} from './vendor/latex-markdown.mjs';
+import {documentMacros} from './vendor/latex-hover.mjs';
+import katex from './vendor/katex/katex.mjs';
 
 const source = String.raw`# Notes
 
@@ -72,4 +74,22 @@ $\(q_1\)$
 `);
 assert.equal((adjacent.match(/class="katex-display"/g)||[]).length,2,'Display math directly after prose cannot be swallowed by Setext heading parsing.');
 assert(adjacent.includes('Still a heading') && !adjacent.includes('katex-error'));
+const paperMacros = documentMacros(String.raw`\newcommand{\paperField}{\mathbb{Q}}
+\newcommand{\paperPair}[2]{\langle #1,#2\rangle}
+\DeclareMathOperator{\paperHom}{Hom}
+\begin{document}`, katex);
+const paperReply = String.raw`We use $\paperField$ and
+
+$$\paperPair{x}{y}=\paperHom(X,Y)$$
+
+` + '`$\\paperField$`';
+const paperHtml = markdownHtml(paperReply, undefined, paperMacros);
+assert(!paperHtml.includes('katex-error'), 'Chat formulas must resolve literal paper macros, arguments and operators.');
+assert(paperHtml.includes('<mi mathvariant="double-struck">Q</mi>'), 'An imported paper macro must render its expansion instead of an unknown command.');
+assert.equal((paperHtml.match(/class="katex"/g)||[]).length,2);
+assert(paperHtml.includes('<code>$\\paperField$</code>'), 'Code stays literal with paper macros.');
+markdownHtml(String.raw`$\gdef\replyOnly{z}\paperField$`, undefined, paperMacros);
+assert(!Object.hasOwn(paperMacros,'\\replyOnly'), 'A reply must not mutate the imported macro dictionary.');
+assert(!markdownHtml('$\\paperField$').includes('<mi mathvariant="double-struck">Q</mi>'), 'Macros must not leak into another document.');
+console.log('PASS: paper macros in inline/display math, argument/operator declarations, code isolation and no macro leakage');
 console.log('PASS: Markdown headings, source positions, lists/tasks, tables, code isolation, math/matrices, reference links, local/Obsidian images and escaped authored HTML');

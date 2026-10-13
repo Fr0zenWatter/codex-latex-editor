@@ -72,7 +72,7 @@ function settleAnimation(){for(let i=0;animationFrames.size&&i<120;i++)flushAnim
 const context = vm.createContext({
   preferences:{getItem(key){return stored.get(key);},setItem(key,value){stored.set(key,value);}},
   t:key=>key, setText:(element,key,values={})=>{element.textContent=key.replace(/\{(\w+)\}/g,(match,name)=>values[name]??match);},initSettings(){}, initScreenshotThemes(){}, applyCustomTheme(){return false;},
-  attachMathHover(){return {setMainSource(){}};},attachInlineCompletion(config){context.inlineCompletionConfig=config;},attachNativeAnnotations(){},attachSelectionChat(){return {open(){chatOpened.push('full');},openQuick(anchor){chatOpened.push(anchor);},refreshAnnotations(){},busy:false};},attachHistory(){},mountHistoryTabs(){},katex:{},
+  attachMathHover(){return {setMainSource(){}};},attachInlineCompletion(config){context.inlineCompletionConfig=config;},attachNativeAnnotations(){},attachSelectionChat(_editor,_request,_paint,_save,getMacroSource){context.chatMacroSource=getMacroSource;return {open(){chatOpened.push('full');},openQuick(anchor){chatOpened.push(anchor);},refreshAnnotations(){},busy:false};},attachHistory(){},mountHistoryTabs(){},katex:{},
   attachProjectReview(){return {items:[],busy:false,refresh:async()=>{},clear(){}};},
   attachProofreadPdf(){return {update(){},invalidate(){},active:false};},paintProofreadActions(){},
   attachProofreadNavigation(config){config.button.navigation=config;return {update(){}};},proofreadPdfPositions(){return [];},
@@ -1473,4 +1473,12 @@ In (2), the coeﬀicients θi(ej ) can all be chosen in Z.`;
   console.log('PASS: exact PDF text ranges, whitespace, ligatures, line hyphenation, ambiguity rejection, both Codex entries and stale mapping protection');
   console.log('PASS: repeated PDF text context, compiled row disambiguation, adjacent prose/math retries, intact links, shared list labels and unchanged fast-path requests');
   console.log('PASS: context comment menu/shortcut/selection/readonly, zz, PDF zoom, drag/select, versions, scroll retention and load failure');
+vm.runInContext("documentType='latex';mainFile='main.tex';mainSource='saved main preamble'",context);
+element('#filename').title='main.tex';
+assert.equal(context.chatMacroSource(),editor.getValue(),'Main-file chat uses the current draft macros.');
+element('#filename').title='chapter.tex';
+assert.equal(context.chatMacroSource(),'saved main preamble','Included-file chat uses the main document macros.');
+vm.runInContext("documentType='markdown'",context);
+assert.equal(context.chatMacroSource(),'','Markdown chat does not import TeX declarations from notes.');
+console.log('PASS: chat macro source follows the main draft or included-file context without changing Markdown');
 })().catch(error=>{console.error(error);process.exitCode=1;});

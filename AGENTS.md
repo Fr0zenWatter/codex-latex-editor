@@ -131,6 +131,8 @@ PDF 拖选和框选共用正文定位规则，并保留选区前后各最多 80 
 
 项目对话记录（包括临时批注进入的对话）及完成的批注回复使用现有 Markdown / KaTeX 渲染器显示加粗、斜体、列表、代码块和公式；历史记录重新打开时同样渲染。输入框和替换源码仍保留原文，代码中的公式不渲染。项目对话使用浮动窗口，可拖动位置、调整宽高、收起及置顶；“常驻临时对话圆球”默认开启，保留用户已保存的关闭选择；Ctrl+Q 切换展开，展开时 Ctrl+滚轮调节对话字号。拖动按屏幕刷新合并更新，大小与位置限制在可用窗口内，支持键盘操作。无源码选区时可直接提问，服务端强制不产生源码替换。生成的 HTML 经 DOMPurify 清理，回复不自动加载图片，链接在独立页面打开。实现与检查在 `vendor/latex-chat.mjs`、`vendor/latex-markdown.{mjs,css}`、`test_chat_ui.mjs`、`test_chat.py` 和 `test_markdown.mjs`。
 
+悬浮项目对话、重新打开的聊天历史和批注反馈共用论文宏渲染：复用源码公式预览的 `documentMacros` 解析器，只读取可支持的字面声明。编辑主文件时使用当前草稿，编辑子文件时读取主文稿源码；按源码缓存宏表，每条回复复制宏表，避免回复中的定义污染后续对话或其他项目。Markdown 文稿保持原渲染。KaTeX 不支持的 TeX 包、条件宏和默认可选参数仍需查看编译 PDF。实现与检查在 `vendor/latex-chat.mjs`、`vendor/latex-markdown.mjs`、`editor.py`、`test_markdown.mjs`、`test_chat_ui.mjs`、`test_ui.cjs` 和 `test_hover.mjs`。
+
 保存的 AI 回复可逐条记录为项目根目录下的 Markdown 文件，名称跟随界面语言；简体中文为 `AI对话记录.md`。通过 `/chat/export` 核对当前项目和数据库中的回复编号，保留公式、列表及代码原文，以回复编号标记避免重复记录。只由用户点击触发，不自动导出对话或修改文稿。实现与检查在 `history.py`、`editor.py`、`vendor/latex-chat.mjs` 和 `test_chat_export.py`。临时批注框中的 TEMP 图标只发送当前批注，保留其他排队批注，并沿用风格快照、保存及 Keep / Undo 流程；资源在 `vendor/gpt-temp-mark.svg`，检查覆盖 `test_chat_ui.mjs`。
 
 PDF 阅读底色可选择原始、黑、灰、淡黄或淡绿，跨文稿保存，仅改变浏览器显示，不修改 PDF 或下载文件。编辑区和预览区支持拖入单个 `.tex` / `.md` / `.markdown` 原文件；只在浏览器提供可核对的原始路径时使用现有 `/open` 流程，浏览器隐藏路径时保留当前文稿并提示使用文件菜单。未保存修改、待处理批注和编译状态沿用现有保护。实现与检查在 `editor.py`、`vendor/latex-settings.mjs`、`test_editor.py`、`test_ui.cjs`、`test_settings.mjs` 和 `test_preferences.py`。

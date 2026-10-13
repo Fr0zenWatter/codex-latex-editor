@@ -4,6 +4,7 @@
 
 - Replace the project chat sidebar with a movable floating conversation, including compact and expanded views, pinning, a persistent temporary chat bubble enabled by default, width/height controls, Ctrl+Q toggling and Ctrl+wheel text sizing. Preserve an explicitly saved off preference.
 - Allow project questions without a source selection; force these replies to leave the source unchanged. Keep selected-text edits and per-change Keep / Undo.
+- Render floating chat, saved chat history and annotation replies with literal macros from the paper, using the existing bounded macro parser. Main-file drafts supply their current definitions; included files use the main document. Cache definitions by source and isolate each reply's macro dictionary.
 - Export individual saved AI replies to a localized Markdown notes file in the project directory, preserving formatting and checking the project/message identity. Repeated exports of the same reply are deduplicated.
 - Add a TEMP icon for sending only the current annotation directly, retaining other queued annotations, saved writing styles and the existing review flow.
 - Add original, black, gray, straw and green PDF reading backgrounds, saved across documents without modifying the PDF or its download.
@@ -12,6 +13,8 @@
 新增浮动项目对话及无选区问答、单条 AI 回复的 Markdown 记录、当前批注直接发送、PDF 阅读底色和文件拖入打开。原生插件保持 Codex 后端；DeepSeek 保留独立版本。
 
 Validation / 验证：14 targeted Python/JavaScript checks passed on Windows, covering project chat/export, history, preferences, editor/compile, UI, Markdown, proofreading, inline completion and standalone plugin packaging. AI calls and browser interactions use test doubles; no real model request or main-chat message was sent. The bundled SVG was inspected for content and external references. macOS/Linux hardware and live browser drag-and-drop have not been tested.
+
+Additional macro-rendering fix / 宏渲染补充修复：6 targeted checks passed for Markdown/KaTeX, paper macro parsing, floating chat/history, main/child-file context, local editor compilation and plugin packaging. The regression reproduces an unknown paper macro before the fix and verifies inline/display math, parameters, operators, code isolation, changed definitions and no cross-document leakage. Only literal declarations supported by the existing parser and KaTeX are imported; TeX packages, conditional definitions and optional-default macros still require the PDF compiler.
 
 ## 0.3.4 — 2026-10-11
 

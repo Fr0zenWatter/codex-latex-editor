@@ -2,6 +2,8 @@ import {t, preferences} from './latex-settings.mjs';
 import {attachProofread} from './latex-proofread.mjs';
 import {writingStyles, readWritingStyle, restoreWritingStyle, annotationRequest} from './latex-writing-styles.mjs';
 import {renderChatMarkdown} from './latex-markdown.mjs';
+import {documentMacros} from './latex-hover.mjs';
+import katex from './katex/katex.mjs';
 
 export function colorReplacement(text, color, segments) {
   if (!color || !text || !segments || segments.map(part => part[0]).join('') !== text) return text;
@@ -12,9 +14,15 @@ export function colorReplacement(text, color, segments) {
   }).join('');
 }
 
-export function attachSelectionChat(editor, request, paintAnnotations = () => {}, recordAnnotations = async () => {}) {
+export function attachSelectionChat(editor, request, paintAnnotations = () => {}, recordAnnotations = async () => {}, getMacroSource = () => editor.getValue()) {
   const $ = id => document.querySelector('#' + id);
   const panel = $('chat-panel'), input = $('chat-input'), messages = $('chat-messages'), status = $('chat-status');
+  let macroSource = null, macros = {};
+  function renderReply(container, text) {
+    const source = getMacroSource();
+    if (source !== macroSource) { macros = documentMacros(source, katex); macroSource = source; }
+    renderChatMarkdown(container, text, macros);
+  }
   const bar = $('chat-bar'), compactHandle = $('chat-compact-handle'), expandButton = $('chat-expand'), pinButton = $('chat-pin');
   let contentSize = 13;
   panel.addEventListener('wheel', event => {
@@ -530,7 +538,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   function annotationNotice(text, error = false, markdown = false) {
     const body = $('annotations-status');
     body.classList.toggle('chat-markdown', markdown);
-    if (markdown) renderChatMarkdown(body, text);else body.textContent = text;
+    if (markdown) renderReply(body, text);else body.textContent = text;
     body.dataset.error = String(error);
     $('annotations-review').showPopover();
   }
@@ -680,7 +688,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     const item = document.createElement('div'); item.className = 'chat-message';
     item.dataset.role = role;
     const label = document.createElement('b'); label.textContent = role === 'user' ? t('你') : 'Codex';
-    const body = document.createElement('div');body.className = 'chat-markdown';renderChatMarkdown(body, text);
+    const body = document.createElement('div');body.className = 'chat-markdown';renderReply(body, text);
     item.append(label, body);
     if (role === 'assistant' && Number.isInteger(id) && id > 0) {
       const exportButton = document.createElement('button');

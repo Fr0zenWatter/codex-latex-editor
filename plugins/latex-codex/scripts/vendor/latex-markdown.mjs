@@ -6,9 +6,9 @@ const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;',
 const imageUrl = href => /^https?:\/\//i.test(href) ? href : '/markdown-resource?path=' + encodeURIComponent(href);
 
 // Marked handles fenced/inline code before math; source offsets belong to whole rendered blocks.
-export function markdownHtml(source, sanitizeHtml = escape) {
+export function markdownHtml(source, sanitizeHtml = escape, macroDefinitions = {}) {
   source = source.replace(/\r\n?/g, '\n');
-  const macros = {}, slugs = new Map();
+  const macros = {...macroDefinitions}, slugs = new Map();
   const math = (text, displayMode) => katex.renderToString(text.replace(/^\\\(([\s\S]*)\\\)$/, '$1'), {
     displayMode, throwOnError:false, strict:'ignore', trust:false, macros, globalGroup:true,
   });
@@ -66,9 +66,9 @@ export function markdownHtml(source, sanitizeHtml = escape) {
   }).join('');
 }
 
-export function renderChatMarkdown(container, source) {
+export function renderChatMarkdown(container, source, macros = {}) {
   // Generated replies must not cause automatic image requests.
-  container.innerHTML = DOMPurify.sanitize(markdownHtml(source), {FORBID_TAGS:['img']});
+  container.innerHTML = DOMPurify.sanitize(markdownHtml(source, undefined, macros), {FORBID_TAGS:['img']});
   for (const link of container.querySelectorAll('a')) {
     link.target = '_blank';link.rel = 'noopener noreferrer';
   }

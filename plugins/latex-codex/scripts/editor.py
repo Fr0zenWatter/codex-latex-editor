@@ -466,7 +466,8 @@ preview.addEventListener('scroll',pdfReviewNavigation.update,{passive:true});
 new ResizeObserver(editorReviewNavigation.update).observe(editor.getWrapperElement());
 new ResizeObserver(pdfReviewNavigation.update).observe(preview);
 for(const name of ['pagesinit','pagerendered','updateviewarea'])pdfEvents.on(name,pdfReviewNavigation.update);
-const selectionChat=attachSelectionChat(editor,request,paintPdfAnnotations,saveAnnotationChange);
+const selectionChat=attachSelectionChat(editor,request,paintPdfAnnotations,saveAnnotationChange,
+  ()=>documentType==='latex'?(document.querySelector('#filename').title===mainFile?editor.getValue():mainSource||editor.getValue()):'');
 projectReview=attachProjectReview({editor,request,
   capture:()=>({path:document.querySelector('#filename').title,doc:editor.getDoc(),source:editor.getValue(),clean:!!version&&!busy&&!syncBusy&&!conflict&&editor.getValue()===saved}),
   adopt:adoptProjectSource,open:switchSource,message:text=>status.textContent=text,

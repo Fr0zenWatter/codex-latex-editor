@@ -705,19 +705,21 @@ console.log('PASS: avatar sends the current comment directly while queued commen
 // A reloaded editor restores project questions and uses them after changing selections.
 source='before chosen after';selection={from:{line:0,ch:7},to:{line:0,ch:13}};doc={};selected=true;
 let resumedBody, exportedReply;
+let paperPreamble = String.raw`\newcommand{\paperField}{\mathbb{Q}}\begin{document}`;
 const resumedRequest=async(url,options)=>{
   if(url==='/chat/history')return {revision:4,project:'test-project',messages:[{id:3,role:'user',content:'Keep energy norm.',selection:'Old passage.'},
-    {id:4,role:'assistant',content:JSON.stringify({reply:String.raw`**Terminology** remembered. $\alpha$`,replacement:null})}]};
+    {id:4,role:'assistant',content:JSON.stringify({reply:String.raw`**Terminology** remembered. $\alpha$ and $\paperField$`,replacement:null})}]};
   if(url==='/chat/export'){exportedReply=JSON.parse(options.body);return {file:'AI对话记录.md'};}
   if(url==='/chat'){resumedBody=JSON.parse(options.body);return {id:'resumed-job'};}
-  if(url==='/chat?id=resumed-job')return {status:'done',reply:'Continued.',replacement:null,memory_revision:6};
+  if(url==='/chat?id=resumed-job')return {status:'done',reply:String.raw`Continued with $\paperField$.`,replacement:null,memory_revision:6};
   return request(url,options);
 };
-const resumed=attachSelectionChat(editor,resumedRequest);resumed.open();
+const resumed=attachSelectionChat(editor,resumedRequest,undefined,undefined,()=>paperPreamble);resumed.open();
 await new Promise(resolve=>setTimeout(resolve,0));
 assert.equal(el('#chat-messages').children.length,2);
 const restoredReply=el('#chat-messages').children[1].children[1].innerHTML;
 assert(restoredReply.includes('<strong>Terminology</strong>') && restoredReply.includes('class="katex"'),'Reopened project history renders the original Markdown reply.');
+assert(restoredReply.includes('<mi mathvariant="double-struck">Q</mi>'),'Reopened history uses the current paper macros.');
 const savedArrow=el('#chat-messages').children[1].children.at(-1);
 assert.equal(el('#chat-messages').children[1].children[1].children.includes(savedArrow),false,'Export control stays outside the reply bubble.');
 assert.equal(savedArrow.textContent,'↗');
@@ -729,6 +731,11 @@ el('#chat-input').value='Explain this new selection.';await el('#chat-form').ons
 assert.equal(resumedBody.remember,true);assert.equal(resumedBody.memory_revision,4);
 assert(resumedBody.messages.some(message=>message.content==='Keep energy norm.'));
 assert.equal(resumedBody.selection,'chosen');
+assert(el('#chat-messages').children.at(-1).children[1].innerHTML.includes('<mi mathvariant="double-struck">Q</mi>'),'New floating replies use the current paper macros.');
+paperPreamble = String.raw`\newcommand{\paperField}{\mathbb{R}}\begin{document}`;
+el('#chat-input').value='Use the revised notation.';await el('#chat-form').onsubmit({preventDefault(){}});
+const revisedReply = el('#chat-messages').children.at(-1).children[1].innerHTML;
+assert(revisedReply.includes('<mi mathvariant="double-struck">R</mi>') && !revisedReply.includes('<mi mathvariant="double-struck">Q</mi>'),'Macro caches refresh when the paper definitions change.');
 console.log('PASS: Markdown/math replies, annotation feedback, code isolation, project history rendering and remembered context across selections');
 
 // DeepSeek forwarding preserves failed comments and retries the same request identity.
