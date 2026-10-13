@@ -1,5 +1,18 @@
 # Changelog / 更新日志
 
+## 0.3.5 — 2026-10-13
+
+- Replace the project chat sidebar with a movable floating conversation, including compact and expanded views, pinning, a persistent temporary chat bubble enabled by default, width/height controls, Ctrl+Q toggling and Ctrl+wheel text sizing. Preserve an explicitly saved off preference.
+- Allow project questions without a source selection; force these replies to leave the source unchanged. Keep selected-text edits and per-change Keep / Undo.
+- Export individual saved AI replies to a localized Markdown notes file in the project directory, preserving formatting and checking the project/message identity. Repeated exports of the same reply are deduplicated.
+- Add a TEMP icon for sending only the current annotation directly, retaining other queued annotations, saved writing styles and the existing review flow.
+- Add original, black, gray, straw and green PDF reading backgrounds, saved across documents without modifying the PDF or its download.
+- Open a single dropped `.tex`, `.md` or `.markdown` file through the existing file-switch flow when the browser supplies its original path. When the browser hides it, retain the current file and direct the user to the file menu.
+
+新增浮动项目对话及无选区问答、单条 AI 回复的 Markdown 记录、当前批注直接发送、PDF 阅读底色和文件拖入打开。原生插件保持 Codex 后端；DeepSeek 保留独立版本。
+
+Validation / 验证：14 targeted Python/JavaScript checks passed on Windows, covering project chat/export, history, preferences, editor/compile, UI, Markdown, proofreading, inline completion and standalone plugin packaging. AI calls and browser interactions use test doubles; no real model request or main-chat message was sent. The bundled SVG was inspected for content and external references. macOS/Linux hardware and live browser drag-and-drop have not been tested.
+
 ## 0.3.4 — 2026-10-11
 
 - Add optional AI inline completion with independent model and reasoning settings. Suggestions stay outside the source until accepted with Tab; Esc dismisses them. Use bounded cursor context, read-only ephemeral calls, cancellation and completed-turn validation.

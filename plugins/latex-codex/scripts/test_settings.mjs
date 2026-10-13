@@ -23,6 +23,20 @@ Object.defineProperty(globalThis,'navigator',{value:{language:'zh-CN'},configura
 globalThis.localStorage={getItem:key=>stored.get(key),setItem:(key,value)=>stored.set(key,value)};
 initSettings();
 assert.equal(label.textContent,'历史');assert.equal(properties['--revision-color'],'#b85c1c');
+assert.equal(element('pdf-paper').value,'original');
+stored.set('latex-codex-pdf-invert','on');initSettings();
+assert.equal(element('pdf-paper').value,'black','The previous invert preference becomes black paper.');
+assert.equal(element('preview').dataset.paper,'black');
+element('pdf-paper').value='gray';element('pdf-paper').onchange();
+assert.equal(stored.get('latex-codex-pdf-paper'),'gray');
+assert.equal(element('preview').dataset.paper,'gray');
+for (const paper of ['straw','green','original']) {
+  element('pdf-paper').value=paper;element('pdf-paper').onchange();initSettings();
+  assert.equal(element('pdf-paper').value,paper);
+  assert.equal(element('preview').dataset.paper,paper);
+}
+stored.set('latex-codex-pdf-paper','invalid');initSettings();
+assert.equal(element('pdf-paper').value,'original');
 assert.equal(element('inline-completion').checked,false);
 assert.equal(element('completion-effort').value,'low');
 assert.equal(element('completion-effort').disabled,true);
@@ -168,6 +182,7 @@ globalThis.fetch=async(route,options)=>{
   return {ok:true,json:async()=>remoteSettings};
 };
 persistent.preferences.setItem('latex-codex-source-font-size','20');
+persistent.preferences.setItem('latex-codex-pdf-paper','green');
 persistent.preferences.setItem('latex-codex-revision-color','blue');
 persistent.preferences.setItem('latex-codex-forward-shortcut','Shift-Cmd-E');
 persistent.preferences.setItem('latex-codex-writing-style',JSON.stringify({name:'Personal',prompt:'Preserve notation.'}));
@@ -178,6 +193,7 @@ element('proofread-editor').checked=false;element('proofread-editor').onchange()
 element('proofread-pdf').checked=true;element('proofread-pdf').onchange();
 await persistent.savePreferences();
 assert.equal(remoteSettings['latex-codex-source-font-size'],'20');
+assert.equal(remoteSettings['latex-codex-pdf-paper'],'green');
 assert.equal(remoteSettings['latex-codex-revision-color'],'blue');
 assert.equal(remoteSettings['latex-codex-forward-shortcut'],'Shift-Cmd-E');
 assert.equal(remoteSettings['latex-codex-pdf-box-auto-comment'],'on');
@@ -188,6 +204,7 @@ assert.equal(reopened.preferences.getItem('latex-codex-language'),'ja');
 assert.equal(reopened.preferences.getItem('latex-codex-forward-shortcut'),'Shift-Cmd-E');
 assert.deepEqual(JSON.parse(reopened.preferences.getItem('latex-codex-writing-style')),{name:'Personal',prompt:'Preserve notation.'});
 reopened.initSettings();assert.equal(element('pdf-box-auto-comment').checked,true);
+assert.equal(element('pdf-paper').value,'green');
 assert.equal(element('proofread-editor').checked,false);assert.equal(element('proofread-pdf').checked,true);
 element('proofread-pdf').checked=false;
 element('pdf-box-auto-comment').checked=false;

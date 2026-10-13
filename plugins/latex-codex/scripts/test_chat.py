@@ -20,7 +20,10 @@ data = {'source': 'Before. Selected. After.', 'selection': 'Selected.',
         'messages': [{'role': 'user', 'content': 'Polish this.'}]}
 context = chat_context(data, Path('paper.tex'))
 assert context['document'] == data['source'] and context['file'] == 'paper.tex'
+assert 'id' not in chat_context({**data, 'messages':[{'id':7, **data['messages'][0]}]}, Path('paper.tex'))['messages'][0]
 assert not context['main_conversation']['available']
+plain_context = chat_context({**data, 'selection': ''}, Path('paper.tex'))
+assert plain_context['selection'] == '' and plain_context['document'] == data['source']
 with tempfile.TemporaryDirectory() as directory:
     rollout = Path(directory) / 'main.jsonl'
     def record(role, text, phase=None):
@@ -67,6 +70,9 @@ with patch('chat.shutil.which', return_value='codex.exe'), patch('chat.subproces
     assert 'Hidden instructions' not in prompt and 'tool secret' not in prompt
     assert 'Selected.' not in ' '.join(argv), 'Context belongs on stdin, not command arguments.'
     assert '--model' not in argv and '-c' not in argv, 'Default must preserve the CLI configuration.'
+    plain_job = ChatJob(plain_context); plain_job.run()
+    assert plain_job.result['status'] == 'done' and plain_job.result['replacement'] is None
+    assert 'If selection is empty, replacement must be null' in process.communicate.call_args.args[0].decode()
     markdown_job = ChatJob(chat_context(data, Path('note.md'))); markdown_job.run()
     assert markdown_job.result == {'status':'done', **answer, 'segments':None}
     markdown_prompt = process.communicate.call_args.args[0].decode()
@@ -100,6 +106,12 @@ batch = {'source': '😀 chosen gap chosen.', 'selection': 'chosen',
          'annotations': [{'id': 1, 'start': 2, 'end': 8, 'selection': 'chosen', 'request': 'Polish first.'},
                          {'id': 2, 'start': 13, 'end': 19, 'selection': 'chosen', 'request': 'Polish second.'}]}
 batch_context = chat_context(batch, Path('paper.tex'))
+try:
+    chat_context({**batch, 'selection': ''}, Path('paper.tex'))
+except ValueError:
+    pass
+else:
+    raise AssertionError('Batch annotation accepted without a selection')
 assert [{key: item[key] for key in batch['annotations'][0]} for item in batch_context['annotations']] == batch['annotations']
 assert batch_context['annotations'][1]['context_before'] == '😀 chosen gap '
 assert batch_context['annotations'][1]['context_after'] == '.'

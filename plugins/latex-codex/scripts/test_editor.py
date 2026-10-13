@@ -99,6 +99,8 @@ with tempfile.TemporaryDirectory() as directory:
         with patch('editor.choose_file', return_value=''):
             assert json.loads(request('/open', {})[1])['cancelled']
             assert request('/pdf')[1] == pdf
+        code, body = request('/open', {'path':str(path)})
+        assert code == 200 and json.loads(body)['path'] == str(path)
         original = state()
         other = Path(directory) / 'another project' / 'S2super2_GS_blue.tex'
         other.parent.mkdir()

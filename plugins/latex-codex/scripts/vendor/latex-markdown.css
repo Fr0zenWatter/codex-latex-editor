@@ -19,8 +19,8 @@ body[data-preview-type=html] :is(#preview,#pdf-outline,#pan-mode,#pan-hint,#zoom
 #chat-messages .chat-markdown pre{white-space:pre;overflow-wrap:normal;max-height:none}
 .chat-markdown .markdown-block:first-child>:first-child{margin-top:0}
 .chat-markdown .markdown-block:last-child>:last-child{margin-bottom:0}
-.chat-resizer{position:absolute;z-index:1;left:-6px;top:0;bottom:0;width:12px;cursor:col-resize;touch-action:none}
-.chat-resizer::after{content:'';position:absolute;left:5px;top:0;bottom:0;width:3px;background:transparent}
+.chat-resizer{position:absolute;z-index:1;right:0;top:0;bottom:0;width:12px;cursor:col-resize;touch-action:none}
+.chat-resizer::after{content:'';position:absolute;right:5px;top:0;bottom:0;width:3px;background:transparent}
 .chat-resizer:hover::after,.chat-resizer:focus-visible::after,.chat-resizing .chat-resizer::after{background:var(--command)}
 .chat-resizer:focus-visible{outline:2px solid var(--command);outline-offset:-3px}
 .chat-resizing,.chat-resizing *{cursor:col-resize!important;user-select:none!important}

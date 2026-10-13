@@ -129,7 +129,11 @@ PDF 拖选和框选共用正文定位规则，并保留选区前后各最多 80 
 
 维护时在该目录执行 `npm ci`、`npm run build`（包含 TypeScript 检查）；生成的 `scripts/vendor/history-tabs.{mjs,css}` 和许可证文件随插件一起分发，使用者不需要 Node。需要新增 shadcn 组件时可在该目录执行 `npx shadcn@latest add <组件名>`，保留现有适配。npm 依赖与锁文件保留在源码中，不分发 `node_modules`。
 
-项目对话记录（包括临时批注进入的对话）及完成的批注回复使用现有 Markdown / KaTeX 渲染器显示加粗、斜体、列表、代码块和公式；历史记录重新打开时同样渲染。输入框和替换源码仍保留原文，代码中的公式不渲染。项目对话栏左边缘可左右拖动调整宽度，按屏幕刷新合并更新；手柄支持左右方向键，宽度限制在可用工作区内，关闭再打开保留本页面的宽度。生成的 HTML 经 DOMPurify 清理，回复不自动加载图片，链接在独立页面打开。实现与检查在 `vendor/latex-chat.mjs`、`vendor/latex-markdown.{mjs,css}`、`test_chat_ui.mjs` 和 `test_markdown.mjs`。
+项目对话记录（包括临时批注进入的对话）及完成的批注回复使用现有 Markdown / KaTeX 渲染器显示加粗、斜体、列表、代码块和公式；历史记录重新打开时同样渲染。输入框和替换源码仍保留原文，代码中的公式不渲染。项目对话使用浮动窗口，可拖动位置、调整宽高、收起及置顶；“常驻临时对话圆球”默认开启，保留用户已保存的关闭选择；Ctrl+Q 切换展开，展开时 Ctrl+滚轮调节对话字号。拖动按屏幕刷新合并更新，大小与位置限制在可用窗口内，支持键盘操作。无源码选区时可直接提问，服务端强制不产生源码替换。生成的 HTML 经 DOMPurify 清理，回复不自动加载图片，链接在独立页面打开。实现与检查在 `vendor/latex-chat.mjs`、`vendor/latex-markdown.{mjs,css}`、`test_chat_ui.mjs`、`test_chat.py` 和 `test_markdown.mjs`。
+
+保存的 AI 回复可逐条记录为项目根目录下的 Markdown 文件，名称跟随界面语言；简体中文为 `AI对话记录.md`。通过 `/chat/export` 核对当前项目和数据库中的回复编号，保留公式、列表及代码原文，以回复编号标记避免重复记录。只由用户点击触发，不自动导出对话或修改文稿。实现与检查在 `history.py`、`editor.py`、`vendor/latex-chat.mjs` 和 `test_chat_export.py`。临时批注框中的 TEMP 图标只发送当前批注，保留其他排队批注，并沿用风格快照、保存及 Keep / Undo 流程；资源在 `vendor/gpt-temp-mark.svg`，检查覆盖 `test_chat_ui.mjs`。
+
+PDF 阅读底色可选择原始、黑、灰、淡黄或淡绿，跨文稿保存，仅改变浏览器显示，不修改 PDF 或下载文件。编辑区和预览区支持拖入单个 `.tex` / `.md` / `.markdown` 原文件；只在浏览器提供可核对的原始路径时使用现有 `/open` 流程，浏览器隐藏路径时保留当前文稿并提示使用文件菜单。未保存修改、待处理批注和编译状态沿用现有保护。实现与检查在 `editor.py`、`vendor/latex-settings.mjs`、`test_editor.py`、`test_ui.cjs`、`test_settings.mjs` 和 `test_preferences.py`。
 
 本地 AI 批注通过 Send 生成建议后，每处在源码编辑区显示红色原文、绿色修改和独立的 Keep / Undo。预览不改源码；Keep 先保存准确的当前草稿及该处修改，再以一次可撤销操作应用，Undo 只撤销该处建议并保留原文。其他编辑和待校对标记继续保留，后续 Send 只发送尚未生成建议的批注。每处 Keep 作为独立历史检查点，包含原选区、修改要求、源码行号和 AI 回复；无需修改的回答按批次记录。保存失败保留源码和建议；带唯一请求编号的批注保存可安全重试，普通保存不重试。未处理的建议沿用批注的关闭、切换与外部冲突保护。批注和校对预览不写入 `.tex` / Markdown 源码，旧对话不回填批注关联。实现为 `scripts/vendor/latex-proofread.{mjs,css}` 与 `latex-chat.mjs`，检查覆盖 `test_proofread.mjs`、`test_chat_ui.mjs` 和 `test_chat.py`。
 

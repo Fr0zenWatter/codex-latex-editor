@@ -2,6 +2,13 @@ import {translations} from './latex-locales.mjs';
 
 export const english = {
   '调整项目对话栏宽度':'Resize project chat',
+  'PDF 反相':'Invert PDF colors',
+  'PDF 背景':'PDF background',
+  '原始 PDF':'Original PDF',
+  '黑色（反相）':'Black (inverted)',
+  '深灰色（反相）':'Dark gray (inverted)',
+  '草黄色':'Straw yellow',
+  '浅绿色':'Pale green',
   'AI 行内补全':'AI inline completion',
   'AI 补全模型':'AI completion model',
   'AI 补全思考等级':'AI completion reasoning effort',
@@ -84,8 +91,9 @@ export const english = {
   '项目文件已变化，请重新编译后定位。':'Project files changed. Recompile before navigating.',
   '选区跨越多个源码文件，请分别选择。':'This selection spans multiple source files. Select each file separately.',
   '编译失败 · {name} 第 {line} 行：{message}':'Compilation failed · {name}, line {line}: {message}',
-  '查看对话':'View conversation', '上下文记录':'Context record',
-  '添加批注':'Add comment', '保存批注':'Save comment', '删除批注':'Delete comment',
+  '查看对话':'View conversation', '常驻临时对话圆球':'Keep chat bubble visible', '上下文记录':'Context record',
+  '添加批注':'Add comment', '保存批注':'Save comment', '发送当前批注':'Send this comment', '删除批注':'Delete comment',
+  '记录此回复到 Markdown':'Save this reply to Markdown', '已记录到 {file}':'Saved to {file}',
   'PDF 批注':'PDF comment', '拖动批注框':'Move comment', '批注要求':'Comment request',
   '写下这处的修改要求…':'Describe the change here…', '保存批注 · Ctrl+Enter':'Save comment · Ctrl+Enter',
   '批注 · {count}':'Comments · {count}', '编辑批注 {number}':'Edit comment {number}',
@@ -140,6 +148,9 @@ export const english = {
   '正在编译或定位，请稍后重试。':'Compiling or locating. Try again when it finishes.',
   '正在精确匹配选中的 LaTeX 文字…':'Matching the selected LaTeX text precisely…',
   '文件':'File', '打开文件':'Open file', '重新读取文件':'Reload file', '下载 PDF':'Download PDF', '历史':'History', '设置':'Settings',
+  '松开以打开 .tex 或 .md 文件':'Drop to open a .tex or .md file', '正在打开拖入的文件…':'Opening dropped file…',
+  '一次只能拖入一个 .tex、.md 或 .markdown 文件。':'Drop one .tex, .md or .markdown file at a time.',
+  '浏览器未提供原始路径，请使用“文件 → 打开文件”。':'The browser did not provide the original path. Use File → Open file.',
   '编辑模式':'Editing mode', '普通编辑':'Standard editing',
   '已应用。回到源码按 Ctrl+Z / Cmd+Z 可撤销。':'Applied. Press Ctrl+Z / Cmd+Z in the source editor to undo.',
   '语言':'Language', '跟随系统':'System default', '配色':'Color theme', '当前用户修订色':'Your revision color', '当前用户':'You',
@@ -188,7 +199,7 @@ export const english = {
   '重新读取会放弃编辑框中尚未保存的修改。继续？':'Reloading discards unsaved editor changes. Continue?',
   '编译失败 · 第 {line} 行：{message}':'Compilation failed · Line {line}: {message}', '已定位到 PDF 第 {page} 页':'Located on PDF page {page}',
   '已定位到源码第 {line} 行':'Located on source line {line}',
-  '收起项目对话':'Hide project chat', '项目侧边聊天':'Project side chat', 'Codex · 项目对话':'Codex · Project chat', '新对话':'New chat', '在侧边聊天中提问':'Ask in side chat', '项目记忆自动保存 · Ctrl+Enter 发送':'Project memory autosaved · Ctrl+Enter to send', '项目记忆读取失败，请重新打开对话。':'Unable to load project memory. Reopen the chat.',
+  '收起浮动对话':'Collapse floating chat', '展开浮动对话':'Expand floating chat', '缩小对话条':'Minimize chat bar', '打开浮动对话':'Open floating chat', '单击展开对话条，双击打开悬浮框':'Click to open chat bar; double-click for floating chat', '双击放大悬浮框':'Double-click to expand floating chat', '固定浮动对话':'Pin floating chat', '取消固定浮动对话':'Unpin floating chat', '拖动浮动对话':'Move floating chat', '拖动短对话条':'Move compact chat', '调整浮动对话宽度':'Resize floating chat', '调整浮动对话大小':'Resize floating chat size', '项目浮动对话':'Floating project chat', 'Codex · 项目对话':'Codex · Project chat', '新对话':'New chat', '项目记忆自动保存 · Ctrl+Enter 发送':'Project memory autosaved · Ctrl+Enter to send', '项目记忆读取失败，请重新打开对话。':'Unable to load project memory. Reopen the chat.',
   '原生批注选区':'Annotate selection in Codex', '关闭选区预览':'Close selection preview', '请先选择需要批注的 LaTeX 文字。':'Select the LaTeX text to annotate first.', '请选一个连续的文字范围。':'Select a single continuous text range.', '原生文字批注最多 20000 个字符，请缩小选区。':'Native text annotations support up to 20,000 characters. Select a smaller range.', '已请求原生批注，请在原生界面保存后随主对话发送。':'Native annotation requested. Save it in the browser UI and send it with your main-chat message.', '请开启浏览器原生批注，再点击下方的完整选区文字块。':'Enable browser annotations, then click the complete selected passage below.',
   '原生批量批注：逐条保存，最后在主对话统一发送。':'Native batch annotations: save each comment, then send them together from the main chat.',
   '返回编辑':'Return to editing',
@@ -231,7 +242,7 @@ export const supportedLanguages = ['en', 'zh-CN', 'zh-TW', 'ja', 'fr', 'de', 'es
 export let language = 'en';
 const bindings = new Map();
 const preferenceKeys = ['language','revision-color','outline-style','theme','custom-themes',
-  'editor-mode','source-font-size','forward-shortcut','chat-color','auto-compile','pdf-box-auto-comment','proofread-editor','proofread-pdf','proofread-project','writing-style','split','inline-completion','completion-model','completion-effort'].map(name=>'latex-codex-'+name);
+  'editor-mode','source-font-size','forward-shortcut','chat-color','chat-bar-permanent','auto-compile','pdf-box-auto-comment','pdf-paper','proofread-editor','proofread-pdf','proofread-project','writing-style','split','inline-completion','completion-model','completion-effort'].map(name=>'latex-codex-'+name);
 let persisted = null, pending = {}, saveTimer, saveQueue = Promise.resolve();
 function preferenceData() {
   if (persisted === null) {
@@ -316,7 +327,7 @@ export function initSettings() {
     $('settings-save').disabled = true;
     try {
       for (const [id, name] of [['language','language'],['revision-color','revision-color'],
-        ['outline-style','outline-style'],['theme','theme'],['editor-mode','editor-mode'],
+        ['outline-style','outline-style'],['theme','theme'],['editor-mode','editor-mode'],['pdf-paper','pdf-paper'],
         ['source-font-size','source-font-size'],['chat-color','chat-color']]) {
         preferences.setItem('latex-codex-'+name, $(id).value);
       }
@@ -394,6 +405,16 @@ export function initSettings() {
   boxAutoComment.checked = preferences.getItem('latex-codex-pdf-box-auto-comment') !== 'off';
   boxAutoComment.onchange = () => {
     preferences.setItem('latex-codex-pdf-box-auto-comment', boxAutoComment.checked ? 'on' : 'off');
+  };
+  const paper = $('pdf-paper'), paperChoices = ['original','black','gray','straw','green'];
+  const savedPaper = preferences.getItem('latex-codex-pdf-paper') ||
+    (preferences.getItem('latex-codex-pdf-invert') === 'on' ? 'black' : 'original');
+  paper.value = paperChoices.includes(savedPaper) ? savedPaper : 'original';
+  $('preview').dataset.paper = paper.value;
+  paper.onchange = () => {
+    if (!paperChoices.includes(paper.value)) paper.value = 'original';
+    $('preview').dataset.paper = paper.value;
+    preferences.setItem('latex-codex-pdf-paper', paper.value);
   };
   for (const name of ['proofread-editor','proofread-pdf']) {
     const control = $(name);

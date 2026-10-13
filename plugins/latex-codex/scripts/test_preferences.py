@@ -52,6 +52,12 @@ with tempfile.TemporaryDirectory() as directory:
         assert json.loads(request(servers[1], '/preferences')[1])['latex-codex-language'] == 'zh-CN'
         assert request(servers[0], '/preferences', {'latex-codex-pdf-box-auto-comment': 'on'})[0] == 200
         assert json.loads(request(servers[1], '/preferences')[1])['latex-codex-pdf-box-auto-comment'] == 'on'
+        assert request(servers[0], '/preferences', {'latex-codex-pdf-invert': 'on'})[0] == 200
+        assert json.loads(request(servers[1], '/preferences')[1])['latex-codex-pdf-invert'] == 'on'
+        assert request(servers[0], '/preferences', {'latex-codex-pdf-paper': 'gray'})[0] == 200
+        assert json.loads(request(servers[1], '/preferences')[1])['latex-codex-pdf-paper'] == 'gray'
+        assert request(servers[0], '/preferences', {'latex-codex-chat-bar-permanent': 'on'})[0] == 200
+        assert json.loads(request(servers[1], '/preferences')[1])['latex-codex-chat-bar-permanent'] == 'on'
         assert Preferences(database).read()['latex-codex-pdf-box-auto-comment'] == 'on'
         assert request(servers[0], '/preferences', {'latex-codex-forward-shortcut': 'Shift-Cmd-E'})[0] == 200
         assert json.loads(request(servers[1], '/preferences')[1])['latex-codex-forward-shortcut'] == 'Shift-Cmd-E'

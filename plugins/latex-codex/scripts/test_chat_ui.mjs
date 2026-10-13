@@ -23,12 +23,13 @@ for(const value of [null,'broken','null','{}',JSON.stringify({id:'missing'}),
   JSON.stringify({name:'x',prompt:'a'.repeat(12001)})]) assert.equal(restoreWritingStyle(value),null);
 const elements = new Map();
 function el(id) {
-  if (!elements.has(id)) elements.set(id, {value:'',textContent:'',hidden:true,children:[],style:{},dataset:{},attributes:{},
+  if (!elements.has(id)) elements.set(id, {value:'',textContent:'',hidden:true,children:[],style:{setProperty(name,value){this[name]=value;}},dataset:{},attributes:{},
     get options(){return this.children;},
     setAttribute(name,value){this.attributes[name]=value;},
+    getAttribute(name){return this.attributes[name]??null;},
     setPointerCapture(id){this.capture=id;},hasPointerCapture(id){return this.capture===id;},releasePointerCapture(){this.capture=null;},matches(){return !!this.open;},
     append(...nodes){this.children.push(...nodes);},prepend(...nodes){this.children.unshift(...nodes);},replaceChildren(...nodes){this.children=nodes;},
-    events:{},offsetWidth:320,offsetHeight:46,getBoundingClientRect(){return {left:950,top:750,bottom:780,width:Number.parseFloat(this.style.width)||this.offsetWidth};},
+    events:{},offsetWidth:320,offsetHeight:46,getBoundingClientRect(){return {left:Number.parseFloat(this.style.left)||950,top:Number.parseFloat(this.style.top)||750,bottom:780,width:Number.parseFloat(this.style.width)||this.offsetWidth,height:Number.parseFloat(this.style.height)||this.offsetHeight};},
     scrollHeight:68,contains(node){return !!node && node===this;},
     clientWidth:500,querySelector(){return null;},querySelectorAll(){return [];},
     classList:{values:new Set(),add(name){this.values.add(name);},remove(name){this.values.delete(name);},
@@ -41,10 +42,11 @@ const windowEvents = {};
 let frameId=0;const animationFrames=new Map();
 const flushFrames=()=>{const callbacks=[...animationFrames.values()];animationFrames.clear();callbacks.forEach(fn=>fn());};
 globalThis.window = {innerWidth:1000,innerHeight:800,addEventListener(name,handler){
-  const previous=windowEvents[name];windowEvents[name]=event=>{previous?.(event);handler(event);};
+  const previous=windowEvents[name];windowEvents[name]=event=>{previous?.(event);if (!event?.immediateStopped) handler(event);};
 },
   requestAnimationFrame(fn){animationFrames.set(++frameId,fn);return frameId;},cancelAnimationFrame(id){animationFrames.delete(id);}};
 el('#chat-panel').parentElement=el('main');el('main').clientWidth=1000;
+el('#preview').getBoundingClientRect=()=>({left:400,top:70,bottom:780,width:580,height:710});
 window.dispatchEvent=()=>{};
 const storedPreferences=new Map([['latex-codex-language','zh-CN']]);
 globalThis.localStorage={getItem:key=>storedPreferences.get(key)??null,setItem:(key,value)=>storedPreferences.set(key,value)};
@@ -52,7 +54,7 @@ initSettings();
 let quickResize;
 globalThis.ResizeObserver = class {constructor(callback){this.callback=callback;}observe(target){if(target===el('#chat-quick'))quickResize=this.callback;}disconnect(){}};
 let operations=0; const marks=[];
-let keyMap='vim',escapes=0,source='before chosen after',selection={from:{line:0,ch:7},to:{line:0,ch:13}},mark,doc={},selected=true;
+let keyMap='vim',escapes=0,editorFocuses=0,source='before chosen after',selection={from:{line:0,ch:7},to:{line:0,ch:13}},mark,doc={},selected=true;
 globalThis.CodeMirror = {Vim:{handleKey(_,key){assert.equal(key,'<Esc>');escapes++;}}};
 const events={},editor={
   on(name,callback){events[name]=callback;},getDoc:()=>doc,getOption:name=>name==='keyMap'?keyMap:false,
@@ -61,7 +63,7 @@ const events={},editor={
   getCursor:key=>selection[key],getValue:()=>source,getRange:(from,to)=>source.slice(from.ch,to.ch),
   charCoords:pos=>({top:pos.ch===selection.from.ch?700:710,bottom:730}),
   markText(from,to,options={}){mark={options,from:{...from},to:{...to},find(){return this.cleared?null:{from:this.from,to:this.to};},clear(){this.cleared=true;},changed(){}};marks.push(mark);return mark;},
-  indexFromPos:pos=>pos.ch,posFromIndex:ch=>({line:0,ch}),setCursor(){},focus(){},
+  indexFromPos:pos=>pos.ch,posFromIndex:ch=>({line:0,ch}),setCursor(){},focus(){editorFocuses++;},
   operation(fn){operations++;fn();},
   replaceRange(text,from,to,origin){
     assert.equal(origin,'codex-chat');source=source.slice(0,from.ch)+text+source.slice(to.ch);
@@ -98,6 +100,19 @@ const chat=attachSelectionChat(editor,request,items=>{painted=[...items];painted
   if(saveFailure)throw new Error('History unavailable');
   annotationSaves.push({after,change});
 });
+const dismissQuick=()=>{el('#chat-quick-input').value='';el('#chat-quick').hidePopover();};
+assert.equal(el('#chat-panel').dataset.collapsed,'true');
+assert.equal(el('#chat-panel').hidden,false,'The persistent chat bubble is enabled by default.');
+assert.equal(el('#chat-bar-permanent').checked,true);
+assert.equal(el('#chat-panel').dataset.mini,'true');
+el('#chat-bar-permanent').checked=true;el('#chat-bar-permanent').onchange();
+assert.equal(el('#chat-panel').hidden,false);
+assert.equal(el('#chat-panel').dataset.mini,'true');
+assert.equal(el('#chat-panel').style.left,'412px');
+assert.equal(el('#chat-panel').style.top,'714px','The persistent bubble starts at the PDF pane bottom left.');
+el('#chat-mini').onclick({detail:1});await new Promise(resolve=>setTimeout(resolve,330));
+assert.equal(el('#chat-panel').dataset.mini,'false');
+assert.equal(el('#chat-panel').style.top,'710px','The compact bar starts at the PDF pane bottom left.');
 const reviewActions=item=>item.review.root.children.at(-1).children;
 const keepReview=item=>reviewActions(item).at(-1).onclick();
 const undoReview=item=>reviewActions(item).at(-2).onclick();
@@ -122,7 +137,7 @@ el('#chat-quick-menu').onclick();
 el('#chat-quick-settings').events.beforetoggle({newState:'open'});
 await Promise.resolve();
 assert.equal(calls.filter(call=>call.url==='/chat/models').length,1);
-assert.equal(el('#chat-panel').hidden,true);assert.equal(el('#chat-quick').open,true);
+assert.equal(el('#chat-panel').dataset.collapsed,'true');assert.equal(el('#chat-quick').open,true);
 el('#chat-quick-models').children.find(button=>button.textContent==='Test Model ›').onclick();
 assert.equal(el('#chat-model').value,'test-model');
 assert.deepEqual(el('#chat-quick-efforts').children.map(button=>button.textContent),['默认 · 低','低','高']);
@@ -136,7 +151,93 @@ el('#chat-quick-models').children.find(button=>button.textContent==='跟随 Code
 assert.equal(el('#chat-model').value,'');assert.equal(el('#chat-effort').disabled,true);
 el('#chat-quick').hidePopover();
 chat.open();assert.equal(el('#chat-selection').textContent,'chosen');
+const panel=el('#chat-panel'),expand=el('#chat-expand'),grip=el('#chat-compact-handle'),pin=el('#chat-pin'),bar=el('#chat-bar');
+let wheelCancelled=false;
+const wheel=(deltaY,ctrlKey=true)=>{wheelCancelled=false;panel.events.wheel({deltaY,ctrlKey,preventDefault(){wheelCancelled=true;}});return wheelCancelled;};
+assert.equal(wheel(-100,false),false,'Ordinary scrolling remains available.');
+assert.equal(wheel(-100),true,'Ctrl+wheel zooms the expanded chat.');
+assert.equal(panel.style['--chat-content-size'],'14px');
+for(let i=0;i<20;i++)wheel(-100);
+assert.equal(panel.style['--chat-content-size'],'24px','The content zoom has an upper bound.');
+for(let i=0;i<30;i++)wheel(100);
+assert.equal(panel.style['--chat-content-size'],'10px','The content zoom has a lower bound.');
+assert.equal(wheel(0),false);
+assert.equal(wheel(-100),true);
+assert.equal(panel.style['--chat-content-size'],'11px');
+el('#chat-input').value='Keep my draft while moving.';
+windowEvents.pointerdown({target:el('#outside')});assert.equal(panel.dataset.collapsed,'true');
+assert.equal(wheel(-100),false,'Collapsed chat leaves Ctrl+wheel to the page.');
+assert.equal(panel.style['--chat-content-size'],'11px');
+const compactStart={left:Number.parseFloat(panel.style.left),top:Number.parseFloat(panel.style.top)};
+const movePointer={pointerId:55,button:0,buttons:1,clientX:compactStart.left+20,clientY:compactStart.top+20,preventDefault(){}};
+expand.onpointerdown(movePointer);expand.onpointermove({...movePointer,clientX:movePointer.clientX+35,clientY:movePointer.clientY-25});
+expand.onpointermove({...movePointer,clientX:movePointer.clientX+30,clientY:movePointer.clientY-20});
+assert.equal(animationFrames.size,1,'Rapid compact drag events share one screen frame.');
+assert.equal(panel.style.left,compactStart.left+'px','Dragging does not relayout the compact bar.');
+flushFrames();assert.equal(panel.style.transform,'translate3d(30px, -20px, 0)');
+expand.onpointerup({...movePointer,clientX:movePointer.clientX+35,clientY:movePointer.clientY-25});
+assert.equal(panel.style.transform,'');assert.equal(animationFrames.size,0);
+assert.equal(panel.dataset.collapsed,'true');assert.equal(Number.parseFloat(panel.style.left),compactStart.left+35);
+expand.onclick();assert.equal(panel.dataset.collapsed,'true','Dragging the minus control does not minimize the bar.');
+expand.onclick();assert.equal(panel.dataset.mini,'true','The minus control shrinks the bar to a small bubble.');
+const mini=el('#chat-mini');
+mini.onclick({detail:1});assert.equal(panel.dataset.mini,'true','The first click waits for a possible double-click.');
+await new Promise(resolve=>setTimeout(resolve,330));
+assert.equal(panel.dataset.collapsed,'true');assert.equal(panel.dataset.mini,'false','A single click opens the compact bar.');
+expand.onclick();assert.equal(panel.dataset.mini,'true');
+mini.onclick({detail:1});mini.onclick({detail:2});
+assert.equal(panel.dataset.collapsed,'false','Double-clicking the bubble opens the floating chat directly.');
+await new Promise(resolve=>setTimeout(resolve,330));
+assert.equal(panel.dataset.collapsed,'false','The pending single-click cannot reopen the bar.');
+el('#chat-close').onclick();assert.equal(panel.dataset.mini,'true','Closing a panel opened from the bubble returns to the bubble.');
+mini.onclick({detail:1});await new Promise(resolve=>setTimeout(resolve,330));
+assert.equal(panel.dataset.mini,'false');
+panel.events.dblclick({target:el('#chat-input'),preventDefault(){}});
+assert.equal(panel.dataset.collapsed,'false');assert.equal(panel.style.height,'620px');
+assert.equal(el('#chat-input').value,'Keep my draft while moving.');
+windowEvents.pointerdown({target:el('#outside')});assert.equal(panel.dataset.mini,'false','A panel opened from the bar returns to the bar.');
+panel.events.dblclick({target:el('#chat-input'),preventDefault(){}});
+pin.onclick();assert.equal(pin.attributes['aria-pressed'],'true');
+windowEvents.pointerdown({target:el('#outside')});assert.equal(panel.dataset.collapsed,'false','A locked panel stays expanded.');
+pin.onclick();windowEvents.pointerdown({target:el('#outside')});assert.equal(panel.dataset.collapsed,'true');
+expand.onkeydown({key:'ArrowLeft',preventDefault(){}});assert.equal(Number.parseFloat(panel.style.left),compactStart.left+15);
+const gripStart={left:Number.parseFloat(panel.style.left),top:Number.parseFloat(panel.style.top)};
+const gripPointer={pointerId:57,button:0,buttons:1,clientX:gripStart.left+30,clientY:gripStart.top+3,preventDefault(){}};
+grip.onpointerdown(gripPointer);grip.onpointermove({...gripPointer,clientX:gripPointer.clientX+25,clientY:gripPointer.clientY-15});
+grip.onpointerup({...gripPointer,clientX:gripPointer.clientX+25,clientY:gripPointer.clientY-15});
+const compactMoved={left:Number.parseFloat(panel.style.left),top:Number.parseFloat(panel.style.top)};
+assert.equal(compactMoved.left,gripStart.left+25);assert.equal(compactMoved.top,gripStart.top-15);
+panel.events.dblclick({target:el('#chat-input'),preventDefault(){}});assert.equal(panel.dataset.collapsed,'false');
+const expandedStart={left:Number.parseFloat(panel.style.left),top:Number.parseFloat(panel.style.top)};
+const barPointer={pointerId:56,button:0,buttons:1,clientX:20,clientY:60,target:bar,preventDefault(){}};
+bar.onpointerdown(barPointer);bar.onpointermove({...barPointer,clientX:60,clientY:80});bar.onpointerup({...barPointer,clientX:60,clientY:80});
+assert.equal(Number.parseFloat(panel.style.left),expandedStart.left+40);
+assert.equal(Number.parseFloat(panel.style.top),expandedStart.top+20);
+bar.onpointerdown(barPointer);bar.onpointermove({...barPointer,clientX:50,clientY:90});
+assert.equal(animationFrames.size,1,'Floating chat drag also waits for a screen frame.');
+bar.onpointercancel(barPointer);flushFrames();
+assert.equal(panel.style.transform,'');assert.equal(animationFrames.size,0);
+assert.equal(Number.parseFloat(panel.style.left),expandedStart.left+70,'Cancel keeps the last visible position.');
+assert.equal(Number.parseFloat(panel.style.top),expandedStart.top+50);
+const expandedMoved={left:Number.parseFloat(panel.style.left),top:Number.parseFloat(panel.style.top)};
+windowEvents.pointerdown({target:el('#outside')});assert.equal(panel.dataset.collapsed,'true');
+assert.equal(Number.parseFloat(panel.style.left),compactMoved.left);assert.equal(Number.parseFloat(panel.style.top),compactMoved.top);
+grip.events.keydown({key:'Enter',preventDefault(){}});assert.equal(panel.dataset.collapsed,'false');
+assert.equal(Number.parseFloat(panel.style.left),expandedMoved.left);assert.equal(Number.parseFloat(panel.style.top),expandedMoved.top);
+window.innerHeight=50;windowEvents.resize();assert.equal(panel.style.height,'34px','Keep a dragged chat inside a shorter window.');
+window.innerHeight=800;windowEvents.resize();assert.equal(panel.style.height,'620px','Restore the original chat height when space returns.');
+assert.equal(el('#chat-input').value,'Keep my draft while moving.');el('#chat-input').value='';
 await Promise.resolve();
+el('#chat-config').getBoundingClientRect=()=>({left:740,top:700,bottom:736});
+el('#chat-panel-settings').events.beforetoggle({newState:'open'});
+assert.equal(el('#chat-config').attributes['aria-expanded'],'true');
+assert.equal(el('#chat-panel-settings').style.bottom,'108px');
+el('#chat-panel-models').children.find(button=>button.textContent==='Test Model ›').onclick();
+assert.deepEqual(el('#chat-panel-efforts').children.map(button=>button.textContent),['默认 · 低','低','高']);
+el('#chat-panel-efforts').children.find(button=>button.textContent==='高').onclick();
+assert.equal(el('#chat-model').value,'test-model');assert.equal(el('#chat-effort').value,'high');
+assert.equal(el('#chat-config').attributes['aria-expanded'],'false');
+assert.equal(el('#chat-config-name').textContent,'Test Model');
 el('#chat-model').value='test-model';el('#chat-model').onchange();
 el('#chat-effort').value='high';el('#chat-effort').onchange();
 assert.equal(el('#chat-quick-efforts').children.find(button=>button.textContent==='高').attributes['aria-pressed'],'true');
@@ -145,6 +246,8 @@ await el('#chat-form').onsubmit({preventDefault(){}});
 assert.equal(calls.find(call=>call.url==='/chat').body.model,'test-model');
 assert.equal(calls.find(call=>call.url==='/chat').body.effort,'high');
 assert.equal(el('#chat-proposal').hidden,false);
+assert.equal(el('#chat-messages').children[0].dataset.role,'user');
+assert.equal(el('#chat-messages').children.at(-1).dataset.role,'assistant');
 const replyBody=el('#chat-messages').children.at(-1).children[1];
 assert.equal(replyBody.className,'chat-markdown');
 assert(replyBody.innerHTML.includes('<strong>Suggestion</strong>') && replyBody.innerHTML.includes('<em>brief</em>'));
@@ -153,22 +256,23 @@ assert(replyBody.innerHTML.includes('<code>$literal$ **code**</code>'),'Code pre
 assert(!replyBody.innerHTML.includes('katex-error'));
 const resizer=el('#chat-panel').children[0],panelWidth=()=>Number.parseFloat(el('#chat-panel').style.width);
 assert.equal(resizer.attributes.role,'separator');assert.equal(resizer.attributes['aria-orientation'],'vertical');
-assert.equal(resizer.title,'调整项目对话栏宽度');assert.equal(resizer.tabIndex,0);
+assert.equal(resizer.title,'调整浮动对话宽度');assert.equal(resizer.tabIndex,0);
 const resizePointer={pointerId:12,button:0,buttons:1,clientX:600,preventDefault(){}};
 const beforeResizeSource=source,beforeResizeCalls=calls.length;
+const startingWidth=panelWidth();assert.equal(startingWidth,440);
 el('#chat-input').value='Keep this question draft.';
 resizer.onpointerdown(resizePointer);
 resizer.onpointermove({...resizePointer,clientX:590});resizer.onpointermove({...resizePointer,clientX:580});
-assert.equal(animationFrames.size,1);assert.equal(panelWidth(),320,'Pointer events defer width changes until the next screen frame.');
-flushFrames();assert.equal(panelWidth(),340,'Dragging the left border left widens the chat.');
-resizer.onpointerup({...resizePointer,type:'pointerup',clientX:570});assert.equal(panelWidth(),350,'Release uses the final pointer position.');
+assert.equal(animationFrames.size,1);assert.equal(panelWidth(),startingWidth,'Pointer events defer width changes until the next screen frame.');
+flushFrames();assert.equal(panelWidth(),startingWidth-20,'Dragging the right border left narrows the chat.');
+resizer.onpointerup({...resizePointer,type:'pointerup',clientX:570});assert.equal(panelWidth(),startingWidth-30,'Release uses the final pointer position.');
 assert.equal(resizer.capture,null);assert.equal(animationFrames.size,0);assert(!el('main').classList.contains('chat-resizing'));
-resizer.onkeydown({key:'ArrowRight',preventDefault(){}});assert.equal(panelWidth(),330);
+resizer.onkeydown({key:'ArrowRight',preventDefault(){}});assert.equal(panelWidth(),startingWidth-10);
 resizer.onpointerdown(resizePointer);resizer.onpointermove({...resizePointer,clientX:2000});
-resizer.onpointerup({...resizePointer,type:'pointerup',clientX:2000});assert.equal(panelWidth(),280,'Keep the chat usable at minimum width.');
+resizer.onpointerup({...resizePointer,type:'pointerup',clientX:2000});assert.equal(panelWidth(),900,'Leave part of the workspace visible.');
 resizer.onpointerdown(resizePointer);resizer.onpointermove({...resizePointer,clientX:-2000});
-resizer.onpointerup({...resizePointer,type:'pointerup',clientX:-2000});assert.equal(panelWidth(),900,'Leave part of the workspace visible.');
-el('main').clientWidth=400;windowEvents.resize();assert.equal(panelWidth(),360,'Clamp resized chat width when the window becomes smaller.');
+resizer.onpointerup({...resizePointer,type:'pointerup',clientX:-2000});assert.equal(panelWidth(),280,'Keep the chat usable at minimum width.');
+el('#chat-panel').style.width='900px';el('main').clientWidth=400;windowEvents.resize();assert.equal(panelWidth(),360,'Clamp resized chat width when the window becomes smaller.');
 el('main').clientWidth=1000;el('#chat-panel').style.width='320px';
 resizer.onpointerdown({...resizePointer,button:2});assert.equal(resizer.capture,null);
 for (const cancel of [()=>resizer.onpointercancel(resizePointer),()=>windowEvents.blur(),
@@ -182,12 +286,30 @@ for (const cancel of [()=>resizer.onpointercancel(resizePointer),()=>windowEvent
 const beforeKeyboardResize=panelWidth();
 resizer.onpointerdown(resizePointer);resizer.onpointermove({...resizePointer,clientX:580});
 resizer.onkeydown({key:'ArrowLeft',preventDefault(){}});flushFrames();
-assert.equal(panelWidth(),beforeKeyboardResize+40);assert.equal(resizer.capture,null,'Keyboard adjustment ends a pending pointer drag.');
+assert.equal(panelWidth(),Math.max(280,beforeKeyboardResize-40));assert.equal(resizer.capture,null,'Keyboard adjustment ends a pending pointer drag.');
 assert.equal(source,beforeResizeSource);assert.equal(calls.length,beforeResizeCalls,'Resizing never sends a question or compiles.');
 assert.equal(el('#chat-input').value,'Keep this question draft.');el('#chat-input').value='';
 resizer.onpointerdown(resizePointer);resizer.onpointermove({...resizePointer,clientX:580});el('#chat-close').onclick();
 flushFrames();assert.equal(resizer.capture,null);assert.equal(animationFrames.size,0);
-const closedWidth=panelWidth();chat.open();assert.equal(panelWidth(),closedWidth,'Closing and reopening retains the width in this page.');
+const closedWidth=panelWidth();assert.equal(el('#chat-panel').dataset.collapsed,'true');chat.open();assert.equal(panelWidth(),closedWidth,'Collapsing and reopening retains the width in this page.');
+const corner=panel.children.at(-1),cornerHeight=Number.parseFloat(panel.style.height);
+assert.equal(corner.className,'chat-corner-resizer');
+assert.equal(corner.attributes['aria-label'],'调整浮动对话大小');
+const cornerPointer={pointerId:91,button:0,buttons:1,clientX:400,clientY:600,preventDefault(){}};
+corner.onpointerdown(cornerPointer);
+corner.onpointermove({...cornerPointer,clientX:430,clientY:640});
+corner.onpointermove({...cornerPointer,clientX:440,clientY:650});
+assert.equal(animationFrames.size,1,'Corner resize events share one screen frame.');
+assert.equal(panelWidth(),closedWidth);
+flushFrames();assert.equal(panelWidth(),closedWidth+40);assert.equal(Number.parseFloat(panel.style.height),cornerHeight+50);
+corner.onpointerup({...cornerPointer,clientX:450,clientY:660});
+assert.equal(panelWidth(),closedWidth+50,'Release uses the final corner position.');
+assert.equal(Number.parseFloat(panel.style.height),cornerHeight+60);
+assert.equal(animationFrames.size,0);assert.equal(corner.capture,null);
+el('#chat-close').onclick();chat.open();
+assert.equal(Number.parseFloat(panel.style.height),cornerHeight+60,'Corner height survives collapse and reopening.');
+corner.onpointerdown(cornerPointer);corner.onpointermove({...cornerPointer,clientX:470,clientY:670});
+corner.onpointercancel(cornerPointer);flushFrames();assert.equal(animationFrames.size,0);assert.equal(corner.capture,null);
 console.log('PASS: chat width drag, frame coalescing, exact release, keyboard, bounds, window resize, cancellation and unchanged draft/source');
 const chooseColor=value=>{el('#chat-color').value=value;el('#chat-color').onchange();};
 chooseColor('blue');
@@ -196,6 +318,10 @@ assert.equal(el('#chat-replacement').textContent,'{\\color{blue}revised}');
 chooseColor('');
 assert.equal(el('#chat-replacement').textContent,'revised');
 el('#chat-close').onclick();el('#chat-view').onclick();assert(el('#settings-menu').hidden);
+assert.equal(pin.attributes['aria-pressed'],'true','Opening chat from Settings pins the floating panel.');
+windowEvents.pointerdown({target:el('#outside')});assert.equal(panel.dataset.collapsed,'false');
+el('#chat-close').onclick();assert.equal(panel.dataset.mini,'true','Settings chat returns to the persistent bubble.');
+pin.onclick();
 assert.equal(el('#chat-proposal').hidden,false,'Reopening the same selection keeps the proposal.');
 source='before CHOSEN after';el('#chat-apply').onclick();
 assert.equal(source,'before CHOSEN after');assert.match(el('#chat-status').textContent,/选区内容已变化/);
@@ -220,14 +346,16 @@ el('#chat-model').value='other';el('#chat-model').onchange();
 assert.equal(el('#chat-effort').value,'');assert.equal(el('#chat-effort').children.length,2);
 el('#chat-model').value='';el('#chat-model').onchange();assert.equal(el('#chat-effort').disabled,true);
 chooseColor('');
-await el('#chat-end').onclick();assert.equal(el('#chat-panel').hidden,true);assert.equal(el('#chat-messages').children.length,0);
+await el('#chat-end').onclick();assert.equal(el('#chat-panel').dataset.collapsed,'true');assert.equal(el('#chat-messages').children.length,0);
 selection={from:{line:0,ch:13},to:{line:0,ch:20}};
 chat.open();el('#chat-input').value='New conversation';
 await el('#chat-form').onsubmit({preventDefault(){}});
 assert.equal(calls.filter(call=>call.url==='/chat').at(-1).body.messages.length,1);
 let release;deferred=new Promise(resolve=>release=resolve);
 el('#chat-input').value='Slow request';const pending=el('#chat-form').onsubmit({preventDefault(){}});
+assert.equal(el('#chat-typing').hidden,false,'The typing indicator follows the real request.');
 await el('#chat-end').onclick();release({id:'late-job'});await pending;
+assert.equal(el('#chat-typing').hidden,true);
 assert(calls.some(call=>call.url==='/chat/cancel'&&call.body.id==='late-job'));
 assert.equal(el('#chat-messages').children.length,0,'A late reply cannot revive an ended conversation.');
 deferred=null;source='before chosen after';selection={from:{line:0,ch:7},to:{line:0,ch:13}};
@@ -235,7 +363,7 @@ chat.open();el('#chat-input').value='Keep my full-panel draft.';
 el('#chat-model').value='test-model';el('#chat-model').onchange();el('#chat-effort').value='high';
 chooseColor('blue');
 el('#chat-close').onclick();el('#chat-quick-menu').onclick();
-assert.equal(el('#chat-panel').hidden,true);
+assert.equal(el('#chat-panel').dataset.collapsed,'true');
 assert.equal(el('#chat-quick-input').placeholder,'写下这处的修改要求…');
 assert.equal(el('#chat-quick-send').attributes['aria-label'],'添加批注');assert.equal(el('#chat-quick-send').textContent,'','Opening must preserve the circular action SVG');
 assert.equal(el('#chat-quick-input').value,'');
@@ -318,7 +446,7 @@ assert.deepEqual(annotationSaves[0].change.items.map(item=>[item.selection,item.
   ['after','Rewrite the ending','{\\color{blue}ending}']]);
 assert.match(annotationSaves[0].change.id,/^[0-9a-f]{32}$/);
 assert.equal(operations,1,'Keep applies only its own range in one undoable editor operation.');
-assert.equal(el('#chat-input').value,'Keep my full-panel draft.');assert.equal(el('#chat-panel').hidden,true);
+assert.equal(el('#chat-input').value,'Keep my full-panel draft.');assert.equal(el('#chat-panel').dataset.collapsed,'true');
 assert.equal(painted.length,0);assert.equal(el('#annotations-send').disabled,true);
 assert.equal(el('#annotations-send').hidden,true);
 assert.equal(el('#annotations-send').attributes['aria-busy'],'false');
@@ -354,7 +482,7 @@ assert(calls.some(call=>call.url==='/chat/cancel'&&call.body.id==='cancelled-bat
 selection={from:{line:0,ch:4},to:{line:0,ch:8}};
 chat.openQuick({left:100,top:100});el('#chat-quick-input').value='Overlapping';
 await el('#chat-quick-form').onsubmit({preventDefault(){}});assert.equal(painted.length,2);
-assert.match(el('#chat-quick-status').textContent,/重叠/);el('#chat-quick-cancel').onclick();
+assert.match(el('#chat-quick-status').textContent,/重叠/);dismissQuick();
 // A history failure during Keep preserves both reviews and the complete source.
 saveFailure=true;await el('#annotations-send').onclick();
 const failedReview=painted[0],remainingReview=painted[1];
@@ -456,7 +584,7 @@ await el('#chat-end').onclick();assert.equal(el('#chat-quick').open,false);
 selected=true;chat.open();assert.equal(el('#chat-selection').textContent,'chosen');
 el('#chat-close').onclick();chat.openQuick({left:110,top:220});
 assert.equal(el('#chat-quick').style.left,'110px');assert.equal(el('#chat-quick').style.top,'742px');
-assert.equal(el('#chat-panel').hidden,true);assert.equal(el('#chat-quick-send').disabled,false);
+assert.equal(el('#chat-panel').dataset.collapsed,'true');assert.equal(el('#chat-quick-send').disabled,false);
 assert.equal(chat.busy,false);
 // Source and PDF share placement, with room below the selection or a fallback above it.
 chat.openQuick({left:110,top:220,selectionTop:180,selectionBottom:250});
@@ -511,44 +639,76 @@ console.log('PASS: queued comments, per-range Keep/Undo, shifted Unicode anchors
 
 // Discard an import that completes after leaving its original annotation.
 styleSelect.value='';styleSelect.onchange();
-el('#chat-quick-cancel').onclick();events.swapDoc();
+dismissQuick();events.swapDoc();
 chat.openQuick({left:100,top:100});
 let finishImport;
 el('#chat-style-file').files=[{name:'late.txt',size:5,arrayBuffer:()=>new Promise(resolve=>finishImport=resolve)}];
 const importPending=el('#chat-style-file').onchange();
-el('#chat-quick-cancel').onclick();chat.openQuick({left:100,top:100});
+dismissQuick();chat.openQuick({left:100,top:100});
 finishImport(new TextEncoder().encode('Later').buffer);await importPending;
 assert.equal(styleSelect.value,'');assert(!styleSelect.children.some(option=>option.textContent==='late'));
 styleSelect.value='tao-zh';styleSelect.onchange();styleSelect.value='';styleSelect.onchange();
 assert.equal(el('#chat-style-control').dataset.active,'false','No style returns the Style control to its inactive appearance.');
-el('#chat-quick-cancel').onclick();events.swapDoc();
+dismissQuick();events.swapDoc();
 assert.equal(styleSelect.children.length,6,'Document changes discard temporary imports.');
 chat.openQuick({left:100,top:100});
 styleSelect.value='tao-zh';styleSelect.onchange();
-el('#chat-quick-cancel').onclick();events.swapDoc();chat.openQuick({left:100,top:100});
+dismissQuick();events.swapDoc();chat.openQuick({left:100,top:100});
 assert.equal(styleSelect.value,'tao-zh','Preset defaults survive cancellation and document switches.');
 el('#chat-style-file').files=[promptFile('Persistent.txt','Use compact paragraphs.')];
 await el('#chat-style-file').onchange();
 const savedImport=JSON.parse(storedPreferences.get('latex-codex-writing-style'));
 assert.equal(savedImport.name,'Persistent');assert.equal(savedImport.prompt,'Use compact paragraphs.');
-el('#chat-quick-cancel').onclick();events.swapDoc();chat.openQuick({left:100,top:100});
+dismissQuick();events.swapDoc();chat.openQuick({left:100,top:100});
 assert.equal(styleSelect.value,'custom-saved','Imported defaults survive document switches.');
-el('#chat-quick-cancel').onclick();
+dismissQuick();
 const reloadedStyleChat=attachSelectionChat(editor,request);reloadedStyleChat.openQuick({left:100,top:100});
 assert.equal(styleSelect.value,'custom-saved','A new editor instance restores the saved imported prompt.');
 assert.equal(el('#chat-style-control').dataset.active,'true');
-styleSelect.value='';styleSelect.onchange();el('#chat-quick-cancel').onclick();
+styleSelect.value='';styleSelect.onchange();dismissQuick();
 reloadedStyleChat.openQuick({left:100,top:100});assert.equal(styleSelect.value,'');
 assert.equal(storedPreferences.get('latex-codex-writing-style'),'null');
-el('#chat-quick-cancel').onclick();
+dismissQuick();
 console.log('PASS: per-comment snapshots, persistent style defaults, imported prompts, explicit clearing and stale import rejection');
+
+// The avatar sends only the current comment; the arrow still queues comments for later.
+source='before chosen after';selection={from:{line:0,ch:7},to:{line:0,ch:13}};doc={};selected=true;
+let directBody, directPainted=[];
+const directRequest=async(url,options)=>{
+  if(url==='/chat/history')return {messages:[],revision:0};
+  if(url==='/chat'){directBody=JSON.parse(options.body);return {id:'direct-job'};}
+  if(url==='/chat?id=direct-job')return {status:'done',reply:'Reviewed current comment.',replacement:null,
+    replacements:[{id:directBody.annotations[0].id,replacement:null}],memory_revision:1};
+  return request(url,options);
+};
+const directChat=attachSelectionChat(editor,directRequest,items=>{directPainted=[...items];});
+directChat.openQuick({left:100,top:100});
+assert.equal(el('#chat-quick-direct-send').disabled,true,'An empty comment cannot be sent.');
+el('#chat-quick-input').value='Queue this one';el('#chat-quick-input').events.input();
+await el('#chat-quick-form').onsubmit({preventDefault(){}});
+assert.equal(directBody,undefined,'The arrow still only queues a comment.');
+selection={from:{line:0,ch:14},to:{line:0,ch:19}};
+directChat.openQuick({left:100,top:100});
+el('#chat-quick-input').value='Send this one';el('#chat-quick-input').events.input();
+assert.equal(el('#chat-quick-direct-send').disabled,false);
+await el('#chat-quick-direct-send').onclick();
+assert.equal(directBody.annotations.length,1);
+assert.equal(directBody.annotations[0].selection,'after');
+assert.equal(directBody.annotations[0].request,'Send this one');
+assert.equal(source,'before chosen after');
+assert.equal(directPainted.length,1);
+assert.equal(directPainted[0].request,'Queue this one','Another queued comment remains for later Send.');
+assert.equal(el('#annotations-send').hidden,false);
+events.swapDoc();
+console.log('PASS: avatar sends the current comment directly while queued comments stay pending');
 
 // A reloaded editor restores project questions and uses them after changing selections.
 source='before chosen after';selection={from:{line:0,ch:7},to:{line:0,ch:13}};doc={};selected=true;
-let resumedBody;
+let resumedBody, exportedReply;
 const resumedRequest=async(url,options)=>{
-  if(url==='/chat/history')return {revision:4,messages:[{role:'user',content:'Keep energy norm.',selection:'Old passage.'},
-    {role:'assistant',content:JSON.stringify({reply:String.raw`**Terminology** remembered. $\alpha$`,replacement:null})}]};
+  if(url==='/chat/history')return {revision:4,project:'test-project',messages:[{id:3,role:'user',content:'Keep energy norm.',selection:'Old passage.'},
+    {id:4,role:'assistant',content:JSON.stringify({reply:String.raw`**Terminology** remembered. $\alpha$`,replacement:null})}]};
+  if(url==='/chat/export'){exportedReply=JSON.parse(options.body);return {file:'AI对话记录.md'};}
   if(url==='/chat'){resumedBody=JSON.parse(options.body);return {id:'resumed-job'};}
   if(url==='/chat?id=resumed-job')return {status:'done',reply:'Continued.',replacement:null,memory_revision:6};
   return request(url,options);
@@ -558,6 +718,13 @@ await new Promise(resolve=>setTimeout(resolve,0));
 assert.equal(el('#chat-messages').children.length,2);
 const restoredReply=el('#chat-messages').children[1].children[1].innerHTML;
 assert(restoredReply.includes('<strong>Terminology</strong>') && restoredReply.includes('class="katex"'),'Reopened project history renders the original Markdown reply.');
+const savedArrow=el('#chat-messages').children[1].children.at(-1);
+assert.equal(el('#chat-messages').children[1].children[1].children.includes(savedArrow),false,'Export control stays outside the reply bubble.');
+assert.equal(savedArrow.textContent,'↗');
+await savedArrow.onclick();
+assert.deepEqual(exportedReply,{id:4,project:'test-project',language:'zh-CN'});
+assert.equal(savedArrow.textContent,'✓');assert.equal(savedArrow.disabled,true);
+assert.equal(savedArrow.dataset.saved,'true');
 el('#chat-input').value='Explain this new selection.';await el('#chat-form').onsubmit({preventDefault(){}});
 assert.equal(resumedBody.remember,true);assert.equal(resumedBody.memory_revision,4);
 assert(resumedBody.messages.some(message=>message.content==='Keep energy norm.'));
@@ -595,3 +762,84 @@ assert.equal(mainBodies[1].annotations[0].request,'Keep notation.');
 assert.equal(deepseekChat.hasAnnotations,false);assert.equal(source,'before chosen after');
 assert.equal(mainButton.hidden,true);
 console.log('PASS: DeepSeek main-chat forwarding, autosave/stale protection, preserved failures and stable retry identity');
+
+// The project chat also accepts a question without a source selection.
+document.documentElement.dataset.aiBackend='codex';selected=false;doc={};
+let plainBody, plainPending;
+const plainRequest=async(url,options)=>{
+  if(url==='/chat/history')return {messages:[],revision:0,project:'test-project'};
+  if(url==='/chat'){plainBody=JSON.parse(options.body);return plainPending ? await plainPending : {id:'plain-job'};}
+  if(url==='/chat?id=plain-job')return {status:'done',reply:'General answer.',replacement:null,memory_revision:1};
+  if(url==='/chat/export'){exportedReply=JSON.parse(options.body);return {file:'AI对话记录.md'};}
+  return request(url,options);
+};
+const plainChat=attachSelectionChat(editor,plainRequest);
+plainChat.open();assert.equal(el('#chat-status').textContent,'');
+el('#chat-input').value='What is the main result?';
+const plainSource=source;
+await el('#chat-form').onsubmit({preventDefault(){}});
+assert.equal(plainBody.selection,'');
+assert.equal(plainBody.messages.at(-1).content,'What is the main result?');
+assert(el('#chat-messages').children.at(-1).children[1].innerHTML.includes('General answer.'));
+const liveArrow=el('#chat-messages').children.at(-1).children.at(-1);
+el('#language').value='en';el('#language').onchange();
+await liveArrow.onclick();assert.deepEqual(exportedReply,{id:1,project:'test-project',language:'en'});
+el('#language').value='zh-CN';el('#language').onchange();
+assert.equal(el('#chat-proposal').hidden,true);
+assert.equal(source,plainSource);
+el('#chat-close').onclick();assert.equal(el('#chat-panel').dataset.collapsed,'true');
+assert.equal(el('#chat-input').placeholder,'双击放大悬浮框');
+let formSubmits=0;el('#chat-form').requestSubmit=()=>{formSubmits++;};
+el('#chat-input').events.keydown({key:'Enter',shiftKey:false,isComposing:false,preventDefault(){}});
+el('#chat-input').events.keydown({key:'Enter',shiftKey:true,isComposing:false,preventDefault(){}});
+el('#chat-input').events.keydown({key:'Enter',shiftKey:false,isComposing:true,preventDefault(){}});
+assert.equal(formSubmits,1,'Enter sends; Shift+Enter and IME composition do not.');
+let releasePlain;plainPending=new Promise(resolve=>releasePlain=resolve);
+el('#chat-input').value='Continue from the compact bar.';
+const compactReply=el('#chat-form').onsubmit({preventDefault(){}});
+assert.equal(el('#chat-panel').dataset.collapsed,'true','Sending from the bar does not open the floating panel.');
+assert.equal(el('#chat-panel').dataset.sending,'true');
+assert.equal(el('#chat-compact-status').textContent,'Codex 正在思考…');
+releasePlain({id:'plain-job'});await compactReply;
+assert.equal(el('#chat-panel').dataset.collapsed,'true');
+assert.equal(el('#chat-panel').dataset.sending,'false');
+el('#chat-bar-permanent').checked=false;el('#chat-bar-permanent').onchange();
+assert.equal(el('#chat-panel').hidden,true,'Disabling permanence hides the collapsed chat.');
+let shortcutPrevented=0,shortcutStopped=0;
+const shortcut=(overrides={})=>({key:'q',ctrlKey:true,preventDefault(){shortcutPrevented++;},stopImmediatePropagation(){shortcutStopped++;this.immediateStopped=true;},...overrides});
+windowEvents.keydown(shortcut({ctrlKey:false}));assert.equal(el('#chat-panel').hidden,true,'Plain Q does not open the chat.');
+windowEvents.keydown(shortcut());
+assert.equal(el('#chat-panel').dataset.collapsed,'false');
+assert(el('#chat-panel').classList.contains('chat-pop-in'),'Opening from no compact entry plays the popup animation.');
+windowEvents.keydown(shortcut({repeat:true}));assert.equal(el('#chat-panel').dataset.collapsed,'false');
+const focusBeforeShortcut=editorFocuses;
+windowEvents.keydown(shortcut());
+assert.equal(editorFocuses,focusBeforeShortcut+1,'The shortcut returns focus to the editor when closing.');
+assert.equal(el('#chat-panel').dataset.closing,'true');
+assert.equal(el('#chat-panel').hidden,false,'The panel stays visible during its exit animation.');
+await new Promise(resolve=>setTimeout(resolve,240));
+assert.equal(el('#chat-panel').hidden,true);
+windowEvents.keydown(shortcut());windowEvents.keydown(shortcut());windowEvents.keydown(shortcut());
+await new Promise(resolve=>setTimeout(resolve,240));
+assert.equal(el('#chat-panel').dataset.collapsed,'false','Reopening cancels a pending hide.');
+assert.equal(el('#chat-panel').hidden,false);
+assert.equal(shortcutPrevented,5);assert.equal(shortcutStopped,5);
+el('#chat-close').onclick();await new Promise(resolve=>setTimeout(resolve,240));
+assert.equal(el('#chat-panel').hidden,true);
+window.matchMedia=()=>({matches:true});
+windowEvents.keydown(shortcut());assert.equal(el('#chat-panel').classList.contains('chat-pop-in'),false,'Reduced motion opens without animation.');
+windowEvents.keydown(shortcut());assert.equal(el('#chat-panel').hidden,true,'Reduced motion hides without delay.');
+delete window.matchMedia;
+el('#chat-view').onclick();
+el('#chat-bar-permanent').checked=true;el('#chat-bar-permanent').onchange();
+el('#chat-close').onclick();assert.equal(el('#chat-panel').dataset.mini,'true','Enabling the bubble while expanded changes its collapse destination.');
+el('#chat-bar-permanent').checked=false;el('#chat-bar-permanent').onchange();
+const querySelector=document.querySelector;
+document.querySelector=selector=>['#chat-mini','#chat-bar-permanent','#chat-compact-status'].includes(selector) ? null : querySelector(selector);
+attachSelectionChat(editor,plainRequest);
+assert.equal(el('#chat-panel').dataset.mini,'false','A service with cached older HTML keeps its original bar.');
+el('#chat-expand').onclick();assert.equal(el('#chat-panel').dataset.collapsed,'false');
+el('#chat-input').value='Still usable on old HTML.';
+await el('#chat-form').onsubmit({preventDefault(){}});
+document.querySelector=querySelector;
+console.log('PASS: ordinary project chat sends and replies without a source selection');

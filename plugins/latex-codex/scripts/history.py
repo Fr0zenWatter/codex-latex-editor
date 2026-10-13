@@ -12,6 +12,15 @@ import zlib
 
 SUMMARY_LANGUAGES = {'en':'English', 'zh-CN':'Simplified Chinese', 'zh-TW':'Traditional Chinese', 'ja':'Japanese',
                      'fr':'French', 'de':'German', 'es':'Spanish'}
+CHAT_EXPORT_NAMES = {
+    'en': ('AI Chat Notes.md', 'AI Reply'),
+    'zh-CN': ('AI对话记录.md', 'AI 回复'),
+    'zh-TW': ('AI對話記錄.md', 'AI 回覆'),
+    'ja': ('AIチャット記録.md', 'AIの回答'),
+    'fr': ('Notes de conversation IA.md', 'Réponse de l’IA'),
+    'de': ('KI-Chatnotizen.md', 'KI-Antwort'),
+    'es': ('Notas de chat de IA.md', 'Respuesta de IA'),
+}
 
 
 def summary_language(value):
@@ -60,7 +69,7 @@ class History:
         with closing(self.connect()) as db:
             revision = db.execute('SELECT COALESCE(MAX(id),0) FROM chat_messages').fetchone()[0]
             boundary = db.execute("SELECT COALESCE(MAX(id),0) FROM chat_messages WHERE role='boundary'").fetchone()[0]
-            rows = db.execute('SELECT role, content, file, selection FROM chat_messages WHERE id>? ORDER BY id DESC LIMIT 41', (boundary,)).fetchall()
+            rows = db.execute('SELECT id, role, content, file, selection FROM chat_messages WHERE id>? ORDER BY id DESC LIMIT 41', (boundary,)).fetchall()
         return {'revision': revision, 'messages': [dict(row) for row in reversed(rows[:40])],
                 'truncated': len(rows)>40, 'project': str(self.database.parent.parent)}
 
@@ -78,6 +87,33 @@ class History:
         with closing(self.connect()) as db, db:
             db.execute("INSERT INTO chat_messages(role,content) VALUES ('boundary','')")
         return self.chat_read()
+
+    def chat_export(self, message_id, language='zh-CN'):
+        if not isinstance(language, str) or language not in CHAT_EXPORT_NAMES:
+            raise ValueError('记录语言无效。')
+        with closing(self.connect()) as db:
+            row = db.execute("SELECT content FROM chat_messages WHERE id=? AND role='assistant'", (message_id,)).fetchone()
+        if row is None:
+            raise ValueError('找不到这条 AI 回复。')
+        try:
+            reply = json.loads(row['content']).get('reply')
+        except (ValueError, AttributeError):
+            reply = row['content']
+        if not isinstance(reply, str) or not reply.strip():
+            raise ValueError('这条 AI 回复没有可记录的内容。')
+        root = self.database.parent.parent.resolve()
+        filename, heading = CHAT_EXPORT_NAMES[language]
+        target = root / filename
+        if target.resolve().parent != root:
+            raise ValueError('记录文件必须位于项目目录内。')
+        marker = f'<!-- latex-codex-chat:{message_id} -->'
+        previous = target.read_text(encoding='utf-8') if target.exists() else ''
+        if marker in previous:
+            return {'file': target.name, 'already_saved': True}
+        prefix = '' if not previous else '\n' if previous.endswith('\n') else '\n\n'
+        with target.open('a', encoding='utf-8', newline='\n') as stream:
+            stream.write(f'{prefix}{marker}\n\n## {heading}\n\n{reply.strip()}\n')
+        return {'file': target.name, 'already_saved': False}
 
     def record(self, source, kind='external', force=False):
         with closing(self.connect()) as db, db:

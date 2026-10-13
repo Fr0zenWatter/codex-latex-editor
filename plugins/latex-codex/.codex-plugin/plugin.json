@@ -1,6 +1,6 @@
 {
   "name": "latex-codex",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Local LaTeX and Markdown editor with the signed-in native Codex CLI.",
   "author": {
     "name": "Local developer"

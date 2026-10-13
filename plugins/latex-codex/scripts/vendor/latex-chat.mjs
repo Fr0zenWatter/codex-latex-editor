@@ -15,14 +15,29 @@ export function colorReplacement(text, color, segments) {
 export function attachSelectionChat(editor, request, paintAnnotations = () => {}, recordAnnotations = async () => {}) {
   const $ = id => document.querySelector('#' + id);
   const panel = $('chat-panel'), input = $('chat-input'), messages = $('chat-messages'), status = $('chat-status');
+  const bar = $('chat-bar'), compactHandle = $('chat-compact-handle'), expandButton = $('chat-expand'), pinButton = $('chat-pin');
+  let contentSize = 13;
+  panel.addEventListener('wheel', event => {
+    if (!event.ctrlKey || panel.dataset.collapsed !== 'false' || !event.deltaY) return;
+    event.preventDefault();
+    contentSize = Math.max(10, Math.min(24, contentSize + (event.deltaY < 0 ? 1 : -1)));
+    panel.style.setProperty('--chat-content-size', contentSize + 'px');
+  }, {passive:false});
+  const miniButton = $('chat-mini'), permanentControl = $('chat-bar-permanent');
+  const permanentBar = permanentControl || {checked:true};
   const resizer = document.createElement('div');resizer.className = 'chat-resizer';resizer.tabIndex = 0;
   resizer.setAttribute('role','separator');resizer.setAttribute('aria-orientation','vertical');
   resizer.setAttribute('aria-controls','chat-panel');
-  const labelResizer = () => { resizer.title = t('调整项目对话栏宽度');resizer.setAttribute('aria-label',resizer.title); };
+  const labelResizer = () => { resizer.title = t('调整浮动对话宽度');resizer.setAttribute('aria-label',resizer.title); };
   labelResizer();panel.prepend(resizer);
+  const corner = document.createElement('div');corner.className = 'chat-corner-resizer';corner.tabIndex = 0;
+  corner.hidden = !miniButton;
+  corner.setAttribute('role','separator');corner.setAttribute('aria-controls','chat-panel');
+  corner.setAttribute('aria-label',t('调整浮动对话大小'));panel.append(corner);
   let panelDrag = null, panelFrame = null;
   function setPanelWidth(value) {
-    const max = panel.parentElement.clientWidth * .9, min = Math.min(280,max);
+    const max = Math.max(0,Math.min(panel.parentElement.clientWidth * .9,
+      window.innerWidth - (Number.parseFloat(panel.style.left) || 0) - 8)), min = Math.min(280,max);
     const width = Math.max(min,Math.min(max,value));panel.style.width = width + 'px';
     resizer.setAttribute('aria-valuemin',String(Math.round(min)));resizer.setAttribute('aria-valuemax',String(Math.round(max)));
     resizer.setAttribute('aria-valuenow',String(Math.round(width)));
@@ -30,13 +45,13 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   function endPanelResize(event) {
     if (!panelDrag || (event?.pointerId !== undefined && event.pointerId !== panelDrag.id)) return;
     if (panelFrame !== null) window.cancelAnimationFrame(panelFrame);panelFrame = null;
-    if (event?.type === 'pointerup') panelDrag.next = panelDrag.width + panelDrag.x - event.clientX;
+    if (event?.type === 'pointerup') panelDrag.next = panelDrag.width + event.clientX - panelDrag.x;
     setPanelWidth(panelDrag.next);
     const id = panelDrag.id;panelDrag = null;panel.parentElement.classList.remove('chat-resizing');
     if (resizer.hasPointerCapture(id)) resizer.releasePointerCapture(id);
   }
   resizer.onpointerdown = event => {
-    if (event.button !== 0 || panel.hidden) return;
+    if (event.button !== 0 || panel.hidden || panel.dataset.collapsed === 'true') return;
     event.preventDefault();endPanelResize();
     const width = panel.getBoundingClientRect().width;
     panelDrag = {id:event.pointerId,x:event.clientX,width,next:width};
@@ -45,21 +60,238 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   resizer.onpointermove = event => {
     if (!panelDrag || event.pointerId !== panelDrag.id) return;
     if (!(event.buttons & 1)) { endPanelResize(event);return; }
-    event.preventDefault();panelDrag.next = panelDrag.width + panelDrag.x - event.clientX;
+    event.preventDefault();panelDrag.next = panelDrag.width + event.clientX - panelDrag.x;
     if (panelFrame === null) panelFrame = window.requestAnimationFrame(() => {
       panelFrame = null;if (panelDrag) setPanelWidth(panelDrag.next);
     });
   };
   resizer.onpointerup = resizer.onpointercancel = resizer.onlostpointercapture = endPanelResize;
   resizer.onkeydown = event => {
-    if (!['ArrowLeft','ArrowRight'].includes(event.key) || panel.hidden) return;
-    event.preventDefault();endPanelResize();setPanelWidth(panel.getBoundingClientRect().width + (event.key === 'ArrowLeft' ? 20 : -20));
+    if (!['ArrowLeft','ArrowRight'].includes(event.key) || panel.hidden || panel.dataset.collapsed === 'true') return;
+    event.preventDefault();endPanelResize();setPanelWidth(panel.getBoundingClientRect().width + (event.key === 'ArrowRight' ? 20 : -20));
+  };
+  let cornerDrag = null, cornerFrame = null;
+  function setPanelSize(width, height) {
+    setPanelWidth(width);
+    const top = Number.parseFloat(panel.style.top) || 0;
+    const max = Math.max(0,window.innerHeight - top - 8), min = Math.min(240,max);
+    const next = Math.max(min,Math.min(max,height));
+    panel.style.height = next + 'px';
+    expandedPosition = {...(expandedPosition || {left:Number.parseFloat(panel.style.left) || 10,top}),height:next};
+  }
+  function endCornerResize(event, released = false) {
+    if (!cornerDrag || (event?.pointerId !== undefined && event.pointerId !== cornerDrag.id)) return;
+    if (cornerFrame !== null) window.cancelAnimationFrame(cornerFrame);cornerFrame = null;
+    const drag = cornerDrag;cornerDrag = null;
+    if (released) drag.next = {width:drag.width + event.clientX - drag.x,height:drag.height + event.clientY - drag.y};
+    setPanelSize(drag.next.width,drag.next.height);
+    delete panel.dataset.resizing;
+    if (corner.hasPointerCapture(drag.id)) corner.releasePointerCapture(drag.id);
+  }
+  corner.onpointerdown = event => {
+    if (event.button !== 0 || panel.hidden || panel.dataset.collapsed === 'true') return;
+    event.preventDefault();endCornerResize();endPanelResize();
+    const rect = panel.getBoundingClientRect();
+    cornerDrag = {id:event.pointerId,x:event.clientX,y:event.clientY,width:rect.width,height:rect.height,
+      next:{width:rect.width,height:rect.height}};
+    corner.setPointerCapture(event.pointerId);panel.dataset.resizing = 'corner';
+  };
+  corner.onpointermove = event => {
+    if (!cornerDrag || event.pointerId !== cornerDrag.id) return;
+    if (!(event.buttons & 1)) { endCornerResize(event);return; }
+    event.preventDefault();
+    cornerDrag.next = {width:cornerDrag.width + event.clientX - cornerDrag.x,
+      height:cornerDrag.height + event.clientY - cornerDrag.y};
+    if (cornerFrame === null) cornerFrame = window.requestAnimationFrame(() => {
+      cornerFrame = null;if (cornerDrag) setPanelSize(cornerDrag.next.width,cornerDrag.next.height);
+    });
+  };
+  corner.onpointerup = event => endCornerResize(event,true);
+  corner.onpointercancel = corner.onlostpointercapture = endCornerResize;
+  corner.onkeydown = event => {
+    const offsets = {ArrowLeft:[-20,0],ArrowRight:[20,0],ArrowUp:[0,-20],ArrowDown:[0,20]};
+    if (panel.dataset.collapsed === 'true' || !offsets[event.key]) return;
+    event.preventDefault();endCornerResize();
+    const rect = panel.getBoundingClientRect(), [dw,dh] = offsets[event.key];
+    setPanelSize(rect.width + dw,rect.height + dh);
   };
   window.addEventListener('blur', () => endPanelResize());
+  window.addEventListener('blur', () => endCornerResize());
   window.addEventListener('resize', () => {
-    endPanelResize();if (panel.style.width) setPanelWidth(Number.parseFloat(panel.style.width));
+    endPanelResize();endCornerResize();
+    if (panel.dataset.collapsed === 'true') positionCompact();
+    else { placeExpanded();if (panel.style.width) setPanelWidth(Number.parseFloat(panel.style.width)); }
   });
-  let memoryRevision=null,memoryLoading=null,memoryEpoch=0;
+  let compactPosition = null, expandedPosition = null, miniClickTimer = null, returnToMini = false, visibilityTimer = null;
+  const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  function stopVisibilityAnimation() {
+    clearTimeout(visibilityTimer);visibilityTimer = null;
+    panel.classList.remove('chat-pop-in');panel.classList.remove('chat-pop-out');
+    delete panel.dataset.closing;
+  }
+  const clampPosition = (left, top, width, height) => ({
+    left:Math.max(8,Math.min(left,window.innerWidth - width - 8)),
+    top:Math.max(8,Math.min(top,window.innerHeight - height - 8)),
+  });
+  function positionCompact() {
+    const pdf = $('preview').getBoundingClientRect();
+    const mini = panel.dataset.mini === 'true', width = Math.min(mini ? 54 : 440,window.innerWidth - 16);
+    const position = clampPosition(compactPosition?.left ?? (pdf.width ? pdf.left + 12 : 12),
+      compactPosition?.top ?? (pdf.height ? pdf.bottom - (mini ? 66 : 70) : window.innerHeight - 70),width,mini ? 54 : 58);
+    panel.style.left = position.left + 'px';panel.style.top = position.top + 'px';
+    if (compactPosition) compactPosition = position;
+  }
+  function placeExpanded() {
+    if (expandedPosition) {
+      const height = Math.min(expandedPosition.height,window.innerHeight - 16);
+      const position = clampPosition(expandedPosition.left,expandedPosition.top,panel.getBoundingClientRect().width,height);
+      panel.style.left = position.left + 'px';panel.style.top = position.top + 'px';
+      panel.style.height = height + 'px';panel.style.bottom = 'auto';
+      expandedPosition = {...position,height:expandedPosition.height};
+    } else {
+      panel.style.left = '10px';panel.style.top = '50px';
+      panel.style.height = Math.max(0,Math.min(620,window.innerHeight - 66)) + 'px';panel.style.bottom = 'auto';
+    }
+  }
+  function syncPlaceholder() { input.placeholder = t(panel.dataset.collapsed === 'true' ? '双击放大悬浮框' : '修改要求或问题'); }
+  function finishCollapse(mini) {
+    panel.hidden = !!miniButton && !permanentBar.checked;
+    if (panel.dataset.collapsed === 'true' && panel.dataset.mini === String(mini)) return;
+    endPanelResize();endCornerResize();panelSettings.hidePopover();panel.dataset.collapsed = 'true';panel.dataset.mini = String(mini);
+    syncPlaceholder();
+    panel.style.height = '';panel.style.bottom = 'auto';positionCompact();
+  }
+  function collapsePanel(mini = returnToMini) {
+    clearTimeout(miniClickTimer);miniClickTimer = null;
+    returnToMini = mini;
+    const hide = !!miniButton && !permanentBar.checked;
+    if (hide && panel.dataset.closing === 'true') return;
+    stopVisibilityAnimation();
+    if (hide && !panel.hidden && panel.dataset.collapsed === 'false' && !reducedMotion()) {
+      endPanelResize();endCornerResize();panelSettings.hidePopover();
+      panel.dataset.closing = 'true';panel.classList.add('chat-pop-out');
+      visibilityTimer = setTimeout(() => { stopVisibilityAnimation();finishCollapse(mini); }, 220);
+      return;
+    }
+    finishCollapse(mini);
+  }
+  function expandPanel() {
+    clearTimeout(miniClickTimer);miniClickTimer = null;
+    const fromHidden = panel.hidden || panel.dataset.closing === 'true';
+    stopVisibilityAnimation();
+    if (panel.dataset.collapsed === 'true') returnToMini = panel.dataset.mini === 'true';
+    panel.hidden = false;panel.dataset.collapsed = 'false';panel.dataset.mini = 'false';syncPlaceholder();placeExpanded();
+    setPanelWidth(Number.parseFloat(panel.style.width) || 440);
+    if (fromHidden && !reducedMotion()) {
+      panel.classList.add('chat-pop-in');
+      visibilityTimer = setTimeout(stopVisibilityAnimation, 260);
+    }
+  }
+  function movePanel(left, top, compact, rect = panel.getBoundingClientRect()) {
+    const position = clampPosition(left,top,rect.width,rect.height);
+    panel.style.left = position.left + 'px';panel.style.top = position.top + 'px';panel.style.bottom = 'auto';
+    if (compact) compactPosition = position;
+    else { panel.style.height = rect.height + 'px';expandedPosition = {...position,height:rect.height}; }
+  }
+  function draggable(handle, compact) {
+    let active = null, frame = null, suppressClick = false;
+    const positionAt = (drag, event) => clampPosition(drag.rect.left + event.clientX - drag.x,
+      drag.rect.top + event.clientY - drag.y,drag.rect.width,drag.rect.height);
+    function endDrag(event, released = false) {
+      if (!active || (event?.pointerId !== undefined && event.pointerId !== active.id)) return;
+      if (frame !== null) window.cancelAnimationFrame(frame);frame = null;
+      const drag = active;active = null;
+      if (drag.moved) {
+        const position = released ? positionAt(drag,event) : drag.next;
+        movePanel(position.left,position.top,compact,drag.rect);
+        panel.style.transform = '';
+        if (released) suppressClick = true;
+      }
+      // Finish the last position change while the movement transition is disabled.
+      void panel.offsetWidth;
+      delete panel.dataset.dragging;panel.style.willChange = '';
+      if (handle.hasPointerCapture(drag.id)) handle.releasePointerCapture(drag.id);
+    }
+    handle.onpointerdown = event => {
+      if (event.button !== 0 || panel.dataset.collapsed !== String(compact) || (!compact && event.target?.closest?.('button'))) return;
+      event.preventDefault();
+      const rect = panel.getBoundingClientRect();
+      active = {id:event.pointerId,x:event.clientX,y:event.clientY,rect,next:{left:rect.left,top:rect.top},moved:false};
+      handle.setPointerCapture(event.pointerId);panel.dataset.dragging = 'true';panel.style.willChange = 'transform';
+    };
+    handle.onpointermove = event => {
+      if (!active || event.pointerId !== active.id) return;
+      if (!(event.buttons & 1)) { endDrag(event);return; }
+      if (Math.hypot(event.clientX - active.x,event.clientY - active.y) < 4 && !active.moved) return;
+      active.moved = true;active.next = positionAt(active,event);
+      if (frame === null) frame = window.requestAnimationFrame(() => {
+        frame = null;
+        if (active) panel.style.transform = `translate3d(${active.next.left - active.rect.left}px, ${active.next.top - active.rect.top}px, 0)`;
+      });
+    };
+    handle.onpointerup = event => endDrag(event,true);
+    handle.onpointercancel = handle.onlostpointercapture = endDrag;
+    handle.onkeydown = event => {
+      const offsets = {ArrowLeft:[-20,0],ArrowRight:[20,0],ArrowUp:[0,-20],ArrowDown:[0,20]};
+      if (panel.dataset.collapsed !== String(compact) || !offsets[event.key]) return;
+      event.preventDefault();const rect = panel.getBoundingClientRect(), [dx,dy] = offsets[event.key];
+      movePanel(rect.left + dx,rect.top + dy,compact);
+    };
+    window.addEventListener('blur', () => endDrag());
+    return () => { const moved = suppressClick;suppressClick = false;return moved; };
+  }
+  const draggedCompact = draggable(expandButton,true);
+  draggable(compactHandle,true);
+  const draggedMini = miniButton ? draggable(miniButton,true) : () => false;
+  compactHandle.addEventListener('keydown', event => {
+    if (panel.dataset.collapsed !== 'true' || !['Enter',' '].includes(event.key)) return;
+    event.preventDefault();showPanel();
+  });
+  draggable(bar,false);
+  expandButton.onclick = () => { if (!draggedCompact()) { if (miniButton) collapsePanel(true); else showPanel(); } };
+  if (miniButton) {
+    miniButton.addEventListener('pointerdown', () => clearTimeout(miniClickTimer));
+    miniButton.onclick = event => {
+      if (draggedMini()) return;
+      if (event?.detail >= 2) { showPanel();return; }
+      miniClickTimer = setTimeout(() => {
+        miniClickTimer = null;
+        if (panel.dataset.mini === 'true') collapsePanel(false);
+      },300);
+    };
+  }
+  panel.addEventListener('dblclick', event => {
+    if (panel.dataset.collapsed !== 'true' || panel.dataset.mini === 'true' || event.target?.closest?.('button')) return;
+    event.preventDefault();showPanel();
+  });
+  const updatePin = () => {
+    const label = t(pinButton.getAttribute('aria-pressed') === 'true' ? '取消固定浮动对话' : '固定浮动对话');
+    pinButton.setAttribute('aria-label',label);pinButton.title = label;
+  };
+  pinButton.onclick = () => { pinButton.setAttribute('aria-pressed',String(pinButton.getAttribute('aria-pressed') !== 'true'));updatePin(); };
+  window.addEventListener('latex-language-change',updatePin);
+  window.addEventListener('pointerdown',event => {
+    if (panel.contains(event.target) || panelSettings.contains(event.target)) return;
+    clearTimeout(miniClickTimer);
+    if (panel.dataset.collapsed === 'false' && pinButton.getAttribute('aria-pressed') !== 'true') collapsePanel();
+    else if (miniButton && panel.dataset.collapsed === 'true' && panel.dataset.mini !== 'true' && permanentBar.checked) collapsePanel(true);
+  });
+  if (permanentControl) {
+    permanentBar.checked = preferences.getItem('latex-codex-chat-bar-permanent') !== 'off';
+    permanentBar.onchange = () => {
+      preferences.setItem('latex-codex-chat-bar-permanent',permanentBar.checked ? 'on' : 'off');
+      returnToMini = !!miniButton && permanentBar.checked;
+      if (panel.dataset.collapsed === 'true') collapsePanel(permanentBar.checked);
+    };
+  }
+  window.addEventListener('latex-language-change', () => {
+    corner.setAttribute('aria-label',t('调整浮动对话大小'));syncPlaceholder();
+  });
+  panel.hidden = !!miniButton && !permanentBar.checked;panel.dataset.collapsed = 'true';panel.dataset.mini = String(!!miniButton && permanentBar.checked);
+  returnToMini = panel.dataset.mini === 'true';
+  positionCompact();syncPlaceholder();panel.classList.add('chat-motion-ready');
+  new ResizeObserver(() => { if (panel.dataset.collapsed === 'true' && !compactPosition) positionCompact(); }).observe($('preview'));
+  let memoryRevision=null,memoryProject='',memoryLoading=null,memoryEpoch=0;
   let history = [], marker = null, job = null, generation = 0, sending = false, proposal = null;
   const quick = $('chat-quick'), quickInput = $('chat-quick-input');
   let quickMarker = null, quickDoc = null, quickOriginal = '', quickPdf = null, editingAnnotation = null;
@@ -82,6 +314,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   let models = [], modelsLoaded = false, modelsLoading = false;
   const modelSelect = $('chat-model'), effortSelect = $('chat-effort');
   const quickBrain = $('chat-quick-brain'), quickSettings = $('chat-quick-settings');
+  const panelSettings = $('chat-panel-settings'), configButton = $('chat-config');
   const quickEffort = $('chat-quick-effort');
   const quickHandle = $('chat-quick-handle');
   const styleSelect = $('chat-quick-style'), styleFile = $('chat-style-file');
@@ -143,7 +376,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   }
   quickInput.addEventListener('focus', () => sizeQuick(true));
   quickInput.addEventListener('click', () => sizeQuick(true));
-  quickInput.addEventListener('input', () => sizeQuick(true));
+  quickInput.addEventListener('input', () => { sizeQuick(true); syncQuickDirectSend(); });
   quick.addEventListener('focusout', event => {
     if (!quick.contains(event.relatedTarget) && !quickSettings.matches(':popover-open')) sizeQuick(false);
   });
@@ -194,16 +427,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     effortSelect.value = efforts[(efforts.indexOf(effortSelect.value) + 1) % efforts.length];
     renderQuickSettings();
   };
-  function renderQuickSettings() {
-    const selected = models.find(model => model.id === modelSelect.value);
-    quickBrain.title = (selected?.name || t('跟随 Codex 默认')) + ' · ' + (effortSelect.value ? t(effortNames[effortSelect.value] || effortSelect.value) : t('默认思考等级'));
-    $('chat-quick-model-name').textContent = selected?.name || t('跟随 Codex 默认');
-    $('chat-quick-effort-name').textContent = effortSelect.value ? t(effortNames[effortSelect.value] || effortSelect.value) : t('跟随默认');
-    quickEffort.disabled = sending || !selected;
-    quickEffort.title = t('思考等级') + ' · ' + (effortSelect.value || selected?.default_effort || t('跟随默认'));
-    quickEffort.setAttribute('aria-label', quickEffort.title);
-    quickEffort.dataset.level = String(selected ? Math.ceil(3 * (selected.efforts.indexOf(effortSelect.value || selected.default_effort) + 1) / selected.efforts.length) : 0);
-    const modelList = $('chat-quick-models'), effortList = $('chat-quick-efforts');
+  function renderModelChoices(modelList, effortList, settings, focusTarget) {
     modelList.replaceChildren(); effortList.replaceChildren();
     for (const model of [{id:'', name:t('跟随 Codex 默认')}, ...models]) {
       const button = document.createElement('button'); button.type = 'button';
@@ -211,21 +435,49 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
       button.setAttribute('aria-pressed', String(model.id === modelSelect.value));
       button.onclick = () => {
         if (modelSelect.value !== model.id) { modelSelect.value = model.id; updateEfforts(); }
-        if (!model.id) { quickSettings.hidePopover(); quickInput.focus(); }
+        if (!model.id) { settings.hidePopover(); focusTarget.focus(); }
         else effortList.firstElementChild?.focus();
       };
       modelList.append(button);
     }
+    const selected = models.find(model => model.id === modelSelect.value);
     effortList.hidden = !selected;
     if (selected) for (const effort of ['', ...selected.efforts]) {
       const button = document.createElement('button'); button.type = 'button'; button.disabled = sending;
       button.textContent = effort ? t(effortNames[effort] || effort) : t('默认 · ') + (t(effortNames[selected.default_effort] || selected.default_effort));
       button.setAttribute('aria-pressed', String(effort === effortSelect.value));
-      button.onclick = () => { effortSelect.value = effort; renderQuickSettings(); quickSettings.hidePopover(); quickInput.focus(); };
+      button.onclick = () => { effortSelect.value = effort; renderQuickSettings(); settings.hidePopover(); focusTarget.focus(); };
       effortList.append(button);
     }
+  }
+  function renderQuickSettings() {
+    const selected = models.find(model => model.id === modelSelect.value);
+    const modelName = selected?.name || t('跟随 Codex 默认');
+    const effortName = effortSelect.value ? t(effortNames[effortSelect.value] || effortSelect.value) : t('跟随默认');
+    quickBrain.title = modelName + ' · ' + (effortSelect.value ? effortName : t('默认思考等级'));
+    $('chat-quick-model-name').textContent = modelName;
+    $('chat-quick-effort-name').textContent = effortName;
+    quickEffort.disabled = sending || !selected;
+    quickEffort.title = t('思考等级') + ' · ' + (effortSelect.value || selected?.default_effort || t('跟随默认'));
+    quickEffort.setAttribute('aria-label', quickEffort.title);
+    quickEffort.dataset.level = String(selected ? Math.ceil(3 * (selected.efforts.indexOf(effortSelect.value || selected.default_effort) + 1) / selected.efforts.length) : 0);
+    $('chat-config-name').textContent = modelName;
+    configButton.title = modelName + ' · ' + effortName;
+    configButton.setAttribute('aria-label', t('选择模型和思考等级') + ' · ' + configButton.title);
+    renderModelChoices($('chat-quick-models'), $('chat-quick-efforts'), quickSettings, quickInput);
+    renderModelChoices($('chat-panel-models'), $('chat-panel-efforts'), panelSettings, input);
     $('chat-quick-model-status').textContent = $('chat-model-status').textContent;
   }
+  panelSettings.addEventListener('beforetoggle', event => {
+    configButton.setAttribute('aria-expanded', String(event.newState === 'open'));
+    if (event.newState !== 'open') return;
+    renderQuickSettings(); loadModels();
+    const box = configButton.getBoundingClientRect();
+    panelSettings.style.left = Math.max(8, Math.min(box.left, window.innerWidth - 360)) + 'px';
+    panelSettings.style.top = 'auto';
+    panelSettings.style.bottom = window.innerHeight - box.top + 8 + 'px';
+    panelSettings.style.maxHeight = Math.max(60, box.top - 16) + 'px';
+  });
   quickSettings.addEventListener('beforetoggle', event => {
     quickBrain.setAttribute('aria-expanded', String(event.newState === 'open'));
     if (event.newState !== 'open') return;
@@ -360,7 +612,11 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     editingAnnotation.marker.clear(); quickMarker = null; editingAnnotation = null; quickInput.value = '';
     quick.hidePopover(); refreshAnnotations();
   };
-  $('chat-quick-cancel').onclick = () => { quickInput.value = ''; quick.hidePopover(); };
+  $('chat-quick-direct-send').onclick = () => {
+    const current = editingAnnotation;
+    if (!saveAnnotation()) return;
+    return sendAnnotations([current || annotations.at(-1)]);
+  };
   $('annotations-review').addEventListener('beforetoggle', event => {
     $('annotations-toggle').setAttribute('aria-expanded', String(event.newState === 'open'));
     if (event.newState !== 'open') return;
@@ -371,9 +627,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     review.style.right = '8px';
     review.style.top = box.bottom + 6 + 'px';
   });
-  $('annotations-send').onclick = () => {
-    if (quickInput.value.trim() && !saveAnnotation()) return;
-    const batch = annotations.filter(item => !item.review);
+  function sendAnnotations(batch) {
     if (!batch.length || sending || annotationCommitting) return;
     if (batch.some(item => !validAnnotation(item))) {
       annotationNotice(t('批注选区已变化，未发送。请点批注检查并重新选择。'), true); return;
@@ -381,6 +635,10 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     batch.sort((a,b) => editor.indexFromPos(a.marker.find().from) - editor.indexFromPos(b.marker.find().from));
     const question = batch.map(item => '#' + item.id + '\n' + item.request).join('\n\n');
     return send(question, null, batch);
+  }
+  $('annotations-send').onclick = () => {
+    if (quickInput.value.trim() && !saveAnnotation()) return;
+    return sendAnnotations(annotations.filter(item => !item.review));
   };
   async function sendToMainChat() {
     if (sending || annotationCommitting || !mainLinked || !mainAvailable) return;
@@ -418,11 +676,32 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   $('annotations-stop').onclick = () => { if (annotationCommitting) return; stop(); annotationNotice(t('已停止，批注保留，可重新发送。')); };
   const range = () => marker?.find();
   const selectedText = () => { const pos = range(); return pos ? editor.getRange(pos.from, pos.to) : ''; };
-  function message(who, text) {
+  function message(role, text, id = null) {
     const item = document.createElement('div'); item.className = 'chat-message';
-    const label = document.createElement('b'); label.textContent = who;
+    item.dataset.role = role;
+    const label = document.createElement('b'); label.textContent = role === 'user' ? t('你') : 'Codex';
     const body = document.createElement('div');body.className = 'chat-markdown';renderChatMarkdown(body, text);
-    item.append(label, body); messages.append(item); messages.scrollTop = messages.scrollHeight;
+    item.append(label, body);
+    if (role === 'assistant' && Number.isInteger(id) && id > 0) {
+      const exportButton = document.createElement('button');
+      exportButton.type = 'button'; exportButton.className = 'chat-export'; exportButton.textContent = '↗';
+      exportButton.title = t('记录此回复到 Markdown'); exportButton.setAttribute('aria-label', exportButton.title);
+      exportButton.onclick = async () => {
+        exportButton.disabled = true;
+        try {
+          const result = await request('/chat/export', {method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({id,project:memoryProject,language:document.documentElement.lang})});
+          exportButton.textContent = '✓';
+          exportButton.dataset.saved = 'true';
+          exportButton.dataset.file = result.file;
+          exportButton.title = t('已记录到 {file}', {file:result.file});
+          exportButton.setAttribute('aria-label', exportButton.title);
+          notice(exportButton.title);
+        } catch (error) { exportButton.disabled = false; notice(error.message); }
+      };
+      item.append(exportButton);
+    }
+    messages.append(item); messages.scrollTop = messages.scrollHeight;
   }
   async function loadMemory() {
     if(memoryRevision!==null)return;
@@ -432,25 +711,28 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
       const data=await request('/chat/history');
       if(doc!==editor.getDoc()||epoch!==memoryEpoch)return;
       if(!Array.isArray(data.messages)||!Number.isInteger(data.revision))throw new Error(t('项目记忆读取失败，请重新打开对话。'));
-      history=data.messages;memoryRevision=data.revision;messages.replaceChildren();
+      history=data.messages;memoryRevision=data.revision;memoryProject=data.project;messages.replaceChildren();
       for(const item of history){
         let text=item.content;
         if(item.role==='assistant'){try{text=JSON.parse(text).reply||text;}catch{}}
-        message(item.role==='user'?t('你'):'Codex',text);
+        message(item.role==='user'?'user':'assistant',text,item.id);
       }
     })();
     memoryLoading=task;
     try{await task;}finally{if(memoryLoading===task)memoryLoading=null;}
   }
   function setSending(value) {
-    sending = value; $('chat-send').disabled = value; $('chat-stop').hidden = !value;
+    sending = value; panel.dataset.sending = String(value); $('chat-send').disabled = value; $('chat-stop').hidden = !value;
+    const compactStatus = $('chat-compact-status');if (compactStatus) compactStatus.textContent = value ? t('Codex 正在思考…') : '';
+    $('chat-typing').hidden = !value;
     $('chat-use-selection').disabled = value;
-    modelSelect.disabled = value; effortSelect.disabled = value || !modelSelect.value;
+    modelSelect.disabled = value; effortSelect.disabled = value || !modelSelect.value; configButton.disabled = value;
     quickBrain.disabled = value;
     quickEffort.disabled = value || !modelSelect.value;
     styleSelect.disabled = value;
-    if (value) quickSettings.hidePopover();
+    if (value) { quickSettings.hidePopover(); panelSettings.hidePopover(); }
     $('chat-quick-send').disabled = value || !quickMarker;
+    syncQuickDirectSend();
     $('chat-quick-delete').disabled = value;
     quickInput.readOnly = value;
     $('annotations-send').setAttribute('aria-busy', String(value && annotationSending));
@@ -467,19 +749,29 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     clearProposal(); $('chat-selection').textContent = selectedText(); notice(t('已带入选区和当前文档，可以连续追问。'));
   }
   function showPanel() {
-    panel.hidden = false;
-    setPanelWidth(panel.getBoundingClientRect().width);
+    expandPanel();
     refreshContext();
     loadMemory().catch(e=>notice(e.message));
     loadModels();
     input.focus();
   }
-  $('chat-view').onclick = () => { $('settings-menu').hidePopover(); showPanel(); };
+  $('chat-view').onclick = () => {
+    $('settings-menu').hidePopover();
+    pinButton.setAttribute('aria-pressed', 'true'); updatePin();
+    showPanel();
+    returnToMini = !!miniButton && permanentBar.checked;
+  };
+  window.addEventListener('keydown', event => {
+    if (!event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || event.repeat || event.isComposing || event.key?.toLowerCase() !== 'q') return;
+    event.preventDefault();event.stopImmediatePropagation();
+    if (panel.dataset.collapsed === 'false' && panel.dataset.closing !== 'true') { collapsePanel();editor.focus(); }
+    else showPanel();
+  }, true);
   function open() {
     showPanel();
     const previous = range(), from = editor.getCursor('from'), to = editor.getCursor('to');
     if (editor.somethingSelected() && !sending && (!previous || previous.from.line !== from.line || previous.from.ch !== from.ch || previous.to.line !== to.line || previous.to.ch !== to.ch)) useSelection();
-    else if (!marker) notice(t('请先选中文本，再点“使用当前选区”。'));
+    else if (!marker) notice('');
     input.focus();
   }
   async function stop() {
@@ -498,8 +790,8 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
       annotations.forEach(item => { item.review?.destroy(); item.marker.clear(); }); annotations = []; annotationId = 0;
     }
     $('annotations-status').textContent = ''; refreshAnnotations();
-    memoryEpoch++;memoryRevision=null;memoryLoading=null;history = []; marker?.clear(); marker = null; clearProposal();
-    messages.replaceChildren(); input.value = ''; $('chat-selection').textContent = ''; panel.hidden = true; notice('');
+    memoryEpoch++;memoryRevision=null;memoryProject='';memoryLoading=null;history = []; marker?.clear(); marker = null; clearProposal();
+    messages.replaceChildren(); input.value = ''; $('chat-selection').textContent = ''; collapsePanel(); notice('');
   }
   quick.addEventListener('beforetoggle', event => {
     if (event.newState === 'closed') {
@@ -537,6 +829,9 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     const button = $('chat-quick-send'), label = t(editingAnnotation ? '保存批注' : '添加批注');
     button.setAttribute('aria-label', label); button.title = label + ' · Ctrl+Enter';
   }
+  function syncQuickDirectSend() {
+    $('chat-quick-direct-send').disabled = sending || !quickMarker || !quickInput.value.trim();
+  }
   function showQuick(anchor) {
     quickAnchor = null; quickMoved = false;
     quickInput.placeholder = quickOriginal ? t('写下这处的修改要求…') : t('请先选中一段 LaTeX 源码');
@@ -544,6 +839,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     labelQuickAction();
     quickNotice('');
     $('chat-quick-send').disabled = sending || !quickOriginal;
+    syncQuickDirectSend();
     quick.showPopover();
     const selectionTop = anchor.selectionTop ?? (quickOriginal ? editor.charCoords(editor.getCursor('from'), 'window').top : anchor.top);
     const selectionBottom = anchor.selectionBottom ?? (quickOriginal ? editor.charCoords(editor.getCursor('to'), 'window').bottom : anchor.top);
@@ -568,7 +864,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     event.preventDefault();
     return saveAnnotation();
   };
-  $('chat-close').onclick = () => { endPanelResize();panel.hidden = true; editor.focus(); };
+  $('chat-close').onclick = () => { collapsePanel();editor.focus(); };
   $('chat-end').onclick = async()=>{
     if (annotationCommitting) return;
     await stop();
@@ -579,10 +875,10 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   $('chat-use-selection').onclick = useSelection;
   $('chat-stop').onclick = () => { stop(); notice(t('已停止，可继续提问。')); };
   panel.addEventListener('keydown', event => {
-    if (event.key === 'Escape') { event.preventDefault();endPanelResize();panel.hidden = true; editor.focus(); }
+    if (event.key === 'Escape' && panel.dataset.collapsed === 'false') { event.preventDefault();collapsePanel();editor.focus(); }
   });
   input.addEventListener('keydown', event => {
-    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); $('chat-form').requestSubmit(); }
+    if (event.key === 'Enter' && !event.isComposing && (!event.shiftKey || event.ctrlKey || event.metaKey)) { event.preventDefault(); $('chat-form').requestSubmit(); }
   });
   $('chat-form').onsubmit = async event => {
     event.preventDefault();
@@ -591,7 +887,8 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   async function send(text, draftInput, batch = null) {
     if (sending || annotationCommitting || !text.trim()) return;
     const selection = batch ? batch[0].original : selectedText(), question = text.trim();
-    if (!selection) { notice(t('选区已失效，请重新选择文本。')); return; }
+    if (!selection && batch) { notice(t('选区已失效，请重新选择文本。')); return; }
+    if (!selection && marker) { marker.clear(); marker = null; $('chat-selection').textContent = ''; }
     const token = ++generation, doc = editor.getDoc();
     let conversation;
     annotationSending = !!batch;
@@ -601,7 +898,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
       if(memoryRevision===null)await loadMemory();
       if(token!==generation||doc!==editor.getDoc())return;
       conversation=[...history.slice(-38),{role:'user',content:question}];
-      message(t('你'),question);if(draftInput)draftInput.value='';
+      message('user',question);if(draftInput)draftInput.value='';
       const source = editor.getValue();
       const items = batch?.map(item => {
         const pos = validAnnotation(item);
@@ -622,13 +919,13 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
         if (result.status === 'running') { await new Promise(resolve => setTimeout(resolve, 700)); continue; }
         if (result.status !== 'done') throw new Error(result.error || t('本次回复已停止。'));
         memoryRevision=result.memory_revision??memoryRevision;
-        history = [...conversation, {role:'assistant',content:JSON.stringify({reply:result.reply,replacement:result.replacement,...(batch ? {replacements:result.replacements} : {})})}];
-        message('Codex', result.reply);
+        history = [...conversation, {id:result.memory_revision,role:'assistant',content:JSON.stringify({reply:result.reply,replacement:result.replacement,...(batch ? {replacements:result.replacements} : {})})}];
+        message('assistant', result.reply,result.memory_revision);
         if (batch) {
           await reviewAnnotations(batch, result.replacements, result.reply);
           const reviewing = annotations.some(item => item.review);
           annotationNotice(reviewing ? t('请逐处选择 Keep 或 Undo；也可在批注列表处理。') : result.reply, false, !reviewing);
-        } else if (result.replacement !== null) {
+        } else if (selection && result.replacement !== null) {
           proposal = {doc, original:selection, replacement:result.replacement, segments:result.segments};
           renderProposal(); $('chat-proposal').hidden = false;
           notice(t('修改建议已就绪。可继续讨论，或应用到选区。'));
@@ -727,6 +1024,10 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   window.addEventListener('latex-proofread-change', refreshAnnotations);
   window.addEventListener('latex-language-change', () => {
     labelResizer();
+    for (const button of messages.querySelectorAll('.chat-export')) {
+      button.title = button.dataset.file ? t('已记录到 {file}', {file:button.dataset.file}) : t('记录此回复到 Markdown');
+      button.setAttribute('aria-label', button.title);
+    }
     const effort = effortSelect.value;
     updateEfforts(); effortSelect.value = effort; renderQuickSettings(); renderProposal();
     renderStyle();

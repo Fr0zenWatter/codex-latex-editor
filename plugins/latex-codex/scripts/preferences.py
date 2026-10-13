@@ -8,7 +8,7 @@ import sys
 
 PREFERENCE_KEYS = frozenset('latex-codex-' + name for name in (
     'language', 'revision-color', 'outline-style', 'theme', 'custom-themes',
-    'editor-mode', 'source-font-size', 'forward-shortcut', 'chat-color', 'auto-compile', 'pdf-box-auto-comment',
+    'editor-mode', 'source-font-size', 'forward-shortcut', 'chat-color', 'chat-bar-permanent', 'auto-compile', 'pdf-box-auto-comment', 'pdf-invert', 'pdf-paper',
     'proofread-editor', 'proofread-pdf', 'proofread-project', 'writing-style', 'split',
     'inline-completion', 'completion-model', 'completion-effort'))
 

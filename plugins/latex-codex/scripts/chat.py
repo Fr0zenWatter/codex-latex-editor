@@ -189,7 +189,7 @@ def main_chat_context(thread_id):
 
 def chat_context(data, path, main_thread=None, backend='codex'):
     source, selection, messages = (data.get(key) for key in ('source', 'selection', 'messages'))
-    if not isinstance(source, str) or not isinstance(selection, str) or not selection or selection not in source:
+    if not isinstance(source, str) or not isinstance(selection, str) or (selection and selection not in source):
         raise ValueError('请先选择当前文档中的一段源码。')
     if not isinstance(messages, list) or not 1 <= len(messages) <= 40:
         raise ValueError('临时对话最多 20 轮，请结束后开启新对话。')
@@ -198,8 +198,11 @@ def chat_context(data, path, main_thread=None, backend='codex'):
             raise ValueError('对话格式无效。')
     if messages[-1]['role'] != 'user' or not messages[-1]['content'].strip():
         raise ValueError('请输入修改要求或问题。')
+    messages = [{key: value for key, value in message.items() if key != 'id'} for message in messages]
     annotations = data.get('annotations')
     if annotations is not None:
+        if not selection:
+            raise ValueError('请先选择当前文档中的一段源码。')
         if not isinstance(annotations, list) or not 1 <= len(annotations) <= 100:
             raise ValueError('请提交 1–100 条批注。')
         ids, previous_end = set(), 0
@@ -343,12 +346,12 @@ class ChatJob:
             markdown = Path(self.context.get('file', '')).suffix.lower() in ('.md', '.markdown')
             format_name = 'Markdown' if markdown else 'LaTeX'
             instructions = (
-                f'You are the project {format_name} selection assistant. '
+                f'You are the project {format_name} ' + ('selection assistant. ' if self.context.get('selection') else 'assistant. ')
                 + ('Only the annotated selections, their nearby source and the current requests are supplied. '
                    'No full document or conversation history is supplied. '
                    if annotations else
                 'The JSON below contains the current document, '
-                'the selected text, this project conversation and main_conversation from the launching desktop chat. '
+                'the optional selected text, this project conversation and main_conversation from the launching desktop chat. '
                 'Use main_conversation as background, including the user preferences and decisions there; it can be '
                 'truncated as indicated. Follow the latest request in messages, remembering earlier turns. '
                 'Past user messages may include file and selection snapshots; those are historical references. The current document is authoritative; do not assume past proposed replacements were applied. ')
@@ -363,7 +366,7 @@ class ChatJob:
                    'Do not change text outside the annotated ranges. Do not wrap replacements in extra code fences. '
                    if annotations else
                    f'Return JSON with reply (a concise explanation) and replacement (the COMPLETE {format_name} text to replace '
-                   'only the current selection, or null when answering a question). Do not wrap replacement in an extra code fence. ')
+                   'only the current selection, or null when answering a question). If selection is empty, replacement must be null; answer without editing source. Do not wrap replacement in an extra code fence. ')
                 +
                 f'Preserve unchanged text and existing {format_name} markup verbatim. Preserve math delimiters, code fences and image links. Do not add revision colors; the editor '
                 'computes and colors actual differences. Preserve math meaning, labels and citations unless asked to change them. Do not claim a change was '
@@ -496,6 +499,8 @@ class ChatJob:
                     result['replacement'] = None
                 if not isinstance(result, dict) or not isinstance(result.get('reply'), str) or 'replacement' not in result or not (result['replacement'] is None or isinstance(result['replacement'], str)):
                     raise ValueError(provider_name + ' 返回格式无效，请重试。')
+                if not self.context['selection']:
+                    result['replacement'] = None
                 if not self.cancelled.is_set():
                     segments = revision_segments(self.context['selection'], result['replacement']) if result['replacement'] is not None and not markdown else None
                     memory_result = {}

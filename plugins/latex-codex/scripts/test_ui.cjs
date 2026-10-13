@@ -100,6 +100,38 @@ const context = vm.createContext({
   fetch: () => new Promise(() => {}),
 });
 vm.runInContext(script, context);
+const html = fs.readFileSync(path.join(__dirname, 'editor.py'), 'utf8');
+assert(!html.includes('<button id="pdf-invert"'));
+assert(html.includes('<select id="pdf-paper"'));
+async function testFileDrop(){
+context.URL=URL;
+const previousBusy=vm.runInContext('({busy,syncBusy})',context);
+vm.runInContext('busy=syncBusy=false',context);
+const realOpenFile=context.openFile,dropSelections=[];
+context.openFile=async selection=>{dropSelections.push(JSON.parse(JSON.stringify(selection)));};
+const dropArea=element('main'),dropHint=element('#file-drop-hint');
+function dragEvent(files,types=['Files']){
+  return {dataTransfer:{files,types},preventDefault(){this.prevented=true;},stopPropagation(){this.stopped=true;}};
+}
+const texDrop=dragEvent([{name:'paper.tex',path:'C:\\papers\\paper.tex'}]);
+dropArea.events.dragenter(texDrop);assert.equal(dropHint.hidden,false);
+dropArea.events.dragover(texDrop);assert(texDrop.prevented);assert.equal(texDrop.dataTransfer.dropEffect,'link');
+await dropArea.events.drop(texDrop);
+assert(texDrop.stopped);assert.equal(dropHint.hidden,true);
+assert.deepEqual(dropSelections.shift(),{path:'C:\\papers\\paper.tex'},'A dropped path opens the original file.');
+const mdDrop=dragEvent([{name:'notes.md'}]);
+mdDrop.dataTransfer.getData=()=> 'file:///C:/papers/notes.md';
+await dropArea.events.drop(mdDrop);
+assert.deepEqual(dropSelections.shift(),{path:'C:\\papers\\notes.md'},'A local file URI opens the original Markdown file.');
+await dropArea.events.drop(dragEvent([{name:'notes.markdown'}]));
+assert.equal(dropSelections.length,0);assert.match(element('#status').textContent,/未提供原始路径/);
+await dropArea.events.drop(dragEvent([{name:'bad.txt'}]));
+assert.equal(dropSelections.length,0);assert.match(element('#status').textContent,/一次只能拖入/);
+const textDrag=dragEvent([],['text/plain']);
+await dropArea.events.drop(textDrag);assert.equal(textDrag.prevented,undefined,'Ordinary text dragging keeps its editor behavior.');
+context.openFile=realOpenFile;
+vm.runInContext(`busy=${previousBusy.busy};syncBusy=${previousBusy.syncBusy}`,context);
+}
 vm.runInContext("version='completion-v';loading=false;syncBusy=true",context);
 assert.equal(context.inlineCompletionConfig.available(),true,'PDF synchronization must not suppress source completion.');
 vm.runInContext('loading=true',context);
@@ -526,6 +558,7 @@ preview.scrollTop=350;
 element('#pan-mode').onclick();
 context.fetch=async()=>{downloads++;return{ok:true,arrayBuffer:async()=>new ArrayBuffer(1)};};
 (async()=>{
+await testFileDrop();
   context.findMathRanges=(await import('./vendor/latex-hover.mjs')).findMathRanges;
   context.documentMacros=(await import('./vendor/latex-hover.mjs')).documentMacros;
   const actualKatex=(await import('./vendor/katex/katex.mjs')).default;
