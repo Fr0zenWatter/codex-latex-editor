@@ -63,6 +63,7 @@ const events={},editor={
   getCursor:key=>selection[key],getValue:()=>source,getRange:(from,to)=>source.slice(from.ch,to.ch),
   charCoords:pos=>({top:pos.ch===selection.from.ch?700:710,bottom:730}),
   markText(from,to,options={}){mark={options,from:{...from},to:{...to},find(){return this.cleared?null:{from:this.from,to:this.to};},clear(){this.cleared=true;},changed(){}};marks.push(mark);return mark;},
+  setBookmark(point,options={}){return this.markText(point,point,options);},
   indexFromPos:pos=>pos.ch,posFromIndex:ch=>({line:0,ch}),setCursor(){},focus(){editorFocuses++;},
   operation(fn){operations++;fn();},
   replaceRange(text,from,to,origin){
@@ -780,12 +781,15 @@ const plainRequest=async(url,options)=>{
   if(url==='/chat/export'){exportedReply=JSON.parse(options.body);return {file:'AI对话记录.md'};}
   return request(url,options);
 };
-const plainChat=attachSelectionChat(editor,plainRequest);
+let citationsEnabled=false;
+const plainChat=attachSelectionChat(editor,plainRequest,undefined,undefined,undefined,()=>citationsEnabled);
 plainChat.open();assert.equal(el('#chat-status').textContent,'');
 el('#chat-input').value='What is the main result?';
 const plainSource=source;
 await el('#chat-form').onsubmit({preventDefault(){}});
 assert.equal(plainBody.selection,'');
+assert.equal(plainBody.references,false);
+assert.equal(el('#chat-status').textContent,'','Completed answers do not show redundant follow-up/memory reminders.');
 assert.equal(plainBody.messages.at(-1).content,'What is the main result?');
 assert(el('#chat-messages').children.at(-1).children[1].innerHTML.includes('General answer.'));
 const liveArrow=el('#chat-messages').children.at(-1).children.at(-1);
@@ -801,6 +805,7 @@ el('#chat-input').events.keydown({key:'Enter',shiftKey:false,isComposing:false,p
 el('#chat-input').events.keydown({key:'Enter',shiftKey:true,isComposing:false,preventDefault(){}});
 el('#chat-input').events.keydown({key:'Enter',shiftKey:false,isComposing:true,preventDefault(){}});
 assert.equal(formSubmits,1,'Enter sends; Shift+Enter and IME composition do not.');
+citationsEnabled=true;
 let releasePlain;plainPending=new Promise(resolve=>releasePlain=resolve);
 el('#chat-input').value='Continue from the compact bar.';
 const compactReply=el('#chat-form').onsubmit({preventDefault(){}});
@@ -808,6 +813,7 @@ assert.equal(el('#chat-panel').dataset.collapsed,'true','Sending from the bar do
 assert.equal(el('#chat-panel').dataset.sending,'true');
 assert.equal(el('#chat-compact-status').textContent,'Codex 正在思考…');
 releasePlain({id:'plain-job'});await compactReply;
+assert.equal(plainBody.references,true,'Subsequent chat requests receive tools after quotations are enabled.');
 assert.equal(el('#chat-panel').dataset.collapsed,'true');
 assert.equal(el('#chat-panel').dataset.sending,'false');
 el('#chat-bar-permanent').checked=false;el('#chat-bar-permanent').onchange();
@@ -842,7 +848,7 @@ el('#chat-bar-permanent').checked=true;el('#chat-bar-permanent').onchange();
 el('#chat-close').onclick();assert.equal(el('#chat-panel').dataset.mini,'true','Enabling the bubble while expanded changes its collapse destination.');
 el('#chat-bar-permanent').checked=false;el('#chat-bar-permanent').onchange();
 const querySelector=document.querySelector;
-document.querySelector=selector=>['#chat-mini','#chat-bar-permanent','#chat-compact-status'].includes(selector) ? null : querySelector(selector);
+document.querySelector=selector=>['#chat-mini','#chat-bar-permanent','#chat-compact-status','#source-quotes'].includes(selector) ? null : querySelector(selector);
 attachSelectionChat(editor,plainRequest);
 assert.equal(el('#chat-panel').dataset.mini,'false','A service with cached older HTML keeps its original bar.');
 el('#chat-expand').onclick();assert.equal(el('#chat-panel').dataset.collapsed,'false');
@@ -850,3 +856,106 @@ el('#chat-input').value='Still usable on old HTML.';
 await el('#chat-form').onsubmit({preventDefault(){}});
 document.querySelector=querySelector;
 console.log('PASS: ordinary project chat sends and replies without a source selection');
+el('#chat-panel').dataset.collapsed='false';el('#source-quotes').open=true;
+el('#chat-panel').events.keydown({key:'Escape',preventDefault(){throw new Error('The quote popover handles Escape before the conversation collapses.');}});
+assert.equal(el('#chat-panel').dataset.collapsed,'false');
+el('#chat-close').onclick();assert.equal(el('#source-quotes').open,false);
+console.log('PASS: quote popover keeps conversation history open; collapsing the conversation closes its popover');
+
+// One large annotation becomes independently anchored reviews with Unicode offsets.
+doc={};selected=true;
+const oldParagraphs=Array.from({length:7},(_,index)=>`Paragraph ${index} 😀 old text.`);
+const newParagraphs=oldParagraphs.map(text=>text.replace('old text','a longer revised passage'));
+source=oldParagraphs.join('\n\n');const splitBefore=source,splitAfter=newParagraphs.join('\n\n');
+selection={from:{line:0,ch:0},to:{line:0,ch:source.length}};
+let splitSaves=[];
+const splitChat=attachSelectionChat(editor,request,items=>{painted=[...items];},async(after,change)=>{
+  assert.equal(change.before,source);splitSaves.push({after,change});
+});
+chooseColor('');
+splitChat.openQuick({left:100,top:100});el('#chat-quick-input').value='Revise the page';
+await el('#chat-quick-form').onsubmit({preventDefault(){}});
+const parentId=painted[0].id;
+let oldOffset=0;
+const reviewParts=[];
+for(let index=0;index<7;index+=3){
+  const tail=index+3<7?'\n\n':'';
+  const before=oldParagraphs.slice(index,index+3).join('\n\n')+tail;
+  const after=newParagraphs.slice(index,index+3).join('\n\n')+tail;
+  reviewParts.push({old_start:Array.from(splitBefore.slice(0,oldOffset)).length,
+    old_end:Array.from(splitBefore.slice(0,oldOffset+before.length)).length,before,after});
+  oldOffset+=before.length;
+}
+answer={status:'done',reply:'Reviewed.',replacement:null,replacements:[{id:parentId,replacement:splitAfter,reviews:reviewParts}]};
+await el('#annotations-send').onclick();
+assert.equal(painted.length,3);assert(painted.every(item=>item.review));
+assert.equal(new Set(painted.map(item=>item.id)).size,3);assert.equal(source,splitBefore);
+const [splitFirst,splitMiddle,splitLast]=painted;
+await keepReview(splitMiddle);
+assert.equal(painted.length,2);assert(painted.includes(splitFirst)&&painted.includes(splitLast));
+assert.equal(source,oldParagraphs.slice(0,3).join('\n\n')+'\n\n'+newParagraphs.slice(3,6).join('\n\n')+'\n\n'+oldParagraphs[6]);
+undoReview(splitFirst);await keepReview(splitLast);
+assert.equal(painted.length,0);assert.equal(splitSaves.length,2);
+assert.equal(splitSaves[0].change.items[0].selection,reviewParts[1].before);
+assert.equal(splitSaves[1].change.items[0].selection,reviewParts[2].before);
+assert.equal(source,oldParagraphs.slice(0,3).join('\n\n')+'\n\n'+newParagraphs.slice(3).join('\n\n'));
+console.log('PASS: large annotations split into independent reviews; mixed Keep/Undo preserves other chunks, Unicode anchors and per-chunk history');
+
+source='One original paragraph.';const insertionBefore=source;
+selection={from:{line:0,ch:0},to:{line:0,ch:source.length}};
+splitChat.openQuick({left:100,top:100});el('#chat-quick-input').value='Expand the passage';
+await el('#chat-quick-form').onsubmit({preventDefault(){}});
+const insertionId=painted[0].id,insertionTexts=['First three paragraphs.\n\n','Next three paragraphs.\n\n','Last paragraph.'];
+answer={status:'done',reply:'Expanded.',replacement:null,replacements:[{id:insertionId,
+  replacement:insertionTexts.join(''),reviews:insertionTexts.map((after,index)=>({
+    old_start:index?insertionBefore.length:0,old_end:insertionBefore.length,before:index?'':insertionBefore,after}))}]};
+await el('#annotations-send').onclick();
+assert.equal(painted.length,3);
+const [insertionFirst,insertionMiddle,insertionLast]=painted;
+await keepReview(insertionLast);await keepReview(insertionMiddle);await keepReview(insertionFirst);
+assert.equal(source,insertionTexts.join(''),'Accepting added chunks in reverse order preserves their intended order.');
+assert.equal(painted.length,0);
+console.log('PASS: inserted paragraph chunks retain order when accepted backwards, with independent empty-range history');
+
+// Bulk acceptance saves all generated reviews once and leaves unsent comments alone.
+doc={};source='One original paragraph. tail';const bulkBefore=source;
+selection={from:{line:0,ch:0},to:{line:0,ch:insertionBefore.length}};
+let bulkFailure=true,bulkSaves=[],bulkPainted=[];
+const bulkChat=attachSelectionChat(editor,request,items=>{painted=[...items];bulkPainted=painted;},async(after,change)=>{
+  if(bulkFailure)throw new Error('Bulk save failed');
+  assert.equal(change.before,source);bulkSaves.push({after,change});
+});
+chooseColor('');bulkChat.openQuick({left:100,top:100});el('#chat-quick-input').value='Expand this';
+await el('#chat-quick-form').onsubmit({preventDefault(){}});
+const bulkId=painted[0].id;
+answer={status:'done',reply:'Expanded.',replacement:null,replacements:[{id:bulkId,replacement:insertionTexts.join(''),
+  reviews:insertionTexts.map((after,index)=>({old_start:index?insertionBefore.length:0,
+    old_end:insertionBefore.length,before:index?'':insertionBefore,after}))}]};
+await el('#annotations-send').onclick();assert.equal(painted.length,3);
+selection={from:{line:0,ch:insertionBefore.length+1},to:{line:0,ch:source.length}};
+bulkChat.openQuick({left:100,top:100});el('#chat-quick-input').value='Keep this note unsent';
+await el('#chat-quick-form').onsubmit({preventDefault(){}});
+const unsent=painted.find(item=>!item.review),bulkCalls=calls.length,bulkOperations=operations;
+await assert.rejects(()=>bulkChat.keepAll(),/Bulk save failed/);
+assert.equal(source,bulkBefore);assert.equal(painted.filter(item=>item.review).length,3);
+bulkFailure=false;await bulkChat.keepAll();
+assert.equal(source,insertionTexts.join('')+' tail');assert.equal(bulkSaves.length,1);
+assert.equal(bulkSaves[0].change.items.length,3);assert.equal(bulkSaves[0].change.reply,'Expanded.');
+assert.equal(operations,bulkOperations+1);assert.equal(calls.length,bulkCalls,'Bulk Keep must not send another AI request.');
+assert.deepEqual(bulkPainted,[unsent]);assert.equal(unsent.original,'tail');assert.equal(bulkChat.hasAnnotations,true);
+console.log('PASS: bulk Keep, same-anchor insertion order, one save/undo step, failed-save preservation and unsent-comment exclusion');
+
+doc={};source='a'.repeat(101);selection={from:{line:0,ch:0},to:{line:0,ch:101}};
+let largeBulkSaves=[];
+const largeBulkChat=attachSelectionChat(editor,request,items=>{painted=[...items];},async(after,change)=>{
+  assert(change.items.length<=100);assert.equal(change.before,source);largeBulkSaves.push(change);
+});
+chooseColor('');largeBulkChat.openQuick({left:100,top:100});el('#chat-quick-input').value='Revise many pieces';
+await el('#chat-quick-form').onsubmit({preventDefault(){}});
+const largeBulkId=painted[0].id;
+answer={status:'done',reply:'Revised.',replacement:null,replacements:[{id:largeBulkId,replacement:'b'.repeat(101),
+  reviews:Array.from({length:101},(_,index)=>({old_start:index,old_end:index+1,before:'a',after:'b'}))}]};
+await el('#annotations-send').onclick();assert.equal(painted.length,101);
+await largeBulkChat.keepAll();assert.equal(source,'b'.repeat(101));assert.equal(painted.length,0);
+assert.equal(largeBulkSaves.length,2);assert.equal(largeBulkSaves.reduce((sum,change)=>sum+change.items.length,0),101);
+console.log('PASS: one bulk action accepts more than 100 split reviews through bounded history batches');

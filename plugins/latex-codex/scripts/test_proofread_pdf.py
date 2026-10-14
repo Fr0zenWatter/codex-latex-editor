@@ -11,8 +11,9 @@ from urllib.error import HTTPError
 from urllib.request import ProxyHandler, Request, build_opener
 from unittest.mock import patch
 
-from editor import make_server
+from editor import make_server, validate_annotation_change
 from proofread import document_start, proofread_source
+from project_review import review_hunks
 
 
 def item(source, text, replacement, identifier=1):
@@ -25,6 +26,10 @@ marked, ranges=proofread_source(unicode_source,[item(unicode_source,'Second.',''
 assert '中文 😀 ' in marked and 'first.' in marked and 'better.' in marked and 'Second.' in marked
 assert [row['id'] for row in ranges]==[1,2]
 assert document_start('% \\begin{document}\n\\begin{document}').start()==19
+insertion = {'id':'a'*32,'before':'Before.\n','reply':'Added text.','items':[
+    {'id':1,'start':8,'end':8,'selection':'','request':'Add a paragraph.','replacement':'New paragraph.'}]}
+assert validate_annotation_change(insertion,'Before.\nNew paragraph.')['items'][0]['last_line']==2
+assert proofread_source('Before.\n',[{'id':1,'start':8,'end':8,'selection':'','replacement':'New paragraph.'}])[1][0]['id']==1
 for invalid in ([{'start':'bad'}], [item(unicode_source,'first.','x'),item(unicode_source,'first.','y',2)],
                 [{**item(unicode_source,'first.','x'),'selection':'stale'}]):
     try: proofread_source(unicode_source,invalid)
@@ -95,6 +100,18 @@ with tempfile.TemporaryDirectory(prefix='latex-proofread-test-') as directory:
             'items':[item(child_source,'A child paragraph.','A revised child paragraph.'),item(child_source,'\\begin{equation}x+y=1\\end{equation}','\\begin{equation}x-y=2\\end{equation}',2)]})
         assert code==200,body
         assert {region['id'] for region in json.loads(body)['regions']}=={1,2}
+        assert history_rows()==rows and all(file.read_bytes()==text for file,text in originals.items())
+        assert server.pdf==formal_pdf and not server.history_pdfs
+        paragraph_before = r'\par '.join(f'Paragraph {index}: original text.' for index in range(9))
+        paragraph_after = paragraph_before.replace('original', 'revised')
+        draft = child_source + paragraph_before
+        pieces = review_hunks(paragraph_before, paragraph_after)
+        split_items = [{'id':part['id'], 'start':len(child_source)+part['old_start'],
+                        'end':len(child_source)+part['old_end'], 'selection':part['before'],
+                        'replacement':part['after']} for part in pieces]
+        code,body=request('/proofread',{'path':str(child),'version':child_state['version'],'source':draft,'items':split_items})
+        assert code==200,body
+        assert {region['id'] for region in json.loads(body)['regions']}=={1,2,3}, 'Each split chunk needs its own PDF actions.'
         assert history_rows()==rows and all(file.read_bytes()==text for file,text in originals.items())
         assert server.pdf==formal_pdf and not server.history_pdfs
         print('PASS: red/green PDF previews, per-range geometry, CRLF/source and formal PDF preservation, no history/cache writes, child/math overlays and failures')

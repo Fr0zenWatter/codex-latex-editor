@@ -21,7 +21,7 @@ export function attachProjectReview({editor, request, capture, adopt, open, mess
     editor.setOption('readOnly', true); rows.forEach(row => row.review.setBusy(true));
     try {
       const result = await request('/project-review', {method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({path:file.path, version:file.version, signature:file.signature, id:hunk.id, action})});
+        body:JSON.stringify({path:file.path, version:file.version, signature:file.signature, id:hunk?.id, action})});
       clear();
       await adopt(result.state);
       render(result);
@@ -88,5 +88,8 @@ export function attachProjectReview({editor, request, capture, adopt, open, mess
   const timer = setInterval(refresh,2000);
   window.addEventListener('pagehide',()=>clearInterval(timer));
   void Promise.resolve().then(refresh);
-  return {refresh, clear, get items(){return rows;}, get busy(){return committing;}};
+  return {refresh, clear, async keepAll() {
+    const file = files.find(item => item.path === capture().path);
+    if (file?.hunks.length) await resolve(file,null,'keep-all');
+  }, get items(){return rows;}, get busy(){return committing;}};
 }

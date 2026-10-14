@@ -2,10 +2,73 @@
 from contextlib import closing
 import difflib
 import hashlib
+import re
 import sqlite3
 import zlib
 
 from history import word_changes
+
+
+def review_paragraphs(source):
+    """Lossless paragraph units; blank lines inside TeX structures stay intact."""
+    parts, start, groups, environments, math, skip = [], 0, [], [], None, 0
+    tokens = r'\\(?:begin|end)\s*\{[^{}]*\}|\\[A-Za-z@]+\*?|\\[^\n]|%[^\n]*|\$\$?|\n[ \t]*\n(?:[ \t]*\n)*|[{}\[\]]'
+    for match in re.finditer(tokens, source):
+        if match.start() < skip:
+            continue
+        token = match[0]
+        if token.startswith('%'):
+            continue
+        env = re.fullmatch(r'\\(begin|end)\s*\{([^{}]*)\}', token)
+        if env:
+            name = env[2]
+            if env[1] == 'begin' and name in ('verbatim', 'verbatim*', 'lstlisting', 'minted'):
+                close = source.find('\\end{' + name + '}', match.end())
+                skip = len(source) if close < 0 else close + len(name) + 6
+            elif env[1] == 'begin':
+                environments.append(name)
+            elif environments and environments[-1] == name:
+                environments.pop()
+        elif token in ('\\verb', '\\verb*') and match.end() < len(source):
+            close = source.find(source[match.end()], match.end() + 1)
+            skip = len(source) if close < 0 else close + 1
+        elif token in ('$', '$$', '\\(', '\\['):
+            math = None if math == token else {'\\(': '\\)', '\\[': '\\]'}.get(token, token)
+        elif token in ('\\)', '\\]') and math == token:
+            math = None
+        elif token in ('{', '['):
+            groups.append(token)
+        elif token in ('}', ']'):
+            if not groups or groups[-1] != {'}': '{', ']': '['}[token]:
+                return [source]
+            groups.pop()
+        elif (token.startswith('\n') or token == '\\par') and not groups and not environments and math is None:
+            parts.append(source[start:match.end()]); start = match.end()
+    if start < len(source):
+        parts.append(source[start:])
+    return parts
+
+
+def split_review(before, after):
+    old, new = review_paragraphs(before), review_paragraphs(after)
+    old_offsets, new_offsets = [0], [0]
+    for part in old:
+        old_offsets.append(old_offsets[-1] + len(part))
+    for part in new:
+        new_offsets.append(new_offsets[-1] + len(part))
+    # Short paragraphs share a card; paragraphs over 400 source characters stand alone.
+    for kind, a, b, c, d in difflib.SequenceMatcher(None, old, new, autojunk=False).get_opcodes():
+        if kind == 'equal':
+            continue
+        while a < b or c < d:
+            count = 1
+            long = lambda index: max(len(old[a + index].strip()) if a + index < b else 0,
+                                     len(new[c + index].strip()) if c + index < d else 0) > 400
+            while count < 3 and (a + count < b or c + count < d) and not long(count - 1) and not long(count):
+                count += 1
+            end_old, end_new = min(a + count, b), min(c + count, d)
+            yield old_offsets[a], old_offsets[end_old], new_offsets[c], new_offsets[end_new]
+            a, c = end_old, end_new
 
 
 def normalized(source):
@@ -24,9 +87,12 @@ def review_hunks(before, after):
         if kind == 'equal':
             continue
         previous, proposed = ''.join(old[a:b]), ''.join(new[c:d])
-        hunks.append({'id': len(hunks) + 1, 'old_start': old_offsets[a], 'old_end': old_offsets[b],
-                      'start': new_offsets[c], 'end': new_offsets[d], 'line': c + 1,
-                      'before': previous, 'after': proposed, 'changes': word_changes(previous, proposed)})
+        for x, y, u, v in split_review(previous, proposed):
+            left, right = previous[x:y], proposed[u:v]
+            start = new_offsets[c] + u
+            hunks.append({'id': len(hunks) + 1, 'old_start': old_offsets[a] + x, 'old_end': old_offsets[a] + y,
+                          'start': start, 'end': new_offsets[c] + v, 'line': after.count('\n', 0, start) + 1,
+                          'before': left, 'after': right, 'changes': word_changes(left, right)})
     return hunks
 
 
@@ -115,6 +181,9 @@ class ProjectReview:
             current = hashlib.sha256((before + '\0' + state['version']).encode('utf-8')).hexdigest()
             if signature != current:
                 raise ValueError('项目修改已变化，请刷新校对后重试。')
+            if action == 'keep-all':
+                self.put(db, file, after)
+                return None
             hunk = next((item for item in review_hunks(before, after) if item['id'] == identifier), None)
             if not hunk or action not in ('keep', 'undo'):
                 raise ValueError('请选择有效的项目修改及 Keep / Undo。')

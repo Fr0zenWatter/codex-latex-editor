@@ -75,6 +75,7 @@ export function renderChatMarkdown(container, source, macros = {}) {
   for (const input of container.querySelectorAll('input')) {
     input.disabled = true;input.type = 'checkbox';
   }
+  queueMicrotask(() => globalThis.window?.dispatchEvent?.(new Event('latex-source-quotes-change')));
 }
 
 export function attachMarkdownPreview(container, editor) {

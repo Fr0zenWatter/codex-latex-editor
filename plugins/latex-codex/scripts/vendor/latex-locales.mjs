@@ -1,5 +1,8 @@
 // Interface messages keyed by their English fallback. Keep placeholders unchanged.
 export const translations = {
+  "Accept all": {"zh-TW":"全部接受","ja":"すべて採用","fr":"Tout accepter","de":"Alle übernehmen","es":"Aceptar todo"},
+  "Accept all pending proofread changes in the current file": {"zh-TW":"接受目前檔案的全部待確認校對修改","ja":"現在のファイルの保留中の校正変更をすべて採用","fr":"Accepter toutes les modifications de relecture en attente du fichier actuel","de":"Alle ausstehenden Korrekturen in der aktuellen Datei übernehmen","es":"Aceptar todas las correcciones pendientes del archivo actual"},
+  "Accepted all proofread changes in the current file.": {"zh-TW":"已接受目前檔案的全部校對修改。","ja":"現在のファイルの校正変更をすべて採用しました。","fr":"Toutes les modifications de relecture du fichier actuel ont été acceptées.","de":"Alle Korrekturen in der aktuellen Datei wurden übernommen.","es":"Se aceptaron todas las correcciones del archivo actual."},
   "Save this reply to Markdown": {"zh-TW":"將這則回覆記錄到 Markdown","ja":"この返信を Markdown に保存","fr":"Enregistrer cette réponse dans Markdown","de":"Diese Antwort in Markdown speichern","es":"Guardar esta respuesta en Markdown"},
   "Saved to {file}": {"zh-TW":"已記錄到 {file}","ja":"{file} に保存しました","fr":"Enregistré dans {file}","de":"In {file} gespeichert","es":"Guardado en {file}"},
   "Resize project chat": {"zh-TW":"調整專案對話欄寬度","ja":"プロジェクトチャットの幅を変更","fr":"Redimensionner le chat du projet","de":"Breite des Projektchats ändern","es":"Cambiar el ancho del chat del proyecto"},

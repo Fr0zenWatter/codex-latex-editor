@@ -22,7 +22,7 @@ def proofread_source(source, items, body_start=0):
                 or identifier < 1 or identifier in ids or not isinstance(before, str) or not isinstance(after, str)
                 or not isinstance(displayed_before, str) or len(displayed_before) > 262144
                 or not max(cursor, body_start) <= start <= end <= len(source) or source[start:end] != before
-                or (start == end and not displayed_before)):
+                or (start == end and not (displayed_before or after))):
             raise ValueError('校对选区已变化、重叠或位于导言区。')
         ids.add(identifier)
         prefix = source[cursor:start]

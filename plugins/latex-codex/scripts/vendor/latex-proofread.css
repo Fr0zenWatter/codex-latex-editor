@@ -31,4 +31,6 @@
 .proofread-next{bottom:14px}
 .proofread-previous{top:14px}
 #proofread-previous{top:42px}
+#proofread-keep-all{top:42px;left:16px;right:auto;background:#087b38}
+#proofread-keep-all:hover{background:#096b33}
 main>section:first-child{position:relative}

@@ -28,6 +28,7 @@ from chat import ChatJob, chat_context, chat_models, main_chat_context, completi
 from history import History, difference, word_changes, summary_language
 from outline import compiled_outline
 from preferences import Preferences
+from references import resolve_quote, source_digest
 from project_review import ProjectReview, review_hunks
 from proofread import color_preamble, document_start, proofread_source
 from markdown_source import SOURCE_EXTENSIONS, document_type, markdown_resource
@@ -45,6 +46,7 @@ ASSETS.update({'latex-proofread.mjs':'text/javascript','latex-proofread.css':'te
 ASSETS.update({'latex-proofread-pdf.mjs':'text/javascript','latex-writing-styles.mjs':'text/javascript'})
 ASSETS.update({'latex-completion.mjs':'text/javascript','latex-completion.css':'text/css'})
 ASSETS['gpt-temp-mark.svg'] = 'image/svg+xml'
+ASSETS['latex-references.mjs'] = 'text/javascript'
 ASSETS.update({'latex-outline.mjs':'text/javascript','latex-outline.css':'text/css','latex-zoom.mjs':'text/javascript','latex-zoom.css':'text/css','latex-search.mjs':'text/javascript','latex-search.css':'text/css'})
 ASSETS.update({name: 'text/css' if name.endswith('.css') else 'text/javascript' for name in
                ('latex-markdown.mjs', 'latex-markdown.css', 'marked.mjs', 'purify.mjs', 'markdown.js', 'gfm.js', 'xml.js', 'overlay.js', 'multiplex.js', 'latex-markdown.js')})
@@ -97,7 +99,7 @@ PAGE = r'''<!doctype html>
 header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 #file-drop-hint{position:fixed;inset:12px;z-index:1001;display:grid;place-items:center;border:2px dashed var(--command);border-radius:12px;background:color-mix(in srgb,var(--panel) 92%,transparent);color:var(--text);font-size:18px;font-weight:600;pointer-events:none}#file-drop-hint[hidden]{display:none}
 strong{font-size:17px}button,a,select{font:inherit}button,select{border:1px solid var(--border);border-radius:6px;padding:6px 12px;background:var(--bg);color:var(--text);cursor:pointer}button:hover,select:hover{border-color:var(--command)}button:disabled{opacity:.55;cursor:default}
-button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(--command)}a{color:var(--reference)}#status,#native-annotation-status{flex:1;color:var(--muted)}#app-toolbar{padding:4px 12px;gap:8px;min-height:36px}#app-toolbar button{padding:4px 9px}#app-toolbar #settings-menu-button{width:28px;padding:4px}
+button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(--command)}a{color:var(--reference)}#status,#native-annotation-status{flex:1;color:var(--muted)}#app-toolbar{padding:4px 12px;gap:8px;min-height:36px}#app-toolbar button{padding:4px 9px}#app-toolbar #settings-menu-button{width:28px;padding:4px}#chat-panel #source-quotes-open{width:30px;height:30px;padding:0;font:26px/20px Georgia,serif}#chat-panel #source-quotes-open[aria-pressed=true]{background:#6366f133;color:#c7d2fe}#source-quotes{position:fixed;inset:auto;margin:0;width:min(400px,calc(100vw - 24px));max-height:70vh;overflow:auto;padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--panel);color:var(--text);box-shadow:0 10px 32px #0004}#source-quotes-empty{font-size:12px;line-height:1.6;color:var(--muted)}#source-quotes-list{display:flex;flex-direction:column;gap:8px;margin-top:10px}.source-quote-item{text-align:left;white-space:normal}.source-quote-item span,.source-quote-item small{display:block}.source-quote-item small{color:var(--muted);margin-top:5px}.source-quote-link{cursor:pointer;text-decoration:underline}
 main{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 6px minmax(0,1fr);flex:1;min-height:0;background:var(--border)}
 .sync-rail{position:relative;background:var(--panel)}#splitter{position:absolute;inset:0;cursor:col-resize;touch-action:none;z-index:2}#splitter::before{content:'';position:absolute;inset:0 -3px}#splitter:hover,#splitter:focus-visible,main.resizing #splitter{background:var(--command)}main.resizing,main.resizing *{cursor:col-resize!important;user-select:none!important}#splitter:focus-visible{outline:2px solid var(--command)}#forward{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:3;padding:3px 0;width:22px;font-size:18px}
 main>section{min-width:0;min-height:0;display:flex;flex-direction:column;background:var(--bg)}label,.caption{padding:9px 14px;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -323,14 +325,15 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 <span style="color:var(--environment-command)">\end</span>{<span style="color:var(--environment)">equation</span>}
 <span style="color:var(--command)">\cite</span>{<span style="color:var(--reference)">example2026</span>}</pre><div class="theme-sample-capsule"><span data-i18n="询问 Codex…">询问 Codex…</span><span class="theme-sample-send" aria-hidden="true">↑</span></div></div>
 </div><div class="theme-dialog-actions"><button id="theme-save" disabled data-i18n="保存并使用">保存并使用</button></div></dialog>
-<main><section><div id="source-files"><button id="source-file" disabled aria-label="项目源码" data-i18n-aria-label="项目源码" aria-expanded="false" aria-controls="source-file-wheel"></button><div id="source-file-wheel" popover="auto"></div><small id="inline-completion-status" role="status" aria-live="polite"></small></div><label id="filename" hidden for="source" data-i18n="LaTeX 源码">LaTeX 源码</label><textarea id="source" spellcheck="false" disabled aria-label="LaTeX 源码" data-i18n-aria-label="LaTeX 源码"></textarea><button id="proofread-previous" class="proofread-navigation proofread-previous" type="button" hidden aria-controls="source"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V4m-6 6 6-6 6 6"/></svg><span></span></button><button id="proofread-next" class="proofread-navigation proofread-next" type="button" hidden aria-controls="source"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16m-6-6 6 6 6-6"/></svg><span></span></button></section>
+<main><section><div id="source-files"><button id="source-file" disabled aria-label="项目源码" data-i18n-aria-label="项目源码" aria-expanded="false" aria-controls="source-file-wheel"></button><div id="source-file-wheel" popover="auto"></div><small id="inline-completion-status" role="status" aria-live="polite"></small></div><label id="filename" hidden for="source" data-i18n="LaTeX 源码">LaTeX 源码</label><textarea id="source" spellcheck="false" disabled aria-label="LaTeX 源码" data-i18n-aria-label="LaTeX 源码"></textarea><button id="proofread-keep-all" type="button" class="proofread-navigation" aria-controls="source" hidden disabled aria-busy="false" title="接受当前文件的全部待确认校对修改" data-i18n-title="接受当前文件的全部待确认校对修改" data-i18n="全部接受">全部接受</button><button id="proofread-previous" class="proofread-navigation proofread-previous" type="button" hidden aria-controls="source"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V4m-6 6 6-6 6 6"/></svg><span></span></button><button id="proofread-next" class="proofread-navigation proofread-next" type="button" hidden aria-controls="source"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16m-6-6 6 6 6-6"/></svg><span></span></button></section>
 <div class="sync-rail"><div id="splitter" role="separator" tabindex="0" aria-label="调整 LaTeX 和 PDF 宽度" data-i18n-aria-label="调整 LaTeX 和 PDF 宽度" aria-orientation="vertical" aria-valuemin="15" aria-valuemax="85" aria-valuenow="50" title="拖动调整宽度 · 双击恢复各半" data-i18n-title="拖动调整宽度 · 双击恢复各半"></div><button id="forward" disabled aria-label="定位光标到 PDF" data-i18n-aria-label="定位光标到 PDF" title="跳到光标对应的 PDF 位置" data-i18n-title="跳到光标对应的 PDF 位置">→</button></div>
 <section><div class="pdf-toolbar"><div class="compile-group"><button id="compile" aria-busy="false" disabled><span class="compile-idle" data-i18n="保存并编译">保存并编译</span><span class="compile-busy" data-i18n="正在编译…">正在编译…</span></button><button id="compile-menu-button" popovertarget="compile-menu" aria-label="编译选项" data-i18n-aria-label="编译选项" title="编译选项" data-i18n-title="编译选项" aria-expanded="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></button></div><div id="compile-menu" class="toolbar-menu" popover="auto" aria-label="编译选项" data-i18n-aria-label="编译选项"><label for="auto-compile"><span data-i18n="自动编译">自动编译</span><input id="auto-compile" type="checkbox" checked aria-label="自动编译" data-i18n-aria-label="自动编译"></label></div><button id="markdown-pdf-toggle" hidden aria-pressed="false" data-i18n="PDF 预览">PDF 预览</button><button id="log-toggle" aria-label="编译日志" data-i18n-aria-label="编译日志" title="编译日志" data-i18n-title="编译日志" aria-pressed="false" aria-controls="log"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 2H5v20h14V7zM14 2v6h5M8 12h8M8 16h8"/></svg></button><span id="pan-hint" role="status" hidden data-i18n="空格拖动 · Alt + 空格缩放">空格拖动 · Alt + 空格缩放</span><button id="pan-mode" aria-pressed="true" title="切换拖动页面与选择文字" data-i18n-title="切换拖动页面与选择文字" ><svg class="toolbar-icon pan-hand-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 11V7a2 2 0 0 0-4 0v3M14 10V5a2 2 0 0 0-4 0v6M10 10.5V7a2 2 0 0 0-4 0v5l-1-1a2 2 0 0 0-3 2l4 6a6 6 0 0 0 5 3h3a6 6 0 0 0 6-6v-3a2 2 0 0 0-4 0v1"/></svg><svg class="toolbar-icon pan-select-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m4 3 15 10-7 1-4 7Z"/></svg><span id="pan-label" data-i18n="拖动">拖动</span></button><button id="zoom-fit" aria-label="PDF 缩放" aria-expanded="false" aria-controls="pdf-zoom-dial">100%</button><div id="pdf-zoom-dial" popover="manual" role="slider" tabindex="0" aria-label="PDF 缩放" aria-orientation="horizontal" aria-valuemin="30" aria-valuemax="500" aria-valuenow="100" aria-controls="preview"><div class="pdf-zoom-face"><svg class="pdf-zoom-arc" viewBox="0 0 240 240" aria-hidden="true"><path d="M 50 0 A 190 190 0 0 0 240 190"/></svg><div class="pdf-zoom-rotor" aria-hidden="true"></div><span class="pdf-zoom-indicator" aria-hidden="true"></span></div></div></div><div class="preview-shell"><div id="preview" class="hand-tool" role="region" aria-label="编译后的 PDF" data-i18n-aria-label="编译后的 PDF" tabindex="0"><div id="pdf-viewer" class="pdfViewer"></div></div><div id="markdown-preview" hidden role="region" aria-label="Markdown 预览" data-i18n-aria-label="Markdown 预览" tabindex="0"></div><nav id="pdf-outline" aria-label="章节目录" data-i18n-aria-label="章节目录" hidden></nav><button id="pdf-proofread-previous" class="proofread-navigation proofread-previous" type="button" hidden aria-controls="preview"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V4m-6 6 6-6 6 6"/></svg><span></span></button><button id="pdf-proofread-next" class="proofread-navigation proofread-next" type="button" hidden aria-controls="preview"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16m-6-6 6 6 6-6"/></svg><span></span></button><div id="log" hidden tabindex="0" role="region" aria-label="编译日志" data-i18n-aria-label="编译日志"><button id="log-jump" type="button" hidden></button><pre id="log-text"></pre></div></div></section></main>
 <div id="chat-panel" role="dialog" aria-label="项目浮动对话" data-i18n-aria-label="项目浮动对话" hidden>
 <div id="chat-compact-handle" role="button" tabindex="0" aria-label="拖动短对话条" data-i18n-aria-label="拖动短对话条" aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown"></div>
 <button id="chat-mini" type="button" aria-label="单击展开对话条，双击打开悬浮框" data-i18n-aria-label="单击展开对话条，双击打开悬浮框" title="单击展开对话条，双击打开悬浮框" data-i18n-title="单击展开对话条，双击打开悬浮框"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11.5a8 8 0 0 1-8 8 8.7 8.7 0 0 1-3.4-.7L4 20l1.2-4.6A8 8 0 1 1 20 11.5Z"/></svg></button>
 <div id="chat-compact-thinking" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><span id="chat-compact-status" class="sr-only" role="status"></span>
-<div id="chat-bar" class="chat-bar" tabindex="0" aria-label="拖动浮动对话" data-i18n-aria-label="拖动浮动对话"><div class="chat-brand"><span class="chat-brand-icon" aria-hidden="true"></span></div><button id="chat-pin" type="button" aria-label="固定浮动对话" data-i18n-aria-label="固定浮动对话" aria-pressed="false" title="固定浮动对话" data-i18n-title="固定浮动对话"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 9V3H8v6l-3 4v2h14v-2zM12 15v7"/></svg></button><button id="chat-end" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2.6 7M3 4v7h7"/></svg><span data-i18n="新对话">新对话</span></button><button id="chat-close" type="button" aria-label="收起浮动对话" data-i18n-aria-label="收起浮动对话">×</button></div>
+<div id="chat-bar" class="chat-bar" tabindex="0" aria-label="拖动浮动对话" data-i18n-aria-label="拖动浮动对话"><div class="chat-brand"><span class="chat-brand-icon" aria-hidden="true"></span></div><button id="chat-pin" type="button" aria-label="固定浮动对话" data-i18n-aria-label="固定浮动对话" aria-pressed="false" title="固定浮动对话" data-i18n-title="固定浮动对话"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 9V3H8v6l-3 4v2h14v-2zM12 15v7"/></svg></button><button id="chat-end" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2.6 7M3 4v7h7"/></svg><span data-i18n="新对话">新对话</span></button><button id="source-quotes-open" type="button" aria-pressed="false" aria-expanded="false" aria-controls="source-quotes" aria-label="原句引用" title="原句引用"><span aria-hidden="true">”</span></button><button id="chat-close" type="button" aria-label="收起浮动对话" data-i18n-aria-label="收起浮动对话">×</button></div>
+<div id="source-quotes" popover="auto"><strong>原句引用</strong><p id="source-quotes-empty">引号高亮表示定位工具已开启，再次点击关闭；收起列表不影响开启状态。回复可直接链接“Lemma 2.3”等名称或原句，点击定位 PDF。</p><div id="source-quotes-list"></div></div>
 <div id="chat-messages" role="log" aria-label="对话记录" data-i18n-aria-label="对话记录" aria-live="polite"></div>
 <div id="chat-typing" hidden aria-hidden="true"><span class="chat-typing-avatar"></span><span class="chat-typing-bubble"><i></i><i></i><i></i></span></div>
 <div id="chat-proposal" hidden><strong data-i18n="选区修改建议">选区修改建议</strong><pre id="chat-replacement"></pre><button id="chat-apply" data-i18n="应用到选区">应用到选区</button></div>
@@ -370,6 +373,7 @@ import {EventBus, PDFViewer, PDFLinkService} from '/vendor/pdfjs/web/pdf_viewer.
 import katex from '/vendor/katex/katex.mjs';
 import {attachMathHover,findMathRanges,documentMacros} from '/vendor/latex-hover.mjs';
 import {attachSelectionChat} from '/vendor/latex-chat.mjs';
+import {attachSourceQuotes} from '/vendor/latex-references.mjs';
 import {attachProjectReview} from '/vendor/latex-project-review.mjs';
 import {attachProofreadPdf, paintProofreadActions, proofreadPdfPositions} from '/vendor/latex-proofread-pdf.mjs';
 import {attachProofreadNavigation} from '/vendor/latex-proofread.mjs';
@@ -441,7 +445,7 @@ sourceWrapper.addEventListener('wheel',event=>{
   editor.scrollTo(scroll.left,scroll.top+editor.charCoords(anchor,'window').top-top);
 },{passive:false});
 document.querySelector('main').append(document.querySelector('#chat-panel'));
-let proofreadPdf=null,normalPdfData=null,pdfRenderGeneration=0,projectReview=null,localReviewItems=[],localReviewEdit=null;
+let proofreadPdf=null,normalPdfData=null,pdfRenderGeneration=0,projectReview=null,selectionChat=null,acceptingAll=false,localReviewItems=[],localReviewEdit=null;
 const editorReviewNavigation=attachProofreadNavigation({button:document.querySelector('#proofread-next'),
   previous:document.querySelector('#proofread-previous'),
   positions:()=>preferences.getItem('latex-codex-proofread-editor')==='off'?[]:
@@ -466,13 +470,37 @@ preview.addEventListener('scroll',pdfReviewNavigation.update,{passive:true});
 new ResizeObserver(editorReviewNavigation.update).observe(editor.getWrapperElement());
 new ResizeObserver(pdfReviewNavigation.update).observe(preview);
 for(const name of ['pagesinit','pagerendered','updateviewarea'])pdfEvents.on(name,pdfReviewNavigation.update);
-const selectionChat=attachSelectionChat(editor,request,paintPdfAnnotations,saveAnnotationChange,
-  ()=>documentType==='latex'?(document.querySelector('#filename').title===mainFile?editor.getValue():mainSource||editor.getValue()):'');
+selectionChat=attachSelectionChat(editor,request,paintPdfAnnotations,saveAnnotationChange,
+  ()=>documentType==='latex'?(document.querySelector('#filename').title===mainFile?editor.getValue():mainSource||editor.getValue()):'',()=>sourceQuotes.enabled);
 projectReview=attachProjectReview({editor,request,
   capture:()=>({path:document.querySelector('#filename').title,doc:editor.getDoc(),source:editor.getValue(),clean:!!version&&!busy&&!syncBusy&&!conflict&&editor.getValue()===saved}),
   adopt:adoptProjectSource,open:switchSource,message:text=>status.textContent=text,
   changed:()=>paintPdfAnnotations(localReviewItems,localReviewEdit),
 });
+function updateAcceptAll(){
+  const button=document.querySelector('#proofread-keep-all');
+  const count=localReviewItems.filter(item=>item.review).length+(projectReview?.items.length||0);
+  button.hidden=!count;
+  button.disabled=!count||acceptingAll||busy||syncBusy||conflict||editor.getOption('readOnly')||selectionChat?.busy||projectReview?.busy
+    ||!!projectReview?.items.length&&editor.getValue()!==saved;
+  button.setAttribute('aria-busy',String(acceptingAll));
+}
+document.querySelector('#proofread-keep-all').onclick=async()=>{
+  updateAcceptAll();
+  if(document.querySelector('#proofread-keep-all').disabled)return;
+  acceptingAll=true;updateAcceptAll();
+  try{
+    if(localReviewItems.some(item=>{
+      if(!item.review)return false;
+      const pos=item.marker?.find();
+      return !pos||item.doc!==editor.getDoc()||editor.getRange(pos.from,pos.to)!==item.original;
+    }))throw new Error(t('批注选区已变化，未应用任何修改。批注已保留。'));
+    await projectReview.keepAll();
+    await selectionChat.keepAll();
+    setText(status,'已接受当前文件的全部校对修改。');
+  }catch(error){status.textContent=error.message;}
+  finally{acceptingAll=false;updateAcceptAll();}
+};
 pdfEvents.on('pagerendered',()=>selectionChat.refreshAnnotations());
 const historyDialog=document.querySelector('#history-dialog');
 attachHistory(editor,request,()=>({path:document.querySelector('#filename').title,source:editor.getValue(),version}),restoreHistory);
@@ -675,6 +703,18 @@ function setEditorMode(){
 }
 editorMode.onchange=setEditorMode;setEditorMode();
 let version='',saved='',mainSource='',busy=false,loading=false,timer,conflict=false,pdfVersion='',syncBusy=false,pendingForward=false,compiledLabels={},compiledCitations={},projectRoot='',mainFile='',projectVersion='',autoCompilePaused=false;
+const sourceQuotes=attachSourceQuotes({button:document.querySelector('#source-quotes-open'),panel:document.querySelector('#source-quotes'),
+  list:document.querySelector('#source-quotes-list'),empty:document.querySelector('#source-quotes-empty'),request,translate:t,
+  message:text=>status.textContent=text,
+  capture:()=>({project:projectRoot,doc:editor.getDoc(),path:document.querySelector('#filename').title,source:editor.getValue(),version,
+    available:!!version&&!busy&&!syncBusy&&!conflict&&!editor.getOption('readOnly')&&!selectionChat.busy&&!proofreadPdf?.active}),
+  navigate:async data=>{
+    if(data.path!==document.querySelector('#filename').title&&!await switchSource(data.path,false))return;
+    if(version!==data.version||editor.getValue().slice(data.start,data.end)!==data.quote)throw new Error(t('源码已变化，请重新点击引用。'));
+    const from=editor.posFromIndex(data.start),to=editor.posFromIndex(data.end);
+    editor.setSelection(to,from);editor.scrollIntoView({from,to},40);await synchronize('forward');
+  },
+});
 attachInlineCompletion({editor,request,preferences,t,
   getPath:()=>document.querySelector('#filename').title,
   available:()=>!!version&&!conflict&&!selectionChat.busy&&!proofreadPdf?.active});
@@ -724,7 +764,7 @@ logJump.onclick=async()=>{
   const cursor={line:error.line-1,ch:0};
   editor.setCursor(cursor);editor.focus();editor.scrollIntoView(cursor,editor.getScrollInfo().clientHeight/2);
 };
-function updateSyncControls(){const disabled=busy||syncBusy||editor.getOption('readOnly');forwardButton.disabled=disabled||!!proofreadPdf?.active;compileButton.disabled=disabled;logJump.disabled=disabled||conflict;openButton.disabled=busy||syncBusy;sourcePicker.setDisabled(!!disabled);document.querySelector('#project-open').disabled=!!disabled;document.querySelector('#history-open').disabled=!!disabled;}
+function updateSyncControls(){updateAcceptAll();const disabled=busy||syncBusy||editor.getOption('readOnly');forwardButton.disabled=disabled||!!proofreadPdf?.active;compileButton.disabled=disabled;logJump.disabled=disabled||conflict;openButton.disabled=busy||syncBusy;sourcePicker.setDisabled(!!disabled);document.querySelector('#project-open').disabled=!!disabled;document.querySelector('#history-open').disabled=!!disabled;}
 proofreadPdf=attachProofreadPdf({request,
   capture:()=>({latex:documentType==='latex',enabled:preferences.getItem('latex-codex-proofread-pdf')!=='off',path:document.querySelector('#filename').title,version,source:editor.getValue(),doc:editor.getDoc(),range:(from,to)=>editor.getRange(from,to),index:pos=>editor.indexFromPos(pos)}),
   display:async(data,current)=>{const displayed=await refreshPreview(data,current);if(displayed!==false&&current()){pdfVersion='';compiledLabels={};compiledCitations={};showCompileLog(false);updateSyncControls();selectionChat.refreshAnnotations();}return displayed;},
@@ -1654,6 +1694,7 @@ function selectedPdfPoints(){
 }
 function paintPdfAnnotations(items,edit){
   localReviewItems=items;localReviewEdit=edit;
+  updateAcceptAll();
   items=[...items,...(projectReview?.items||[])];
   proofreadPdf?.update(items);
   editorReviewNavigation.update();pdfReviewNavigation.update();
@@ -1922,15 +1963,16 @@ def validate_annotation_change(change, source):
     for item in change['items']:
         if (not isinstance(item, dict) or type(item.get('id')) is not int or item['id'] < 1 or item['id'] in ids
                 or type(item.get('start')) is not int or type(item.get('end')) is not int
-                or not end <= item['start'] < item['end'] <= len(before)
+                or not end <= item['start'] <= item['end'] <= len(before)
                 or item.get('selection') != before[item['start']:item['end']]
                 or not isinstance(item.get('request'), str) or not item['request'].strip()
-                or 'replacement' not in item or not (item['replacement'] is None or isinstance(item['replacement'], str))):
+                or 'replacement' not in item or not (item['replacement'] is None or isinstance(item['replacement'], str))
+                or item['start'] == item['end'] and not item['replacement']):
             raise ValueError('批注历史选区无效或重叠。')
         ids.add(item['id']); end = item['end']
         items.append({key:item[key] for key in ('id','start','end','selection','request','replacement')})
         items[-1].update(first_line=before.count('\n',0,item['start'])+1,
-                         last_line=before.count('\n',0,item['end']-1)+1)
+                         last_line=before.count('\n',0,max(item['start'],item['end']-1))+1)
     after = before
     for item in reversed(items):
         if item['replacement'] is not None:
@@ -3089,7 +3131,7 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
             nonlocal path, history, root, main_file
             if not self.local():
                 return
-            if self.path not in ('/completion', '/main-chat', '/project-review', '/preferences', '/compile', '/proofread', '/save', '/open', '/source', '/project', '/synctex', '/chat', '/chat/cancel', '/chat/new', '/chat/export', '/history/diff', '/history/label', '/history/restore', '/history/pdf', '/history/pdf-cancel', '/history/pdf-cache', '/history/summaries', '/history/summaries/cancel'):
+            if self.path not in ('/completion', '/main-chat', '/project-review', '/preferences', '/compile', '/proofread', '/save', '/open', '/source', '/project', '/synctex', '/chat', '/chat/cancel', '/chat/new', '/chat/export', '/source-quote', '/history/diff', '/history/label', '/history/restore', '/history/pdf', '/history/pdf-cancel', '/history/pdf-cache', '/history/summaries', '/history/summaries/cancel'):
                 self.reply(404, {'error': 'Not found.'})
                 return
             try:
@@ -3332,6 +3374,19 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
                         self.server.chat = None
                     self.reply(200, {'cancelled': True})
                     return
+                if self.path == '/source-quote':
+                    if data.get('path') != str(path) or data.get('version') != snapshot(path)['version']:
+                        raise FileConflict('当前源码已变化，请重新点击引用。')
+                    if not isinstance(data.get('source'), str):
+                        raise ValueError('引用需要当前源码。')
+                    quote = resolve_quote(root, data.get('reference'), {'path': path.relative_to(root).as_posix(), 'source': data['source']})
+                    target = snapshot(Path(quote['path']))
+                    if (snapshot(path)['version'] != data['version'] or
+                            quote['path'] != str(path) and source_digest(target['source']) != quote['digest']):
+                        raise FileConflict('引用后的源码已变化，请让 AI 重新引用。')
+                    quote['version'] = target['version']
+                    self.reply(200, quote)
+                    return
                 if self.path == '/chat/export':
                     if data.get('project') != str(root):
                         raise FileConflict('项目已切换，请重新打开对话。')
@@ -3375,7 +3430,10 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
                             recent = recent[2:]
                         data = {**data, 'messages': recent + [incoming[-1]]}
                         memory, memory_revision = history, state['revision']
-                    job = ChatJob(chat_context(data, path, main_thread, ai_backend), memory, memory_revision, backend=ai_backend)
+                    context = chat_context(data, path, main_thread, ai_backend)
+                    quotes = ({'root': str(root), 'path': path.relative_to(root).as_posix(), 'source': data['source']}
+                              if data.get('references') is True and path.suffix.lower() == '.tex' and ai_backend == 'codex' else None)
+                    job = ChatJob(context, memory, memory_revision, backend=ai_backend, references=quotes)
                     if request_id:
                         job.id = request_id
                         job.request_hash = request_hash

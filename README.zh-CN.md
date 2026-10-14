@@ -5,8 +5,8 @@
 在 Codex 侧边栏编辑 LaTeX 和 Markdown，支持本地预览、自动保存和历史。
 
 - 源码与 PDF 双向跳转、PDF 选字与公式框选，支持选择 PDF 阅读底色。
-- **Send** 使用已登录的 Codex 生成修改建议，源码与 PDF 逐处 **Keep / Undo**。
-- 支持模型与思考等级选择、写作风格、浮动项目对话及回复的 Markdown 记录。
+- **Send** 使用已登录的 Codex 生成修改建议，源码与 PDF 逐处 **Keep / Undo**，也可在源码栏左上角点击**全部接受**。
+- 支持模型与思考等级选择、写作风格、浮动项目对话及回复的 Markdown 记录；开启 **”** 可让 AI 提供论文原句的 PDF 跳转链接。
 - Markdown 实时预览，以及通过现有 TeX 环境生成 PDF。
 
 对 Codex 说：**使用 latex-codex 打开 main.tex**，或直接运行：

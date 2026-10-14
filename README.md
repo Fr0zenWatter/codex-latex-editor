@@ -5,8 +5,8 @@
 Edit LaTeX and Markdown in the Codex side panel, with local previews, autosave and history.
 
 - Source/PDF navigation, PDF text and formula box selection, and a choice of PDF reading backgrounds.
-- **Send** proposes edits through your signed-in Codex; review each change with **Keep / Undo** in source and PDF.
-- Model and reasoning controls, writing styles, floating project chat and Markdown reply notes.
+- **Send** proposes edits through your signed-in Codex; review each change with **Keep / Undo** in source and PDF, or **Accept all** at the source pane’s upper-left corner.
+- Model and reasoning controls, writing styles, floating project chat and Markdown reply notes. Enable **”** for clickable paper quotations and PDF links.
 - Live Markdown previews and PDF compilation using your existing TeX installation.
 
 Ask Codex: **Use latex-codex to open main.tex**, or launch directly:

@@ -48,6 +48,11 @@ file.hunks=[{id:1,start:5,end:5,before:'deleted\n',after:'',changes:[{kind:'dele
 files=[file];await review.refresh();assert.equal(bookmark,1,'Pure deletions have a visible review at the insertion point.');
 stored.set('latex-codex-proofread-editor','off');await review.refresh();
 assert(element('#project-review-list').children.includes(review.items[0].review.root),'PDF-only mode keeps source actions in the project list.');
+clean=false;await assert.rejects(()=>review.keepAll(),/Save the editor draft/);
+assert.equal(review.items.length,1);
+clean=true;await review.keepAll();assert.equal(calls.at(-1).action,'keep-all');
+assert.equal(calls.at(-1).id,undefined);assert.equal(review.items.length,0);
+files=[file];await review.refresh();
 stored.set('latex-codex-proofread-project','off');await review.refresh();
 assert.equal(review.items.length,0);assert.equal(element('#project-review-open').hidden,true);assert(cleared>0);
 events.pagehide();

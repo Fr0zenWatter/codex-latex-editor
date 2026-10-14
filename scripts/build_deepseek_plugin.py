@@ -7,7 +7,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULES = ('editor.py', 'chat.py', 'history.py', 'markdown_source.py', 'obsidian_tex.py',
-           'outline.py', 'preferences.py', 'project_review.py', 'proofread.py')
+           'outline.py', 'preferences.py', 'project_review.py', 'proofread.py', 'references.py')
 
 
 def build_runtime(core_scripts=ROOT / 'plugins/latex-codex/scripts',

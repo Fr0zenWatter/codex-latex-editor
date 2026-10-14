@@ -2,6 +2,17 @@
 
 ## 0.3.5 — 2026-10-13
 
+2026-10-14 update / 补充更新：
+
+- Enable the read-only `cite_tex` tool with the floating conversation’s **”** toggle. The toggle remains highlighted while enabled; discussion of paper passages encourages verified links with theorem names or sentence text, including inline math. Links select source and navigate to PDF, with project/source/version guards.
+- Split AI suggestions and external reviews into at most three short paragraphs per block; paragraphs over 400 source characters stand alone. Preserve complete TeX structures and independent Keep / Undo.
+- Add **Accept all** as a floating capsule at the source pane’s upper-left corner. Accept the current file’s generated AI suggestions and external reviews, preserving unsent comments and other files’ pending changes. Validate stale ranges/baselines and retain unaccepted suggestions on failure.
+- Remove the redundant follow-up/memory reminder after ordinary chat replies.
+
+新增论文引用定位工具、分段校对及源码栏左上角“全部接受”；清理冗余聊天状态提示。版本号保持 0.3.5。
+
+Supplemental validation / 补充验证：12 targeted checks passed on Windows for quotations, tool gating, chat, paragraph reviews, bulk acceptance, real TeX/PDF navigation and preview, UI, settings, Markdown and standalone plugin packaging. Browser behavior was also checked using synthetic test documents. macOS/Linux hardware was not retested.
+
 - Replace the project chat sidebar with a movable floating conversation, including compact and expanded views, pinning, a persistent temporary chat bubble enabled by default, width/height controls, Ctrl+Q toggling and Ctrl+wheel text sizing. Preserve an explicitly saved off preference.
 - Allow project questions without a source selection; force these replies to leave the source unchanged. Keep selected-text edits and per-change Keep / Undo.
 - Render floating chat, saved chat history and annotation replies with literal macros from the paper, using the existing bounded macro parser. Main-file drafts supply their current definitions; included files use the main document. Cache definitions by source and isolate each reply's macro dictionary.

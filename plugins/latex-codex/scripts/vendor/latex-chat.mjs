@@ -14,7 +14,7 @@ export function colorReplacement(text, color, segments) {
   }).join('');
 }
 
-export function attachSelectionChat(editor, request, paintAnnotations = () => {}, recordAnnotations = async () => {}, getMacroSource = () => editor.getValue()) {
+export function attachSelectionChat(editor, request, paintAnnotations = () => {}, recordAnnotations = async () => {}, getMacroSource = () => editor.getValue(), referencesEnabled = () => false) {
   const $ = id => document.querySelector('#' + id);
   const panel = $('chat-panel'), input = $('chat-input'), messages = $('chat-messages'), status = $('chat-status');
   let macroSource = null, macros = {};
@@ -170,6 +170,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     panel.style.height = '';panel.style.bottom = 'auto';positionCompact();
   }
   function collapsePanel(mini = returnToMini) {
+    $('source-quotes')?.hidePopover();
     clearTimeout(miniClickTimer);miniClickTimer = null;
     returnToMini = mini;
     const hide = !!miniButton && !permanentBar.checked;
@@ -883,6 +884,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   $('chat-use-selection').onclick = useSelection;
   $('chat-stop').onclick = () => { stop(); notice(t('已停止，可继续提问。')); };
   panel.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && $('source-quotes')?.matches(':popover-open')) return;
     if (event.key === 'Escape' && panel.dataset.collapsed === 'false') { event.preventDefault();collapsePanel();editor.focus(); }
   });
   input.addEventListener('keydown', event => {
@@ -916,7 +918,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
           end:Array.from(source.slice(0,editor.indexFromPos(pos.to))).length, selection:item.original, request:annotationRequest(item)};
       });
       const started = await request('/chat', {method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({source,selection,messages:conversation,remember:true,memory_revision:memoryRevision,model:modelSelect.value,effort:effortSelect.value,request_id:crypto.randomUUID().replaceAll('-',''),...(items ? {annotations:items} : {})})});
+        body:JSON.stringify({source,selection,messages:conversation,remember:true,memory_revision:memoryRevision,model:modelSelect.value,effort:effortSelect.value,request_id:crypto.randomUUID().replaceAll('-',''),references:referencesEnabled(),...(items ? {annotations:items} : {})})});
       if (token !== generation) {
         await request('/chat/cancel', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:started.id})}); return;
       }
@@ -938,7 +940,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
           renderProposal(); $('chat-proposal').hidden = false;
           notice(t('修改建议已就绪。可继续讨论，或应用到选区。'));
         } else {
-          notice(t('可以继续追问；本次对话记忆保留。'));
+          notice('');
         }
         messages.scrollTop = messages.scrollHeight;
         return;
@@ -956,33 +958,63 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
       if (!pos || editor.getOption('readOnly')) throw new Error(t('批注选区已变化，未应用任何修改。批注已保留。'));
       if (!result || !(result.replacement === null || typeof result.replacement === 'string'))
         throw new Error(t('批注修改返回不完整，未应用。请重试。'));
-      return {item, pos, result, start:editor.indexFromPos(pos.from), end:editor.indexFromPos(pos.to), replacement:result.replacement === null ? null : colorReplacement(result.replacement, color, result.segments)};
-    }).sort((a,b) => b.start - a.start);
+      return {item, pos:{from:{...pos.from},to:{...pos.to}}, result, start:editor.indexFromPos(pos.from), end:editor.indexFromPos(pos.to), replacement:result.replacement === null ? null : colorReplacement(result.replacement, color, result.segments)};
+    }).sort((a,b) => b.start - a.start || (b.item.reviewOrder ?? 0) - (a.item.reviewOrder ?? 0));
   }
   async function reviewAnnotations(batch, replacements, reply) {
     if (!editorProofread() && !pdfProofread()) return applyAnnotations(batch, replacements, reply);
     const edits = annotationEdits(batch, replacements);
+    const plans = edits.filter(edit => edit.replacement !== null && edit.replacement !== edit.item.original).map(edit => {
+      if (!Array.isArray(edit.result.reviews)) return {edit, parts:null};
+      const points = Array.from(edit.item.original), parts = edit.result.reviews;
+      let cursor = 0, rebuilt = '';
+      if (!parts.length) throw new Error(t('批注修改返回不完整，未应用。请重试。'));
+      for (const part of parts) {
+        if (!Number.isInteger(part.old_start) || !Number.isInteger(part.old_end)
+            || part.old_start < cursor || part.old_end < part.old_start || part.old_end > points.length
+            || typeof part.after !== 'string' || part.before !== points.slice(part.old_start, part.old_end).join(''))
+          throw new Error(t('批注修改返回不完整，未应用。请重试。'));
+        rebuilt += points.slice(cursor, part.old_start).join('') + part.after;
+        cursor = part.old_end;
+      }
+      if (rebuilt + points.slice(cursor).join('') !== edit.result.replacement)
+        throw new Error(t('批注修改返回不完整，未应用。请重试。'));
+      return {edit, parts:parts.map(part => ({...part,
+        from:editor.posFromIndex(edit.start + points.slice(0, part.old_start).join('').length),
+        to:editor.posFromIndex(edit.start + points.slice(0, part.old_end).join('').length)}))};
+    });
     const unchanged = edits.filter(edit => edit.replacement === null || edit.replacement === edit.item.original);
     if (unchanged.length) await applyAnnotations(unchanged.map(edit => edit.item), unchanged.map(edit => edit.result), reply);
-    for (const {item, pos, result, replacement} of edits) {
-      if (replacement === null || replacement === item.original) continue;
-      const prepared = {id:item.id, replacement};
-      item.proposed = replacement;
-      item.review = attachProofread(editor, pos.from, pos.to, item.original, replacement, result.changes,
-        async () => {
-          if (sending || annotationCommitting) throw new Error(t('正在保存，请稍后重试。'));
-          await applyAnnotations([item], [prepared], reply);
-        },
-        () => {
-          if (sending || annotationCommitting) return;
-          item.review.destroy(); item.marker.clear();
-          annotations = annotations.filter(other => other !== item); refreshAnnotations();
-          notice(t('已撤销这处建议，原文保留。'));
-        }, refreshAnnotations, editorProofread());
+    let first;
+    for (const {edit, parts} of plans) {
+      const rows = parts ? parts.map((part,index) => ({item:{...edit.item,
+        id:index ? ++annotationId : edit.item.id, original:part.before, pdf:null, reviewGroup:edit.item, reviewOrder:index,
+        marker:editor.markText(part.from,part.to,{clearWhenEmpty:false})},
+        pos:{from:part.from,to:part.to}, result:part,
+        replacement:colorReplacement(part.after,color,part.segments)})) : [edit];
+      if (parts) {
+        edit.item.marker.clear();
+        annotations.splice(annotations.indexOf(edit.item),1,...rows.map(row=>row.item));
+      }
+      first = rows[0].item;
+      for (const {item, pos, result, replacement} of rows) {
+        const prepared = {id:item.id, replacement};
+        item.proposed = replacement;item.reviewReply = reply;
+        item.review = attachProofread(editor, pos.from, pos.to, item.original, replacement, result.changes,
+          async () => {
+            if (sending || annotationCommitting) throw new Error(t('正在保存，请稍后重试。'));
+            await applyAnnotations([item], [prepared], reply);
+          },
+          () => {
+            if (sending || annotationCommitting) return;
+            item.review.destroy(); item.marker.clear();
+            annotations = annotations.filter(other => other !== item); refreshAnnotations();
+            notice(t('已撤销这处建议，原文保留。'));
+          }, refreshAnnotations, editorProofread());
+      }
     }
     refreshAnnotations();
-    const first = [...edits].reverse().find(edit => edit.item.review);
-    if (first) editor.scrollIntoView(first.pos.from, 80);
+    if (first) editor.scrollIntoView(first.marker.find().from, 80);
   }
   async function applyAnnotations(batch, replacements, reply) {
     const edits = annotationEdits(batch, replacements);
@@ -1000,9 +1032,21 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     if (editor.getOption('keyMap').startsWith('vim')) CodeMirror.Vim.handleKey(editor, '<Esc>');
     editor.operation(() => {
       edits.forEach(({item,pos,replacement}) => {
+        const at = editor.indexFromPos(pos.from);
+        const preceding = item.original === '' && item.reviewGroup ? annotations.filter(other => {
+          const range = validAnnotation(other);
+          return other.reviewGroup === item.reviewGroup && other.reviewOrder < item.reviewOrder
+            && other.original === '' && range && editor.indexFromPos(range.from) === at;
+        }) : [];
         item.review?.destroy();
         item.marker.clear();
         if (replacement !== null && replacement !== item.original) editor.replaceRange(replacement,pos.from,pos.to,'codex-chat');
+        for (const other of preceding) {
+          other.review.setVisible(false);other.marker.clear();
+          const point = editor.posFromIndex(at);
+          other.marker = editor.markText(point,point,{clearWhenEmpty:false});
+          other.review.setVisible(editorProofread(),{from:point,to:point});
+        }
       });
     });
     annotations = annotations.filter(item => !batch.includes(item));
@@ -1052,6 +1096,15 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     if (annotations.length || quickInput.value.trim()) { event.preventDefault(); event.returnValue = ''; }
   });
   restoreDefaultStyle(); refreshAnnotations();
-  return {open, openQuick, refreshAnnotations, get busy() { return sending || annotationCommitting; },
+  return {open, openQuick, refreshAnnotations, async keepAll() {
+    if (sending || annotationCommitting) throw new Error(t('正在保存，请稍后重试。'));
+    const batch = annotations.filter(item => item.review);
+    annotationEdits(batch,batch.map(item=>({id:item.id,replacement:item.proposed})));
+    for (let end=batch.length;end>0;end-=100) {
+      const group=batch.slice(Math.max(0,end-100),end);
+      await applyAnnotations(group,group.map(item=>({id:item.id,replacement:item.proposed})),
+        [...new Set(group.map(item=>item.reviewReply))].filter(Boolean).join('\n\n'));
+    }
+  }, get busy() { return sending || annotationCommitting; },
     get hasAnnotations() { return !!annotations.length || !!quickInput.value.trim(); }};
 }

@@ -72,8 +72,9 @@ function settleAnimation(){for(let i=0;animationFrames.size&&i<120;i++)flushAnim
 const context = vm.createContext({
   preferences:{getItem(key){return stored.get(key);},setItem(key,value){stored.set(key,value);}},
   t:key=>key, setText:(element,key,values={})=>{element.textContent=key.replace(/\{(\w+)\}/g,(match,name)=>values[name]??match);},initSettings(){}, initScreenshotThemes(){}, applyCustomTheme(){return false;},
-  attachMathHover(){return {setMainSource(){}};},attachInlineCompletion(config){context.inlineCompletionConfig=config;},attachNativeAnnotations(){},attachSelectionChat(_editor,_request,_paint,_save,getMacroSource){context.chatMacroSource=getMacroSource;return {open(){chatOpened.push('full');},openQuick(anchor){chatOpened.push(anchor);},refreshAnnotations(){},busy:false};},attachHistory(){},mountHistoryTabs(){},katex:{},
-  attachProjectReview(){return {items:[],busy:false,refresh:async()=>{},clear(){}};},
+  attachMathHover(){return {setMainSource(){}};},attachInlineCompletion(config){context.inlineCompletionConfig=config;},attachNativeAnnotations(){},attachSelectionChat(_editor,_request,_paint,_save,getMacroSource){context.chatMacroSource=getMacroSource;return context.bulkChatApi={open(){chatOpened.push('full');},openQuick(anchor){chatOpened.push(anchor);},refreshAnnotations(){},busy:false};},attachHistory(){},mountHistoryTabs(){},katex:{},
+  attachProjectReview(){return context.bulkProjectApi={items:[],busy:false,refresh:async()=>{},clear(){}};},
+  attachSourceQuotes(config){context.sourceQuotesConfig=config;return {enabled:false,refresh(){}};},
   attachProofreadPdf(){return {update(){},invalidate(){},active:false};},paintProofreadActions(){},
   attachProofreadNavigation(config){config.button.navigation=config;return {update(){}};},proofreadPdfPositions(){return [];},
   mountSourceWheel({button}){return {update(data){button.textContent=data.files.find(file=>file.path===data.path)?.name;button.files=data.files;button.mainFile=data.mainFile;},setDisabled(value){button.disabled=value;}};},
@@ -1481,4 +1482,34 @@ assert.equal(context.chatMacroSource(),'saved main preamble','Included-file chat
 vm.runInContext("documentType='markdown'",context);
 assert.equal(context.chatMacroSource(),'','Markdown chat does not import TeX declarations from notes.');
 console.log('PASS: chat macro source follows the main draft or included-file context without changing Markdown');
+source='😀\nA quoted sentence.';
+context.quoteTrialSource=source;
+vm.runInContext("documentType='latex';busy=syncBusy=conflict=false;version='quote-v';saved=quoteTrialSource;editor.setOption('readOnly',false)",context);
+element('#filename').title='/project/main.tex';
+editor.posFromIndex=index=>({line:source.slice(0,index).split('\n').length-1,ch:index-source.lastIndexOf('\n',index-1)-1});
+let quoteForward=0;
+const beforeQuoteSync=context.synchronize;
+context.synchronize=direction=>{assert.equal(direction,'forward');assert.equal(editor.selection.to.line,1);assert.equal(editor.selection.to.ch,0);quoteForward++;};
+await context.sourceQuotesConfig.navigate({path:'/project/main.tex',version:'quote-v',start:3,end:source.length,quote:'A quoted sentence.'});
+assert.equal(quoteForward,1);assert.equal(source,'😀\nA quoted sentence.');
+await assert.rejects(context.sourceQuotesConfig.navigate({path:'/project/main.tex',version:'old-v',start:3,end:source.length,quote:'A quoted sentence.'}),/源码已变化/);
+assert.equal(quoteForward,1);context.synchronize=beforeQuoteSync;
+console.log('PASS: local quote wiring retains selection, navigates from its first character and rejects stale versions');
+const bulkButton=element('#proofread-keep-all'),bulkOrder=[];
+context.bulkPending={doc:editor.getDoc(),review:{},original:'pending text',marker:{find:()=>({from:{line:0,ch:0},to:{line:0,ch:12}})}};
+editor.getRange=()=> 'pending text';
+vm.runInContext('localReviewItems=[bulkPending];updateAcceptAll()',context);
+assert.equal(bulkButton.hidden,false);assert.equal(bulkButton.disabled,false);
+context.bulkProjectApi.keepAll=async()=>{bulkOrder.push('project');context.bulkProjectApi.items=[];};
+context.bulkChatApi.keepAll=async()=>{bulkOrder.push('ai');vm.runInContext('localReviewItems=[]',context);};
+context.bulkChatApi.busy=true;await bulkButton.onclick();assert.equal(bulkButton.disabled,true);assert.equal(bulkOrder.length,0);
+context.bulkChatApi.busy=false;
+const bulkFind=context.bulkPending.marker.find;context.bulkPending.marker.find=()=>null;
+await bulkButton.onclick();assert.equal(bulkOrder.length,0,'Validate AI anchors before accepting external reviews.');
+assert.match(element('#status').textContent,/选区已变化/);
+context.bulkPending.marker.find=bulkFind;context.bulkProjectApi.items=[{review:{}}];
+await bulkButton.onclick();assert.deepEqual(bulkOrder,['project','ai']);
+assert.equal(bulkButton.hidden,true);assert.equal(bulkButton.attributes['aria-busy'],'false');
+assert.equal(element('#status').textContent,'已接受当前文件的全部校对修改。');
+console.log('PASS: one source-pane bulk-accept entry, shared AI/project actions, busy exclusion, stale-anchor preflight and automatic hiding');
 })().catch(error=>{console.error(error);process.exitCode=1;});

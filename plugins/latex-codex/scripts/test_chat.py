@@ -66,6 +66,7 @@ with patch('chat.shutil.which', return_value='codex.exe'), patch('chat.subproces
     assert '--ephemeral' in argv and argv[argv.index('--sandbox') + 1] == 'read-only'
     prompt = process.communicate.call_args.args[0].decode()
     assert 'Before. Selected. After.' in prompt and 'Polish this.' in prompt
+    assert 'proactively call cite_tex' not in prompt, 'Disabled quotations must not ask the AI to use citation tools.'
     assert 'Keep my terminology.' in prompt and 'A new preference.' in prompt
     assert 'Hidden instructions' not in prompt and 'tool secret' not in prompt
     assert 'Selected.' not in ' '.join(argv), 'Context belongs on stdin, not command arguments.'
@@ -173,6 +174,25 @@ with patch('chat.codex_executable', return_value='codex.exe'), patch('chat.subpr
     assert len(local_prompt) < len(large_source)
 print('PASS: batch range validation, repeated text/Unicode anchors and complete per-comment responses')
 print('PASS: batch prompts contain only annotated ranges and bounded nearby source, without document or chat history')
+
+large_before = r'\par '.join(f'Paragraph {index}: old text.' for index in range(9))
+large_after = large_before.replace('old text', 'new text')
+large_context = chat_context({'source':large_before, 'selection':large_before,
+    'messages':[{'role':'user', 'content':'Revise the page.'}],
+    'annotations':[{'id':1, 'start':0, 'end':len(large_before), 'selection':large_before, 'request':'Revise the page.'}]}, Path('paper.tex'))
+with patch('chat.codex_executable', return_value='codex.exe'), patch('chat.subprocess.Popen', return_value=process):
+    process.communicate.return_value = (json.dumps({'type':'item.completed', 'item':{'type':'agent_message',
+        'text':json.dumps({'reply':'Reviewed.', 'replacements':[{'id':1, 'replacement':large_after}]})}}).encode(), b'')
+    job = ChatJob(large_context); job.run()
+    assert job.result['status'] == 'done', job.result
+    parts = job.result['replacements'][0]['reviews']
+    assert len(parts) == 3
+    rebuilt = large_before
+    for part in reversed(parts):
+        assert ''.join(text for text, _ in part['segments']) == part['after']
+        rebuilt = rebuilt[:part['old_start']] + part['after'] + rebuilt[part['old_end']:]
+    assert rebuilt == large_after
+print('PASS: AI annotation results carry independently anchored paragraph reviews and local color segments')
 
 items = [{'id':7,'baseline':1,'sections':['2.1 Stability'],'diff':'- x^2\n+ x^3'}]
 summaries = [{'id':7,'summary':'将稳定性估计中的平方项改为立方项。'}]

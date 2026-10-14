@@ -8,7 +8,7 @@ from urllib.error import HTTPError
 from urllib.request import ProxyHandler, Request, build_opener
 
 from editor import make_server, snapshot
-from project_review import ProjectReview, review_hunks
+from project_review import ProjectReview, review_hunks, review_paragraphs
 from proofread import proofread_source
 
 
@@ -77,6 +77,17 @@ with tempfile.TemporaryDirectory() as directory:
         assert any('Main-chat revision' in hunk['after'] for file in request(server, '/project-review')[1]['files'] for hunk in file['hunks'])
         assert request(server, '/project-review', {'action':'propose', 'path':str(root.parent / 'outside.tex'),
                        'version':'invalid', 'source':'no write'})[0] == 400
+        current = next(file for file in request(server, '/project-review')[1]['files'] if file['path']==str(main))
+        bulk = {key:current[key] for key in ('path','version','signature')} | {'action':'keep-all'}
+        main_bytes = main.read_bytes()
+        assert request(server, '/project-review', {**bulk,'signature':'stale'})[0]==409
+        assert request(server, '/project-review', {**bulk,'version':'stale'})[0]==409
+        assert any(file['path']==str(main) for file in request(server, '/project-review')[1]['files'])
+        child.write_bytes(child_bytes+b'% another pending change\r\n')
+        assert request(server, '/project-review', bulk)[0]==200
+        assert main.read_bytes()==main_bytes, 'Bulk Keep only approves the already-written current file.'
+        pending = request(server, '/project-review')[1]['files']
+        assert len(pending)==1 and pending[0]['path']==str(child), 'Other source files remain pending.'
         assert request(server, '/preferences', {'latex-codex-proofread-project':'off'})[0] == 200
         assert request(server, '/project-review')[1]['files'] == []
         assert request(server, '/preferences', {'latex-codex-proofread-project':'on'})[0] == 200
@@ -93,3 +104,44 @@ marked, _ = proofread_source('new\n', [{'id':1, 'start':0, 'end':4, 'selection':
     'replacement':'new\n', 'display_original':'old\n'}])
 assert 'old' in marked and 'new' in marked
 print('PASS: project-wide persistent reviews, per-hunk Keep/Undo, stale protection, manual-edit rebasing, BOM/CRLF, proposals and PDF old/new colors')
+
+paragraphs = [f'Paragraph {index}: original text.\\par ' for index in range(9)]
+before = ''.join(paragraphs)
+after = before.replace('original', 'updated')
+hunks = review_hunks(before, after)
+assert len(hunks) == 3
+assert all(max(len(review_paragraphs(hunk['before'])), len(review_paragraphs(hunk['after']))) <= 3 for hunk in hunks)
+rebuilt = before
+for hunk in reversed(hunks):
+    rebuilt = rebuilt[:hunk['old_start']] + hunk['after'] + rebuilt[hunk['old_end']:]
+assert rebuilt == after
+for previous, proposed in [('', after), (before, ''), (before, after + 'Extra paragraph.\\par '),
+                           (before, after[:after.index('Paragraph 6')])]:
+    parts = review_hunks(previous, proposed)
+    rebuilt = previous
+    for part in reversed(parts):
+        assert previous[part['old_start']:part['old_end']] == part['before']
+        assert proposed[part['start']:part['end']] == part['after']
+        rebuilt = rebuilt[:part['old_start']] + part['after'] + rebuilt[part['old_end']:]
+    assert rebuilt == proposed, 'Splitting must preserve insertions, deletions and unequal paragraph counts.'
+long = 'Long paragraph ' + 'word ' * 100
+mixed = '\n\n'.join(['Short first.', long, 'Short next.', 'Short third.', 'Short fourth.'])
+parts = review_hunks('', mixed)
+assert [len(review_paragraphs(part['after'])) for part in parts] == [1, 1, 3]
+assert parts[1]['after'].strip() == long.strip(), 'Long paragraphs stand alone.'
+for structure in [r'\textbf{One.' + '\n\nTwo.}', r'\[x' + '\n\n+y\]',
+                  r'\begin{equation}x' + '\n\n+y\end{equation}',
+                  r'\begin{verbatim}text' + '\n\ntext\end{verbatim}', r'\verb|{' + '\n\n}|']:
+    assert review_paragraphs(structure) == [structure], 'Never split groups, formulas or literal TeX.'
+
+with tempfile.TemporaryDirectory() as directory:
+    root = Path(directory); (root / '.latex-codex').mkdir()
+    review = ProjectReview(root); review.approve('main.tex', before)
+    state = {'path':str(root / 'main.tex'), 'source':after, 'version':'first'}
+    file = review.file_review('main.tex', state)
+    assert review.resolve('main.tex', state, file['signature'], 2, 'keep') is None
+    file = review.file_review('main.tex', state)
+    assert len(file['hunks']) == 2, 'Keeping one chunk must leave the other two pending.'
+    restored = review.resolve('main.tex', state, file['signature'], 1, 'undo')
+    assert restored == ''.join(paragraphs[:3]) + ''.join(paragraphs[3:]).replace('original', 'updated')
+print('PASS: three-paragraph chunks, standalone long paragraphs, balanced TeX, lossless ranges and independent Keep/Undo')

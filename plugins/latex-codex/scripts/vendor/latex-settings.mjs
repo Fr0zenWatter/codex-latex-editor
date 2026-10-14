@@ -42,6 +42,8 @@ export const english = {
   'PDF 校对预览失败：{message}':'PDF proofread preview failed: {message}',
   '请先处理 PDF 校对建议，再进行源码定位。':'Resolve PDF proofread suggestions before source navigation.',
   '校对修改':'Proofread changes', '撤销这处建议':'Undo this suggestion', '保留这处修改':'Keep this change',
+  '全部接受':'Accept all', '接受当前文件的全部待确认校对修改':'Accept all pending proofread changes in the current file',
+  '已接受当前文件的全部校对修改。':'Accepted all proofread changes in the current file.',
   '请在源码逐处选择 Keep 或 Undo。':'Choose Keep or Undo for each change in the source.',
   '正在保存，请稍后重试。':'Saving. Please try again shortly.', '已撤销这处建议，原文保留。':'Suggestion undone. Original text preserved.',
   'Markdown 源码':'Markdown source', 'Markdown 预览':'Markdown preview',
