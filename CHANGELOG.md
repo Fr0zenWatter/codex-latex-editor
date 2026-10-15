@@ -2,6 +2,14 @@
 
 ## 0.3.5 — 2026-10-13
 
+2026-10-15 toolbar fix / 顶部栏修复：
+
+- Keep toolbar status messages on one line with ellipsis, including narrow windows. Long compilation errors no longer expand the toolbar; full errors remain in the compilation log.
+
+顶部状态提示保持单行，超长部分显示省略号，避免报错撑高工具栏；完整报错仍可在编译日志中查看。版本号保持 0.3.5。
+
+Validation / 验证：UI checks and 12 browser layout scenarios passed, covering long English/Chinese errors, unbroken strings, narrow windows and queued annotation controls.
+
 2026-10-15 update / 补充更新：
 
 - Reuse HTTP/1.1 loopback connections for editor assets, state reads and saves, reducing fresh client-port allocations that can be rejected by Windows NAT port filters.
