@@ -2,6 +2,15 @@
 
 ## 0.3.5 — 2026-10-13
 
+2026-10-15 update / 补充更新：
+
+- Reuse HTTP/1.1 loopback connections for editor assets, state reads and saves, reducing fresh client-port allocations that can be rejected by Windows NAT port filters.
+- Close error responses so an unread rejected request body cannot be parsed as the next request on a reused connection.
+
+启用 HTTP/1.1 连接复用，减少页面加载时新建连接的次数；错误响应关闭连接，避免未读取的请求体干扰后续请求。版本号保持 0.3.5，不修改系统端口或防火墙设置。
+
+Validation / 验证：HTTP connection reuse/error framing, Markdown and real TeX/BibTeX/SyncTeX integration checks passed on Windows. macOS/Linux hardware was not retested.
+
 2026-10-14 update / 补充更新：
 
 - Enable the read-only `cite_tex` tool with the floating conversation’s **”** toggle. The toggle remains highlighted while enabled; discussion of paper passages encourages verified links with theorem names or sentence text, including inline math. Links select source and navigate to PDF, with project/source/version guards.

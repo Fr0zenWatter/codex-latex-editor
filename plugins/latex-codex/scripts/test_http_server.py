@@ -1,5 +1,7 @@
 """Run: python -B scripts/test_http_server.py (stdlib only; no TeX needed)."""
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
+from http.client import HTTPConnection
 import json
 from pathlib import Path
 import socket
@@ -46,6 +48,30 @@ with tempfile.TemporaryDirectory() as directory:
         assert request('/')[0] == 200, 'An idle browser preconnect must not block the page.'
         assert request('/vendor/latex-themes.mjs')[0] == 200
         assert request('/vendor/latex-native-annotations.mjs')[0] == 200
+        with closing(HTTPConnection(*server.server_address, timeout=3)) as connection:
+            connection.request('GET', '/')
+            response = connection.getresponse()
+            assert response.status == 200 and response.version == 11
+            response.read()
+            reused_socket = connection.sock
+            for route in ('/vendor/codemirror.js', '/state'):
+                connection.request('GET', route)
+                response = connection.getresponse()
+                assert response.status == 200 and not response.will_close
+                state_body = response.read()
+                assert connection.sock is reused_socket, 'Page, assets and state must share one connection.'
+            unchanged = json.loads(state_body)
+            connection.request('POST', '/save', json.dumps({'source': unchanged['source'], 'version': unchanged['version']}),
+                               {'Content-Type': 'application/json'})
+            response = connection.getresponse()
+            assert response.status == 200 and not response.will_close
+            response.read()
+            assert connection.sock is reused_socket, 'Valid saves must preserve connection reuse.'
+            connection.request('POST', '/save', 'unread body', {'Content-Type': 'text/plain'})
+            response = connection.getresponse()
+            assert response.status == 400 and response.will_close, 'Rejected bodies must not leak into the next request.'
+            response.read()
+        print('PASS: HTTP/1.1 connection reuse and rejected-request framing')
         for theme in ('eclipse', 'idea', 'neo', 'base16-light', 'solarized', 'material-darker', 'material-palenight', 'ayu-dark', 'gruvbox-dark'):
             code, css = request('/vendor/' + theme + '.css')
             assert code == 200 and b'.cm-s-' in css, 'Bundled themes must be available offline.'

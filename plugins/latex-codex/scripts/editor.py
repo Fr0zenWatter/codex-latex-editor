@@ -2931,6 +2931,8 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
         return project_state()
 
     class Handler(BaseHTTPRequestHandler):
+        # Reuse loopback sockets instead of allocating a new client port for every asset.
+        protocol_version = 'HTTP/1.1'
         timeout = 10
 
         def log_message(self, *_):
@@ -2944,6 +2946,9 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
             self.send_header('Cache-Control', 'no-store')
             self.send_header('X-Content-Type-Options', 'nosniff')
             self.send_header('X-Frame-Options', 'SAMEORIGIN')
+            if code >= 400:
+                self.close_connection = True
+                self.send_header('Connection', 'close')
             try:
                 self.end_headers()
                 self.wfile.write(body)
