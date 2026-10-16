@@ -647,15 +647,16 @@ function validForwardShortcut(key){
 }
 if(!validForwardShortcut(forwardShortcut))forwardShortcut='Ctrl-E';
 function setEditorKeys(){
-  const keys={'Cmd-S':compile,'Cmd-/':toggleSourceComment,'Ctrl-F':sourceSearch.open,'Cmd-F':sourceSearch.open};
+  const keys={'Cmd-S':compile,'Cmd-/':toggleSourceComment,'Cmd-F':sourceSearch.open};
   if(editorMode.value==='vim')keys['Ctrl-C']=false;
   Object.assign(keys,editorMode.value==='emacs'
     ? {'Alt-/':completeLatex,'Alt-;':toggleSourceComment}
-    : {'Ctrl-S':compile,'Ctrl-Space':completeLatex,'Alt-/':toggleSourceComment,'Ctrl-/':toggleSourceComment});
-  keys[forwardShortcut]=()=>synchronize('forward');
+    : {'Ctrl-F':sourceSearch.open,'Ctrl-S':compile,'Ctrl-Space':completeLatex,'Alt-/':toggleSourceComment,'Ctrl-/':toggleSourceComment});
+  const forwardEnabled=editorMode.value!=='emacs'||!/(?:^|-)Ctrl-/.test(forwardShortcut);
+  if(forwardEnabled)keys[forwardShortcut]=()=>synchronize('forward');
   editor.setOption('extraKeys',keys);
   forwardShortcutInput.value=forwardShortcut.replace(/(Shift|Cmd|Ctrl|Alt)-/g,'$1+');
-  forwardButton.setAttribute('aria-keyshortcuts',forwardShortcutInput.value.replace('Cmd','Meta').replace('Ctrl','Control'));
+  forwardButton.setAttribute('aria-keyshortcuts',forwardEnabled?forwardShortcutInput.value.replace('Cmd','Meta').replace('Ctrl','Control'):'');
 }
 function setForwardShortcut(key){
   forwardShortcut=key;setEditorKeys();

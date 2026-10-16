@@ -131,3 +131,15 @@ for (const modifiers of [{ctrlKey: true}, {metaKey: true}]) {
   assert(prevented); assert(!test.panel.hidden); assert(test.input.focused); test.controller.close();
 }
 console.log('PASS: literal LaTeX search, case/whole-word filters, wrap navigation, capture replacement, multiline/zero-width regex, scoped edits, undo grouping, invalid patterns, readonly, stale-document cleanup and Ctrl/Cmd+F');
+test.mode('emacs');
+windowEvents.keydown({key:'f',ctrlKey:true,target:test.editor.getWrapperElement(),
+  preventDefault(){assert.fail('Ctrl+F must reach Emacs movement.');},stopPropagation(){assert.fail('Emacs Ctrl+F must not be stopped.');}});
+assert(test.panel.hidden);
+let emacsCmdSearch=false;
+windowEvents.keydown({key:'f',metaKey:true,target:test.editor.getWrapperElement(),
+  preventDefault(){emacsCmdSearch=true;},stopPropagation(){}});
+assert(emacsCmdSearch&&!test.panel.hidden,'Cmd+F remains available in Emacs mode.');
+test.controller.close();test.mode('vim');
+windowEvents.keydown({key:'f',ctrlKey:true,target:test.editor.getWrapperElement(),preventDefault(){},stopPropagation(){}});
+assert(!test.panel.hidden,'Returning to Vim restores Ctrl+F search.');
+console.log('PASS: Emacs Ctrl+F movement, Cmd+F search and mode-switch restoration');

@@ -2,6 +2,15 @@
 
 ## 0.3.5 — 2026-10-13
 
+2026-10-16 updates / 补充更新：
+
+- Reduce the startup skill from about 77 KB to 3.1 KB, retaining detailed editor instructions in an on-demand reference. Open the editor directly without routine environment/login checks or preloading the full guide.
+- Keep Emacs Ctrl+F / Ctrl+E movement, Ctrl+S / Ctrl+R search and Ctrl+Q prefixes intact. Disable plugin search/chat interception and Ctrl-based source-to-PDF shortcuts in the Emacs source editor; retain the forward button, non-Ctrl shortcuts and Standard/Vim bindings.
+
+精简启动技能，将详细操作说明移至按需参考；修复 Emacs 模式下搜索、定位及聊天快捷键对原生 Ctrl 操作的覆盖。版本号保持 0.3.5。
+
+Validation / 验证：UI, search, chat and HTTP connection reuse checks passed; skill metadata and reference paths validated. Full model-to-browser startup time was not benchmarked.
+
 2026-10-15 toolbar fix / 顶部栏修复：
 
 - Keep toolbar status messages on one line with ellipsis, including narrow windows. Long compilation errors no longer expand the toolbar; full errors remain in the compilation log.

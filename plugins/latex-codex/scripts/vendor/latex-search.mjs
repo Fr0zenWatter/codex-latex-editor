@@ -156,6 +156,7 @@ export function attachSourceSearch(editor, t) {
   });
   window.addEventListener('keydown', event => {
     if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key?.toLowerCase() !== 'f' || event.isComposing) return;
+    if (event.ctrlKey && editor.getOption('keyMap') === 'emacs') return;
     if (event.target.closest?.('dialog[open]')) return;
     if (event.target.closest?.('input,textarea,[contenteditable=true]') && !wrapper.contains(event.target) && !panel.contains(event.target)) return;
     event.preventDefault(); event.stopPropagation(); open();

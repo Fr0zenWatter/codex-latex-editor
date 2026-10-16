@@ -772,6 +772,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   };
   window.addEventListener('keydown', event => {
     if (!event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || event.repeat || event.isComposing || event.key?.toLowerCase() !== 'q') return;
+    if (editor.getOption('keyMap') === 'emacs' && editor.getWrapperElement().contains(event.target)) return;
     event.preventDefault();event.stopImmediatePropagation();
     if (panel.dataset.collapsed === 'false' && panel.dataset.closing !== 'true') { collapsePanel();editor.focus(); }
     else showPanel();
