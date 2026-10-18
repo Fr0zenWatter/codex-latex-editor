@@ -2,6 +2,15 @@
 
 ## 0.3.5 — 2026-10-13
 
+2026-10-18 startup guidance fix / 启动说明修复：
+
+- Use a permitted persistent host-side launch when sandbox loopback isolation prevents browser access, respecting host permissions without changing sandbox or network settings.
+- Finish after the browser-open request is accepted, including queued tabs, and report only confirmed state. Blocked browser inspection alone does not justify restarting the service; reading a file does not verify HTTP access or page rendering.
+
+补充回环隔离时的启动方式，避免把浏览器检查受限误判为服务故障；页面打开请求被接受后结束，仅报告已确认状态。版本号保持 0.3.5。
+
+Validation / 验证：startup skill content, reference paths and diff whitespace checked. Prompt-only change; isolated-sandbox behavior was not tested.
+
 2026-10-16 updates / 补充更新：
 
 - Reduce the startup skill from about 77 KB to 3.1 KB, retaining detailed editor instructions in an on-demand reference. Open the editor directly without routine environment/login checks or preloading the full guide.

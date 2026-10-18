@@ -15,8 +15,9 @@ For an ordinary open request, launch and show the editor directly. Detailed feat
    <python> -u <absolute-editor.py> <absolute-document>
    ```
    Use `python` on Windows or `python3` on macOS/Linux when available. Add `--project-root <absolute-common-root>` only when the main file and included sources need a shared root. Request a short initial tool yield when supported; read the printed loopback URL without waiting for compilation.
+   If the sandbox isolates loopback from the app browser, use a permitted persistent host-side launch, respecting the host's permission/approval rules. Do not change sandbox/network settings or retry denied actions.
 3. Immediately call `open_in_codex` with that URL, target type `browser`, and placement `right`. If unavailable, return the URL. The page initializes source and preview itself; PDF compilation can finish after the page opens.
-4. Finish once the editor is open. Do not repeat environment/login checks, inspect the whole project, run tests or browse documentation for a routine launch. If startup reports a missing interpreter or TeX tool, diagnose that specific failure. Codex's bundled Python is available through `load_workspace_dependencies` when needed.
+4. Finish after the browser-open request is accepted, including `queued`; report only the confirmed state. Browser automation is not required for routine opening; blocked inspection alone is not evidence of a dead service and does not justify restarting it. File readability does not verify HTTP access, and a queued tab does not verify rendering. Do not repeat environment/login checks, inspect the whole project, run tests or browse documentation for a routine launch. If startup reports a missing interpreter or TeX tool, diagnose that specific failure. Codex's bundled Python is available through `load_workspace_dependencies` when needed.
 
 ## Preserve the editing workflow
 
