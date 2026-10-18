@@ -7,7 +7,8 @@
 ## LaTeX 默认打开方式
 
 - 用户已指定本项目使用 LaTeX Codex。创建或修改 `.tex` 文稿后，默认按 `plugins/latex-codex/skills/latex-codex/SKILL.md` 的流程，在 Codex 右侧浏览器面板打开该文稿，使用本地 TeX 编译；用户明确要求内置编辑器时再使用内置编辑器。
-- 同一文稿已有本对话启动的服务时复用，外部源码修改由编辑器正常同步；有未保存编辑或冲突时不得直接覆盖。切换文稿遵循插件的文件打开流程。
+- **编辑器服务必须从首次启动就直接运行在宿主机上、代理沙盒外；禁止先在沙盒内试启动，也禁止失败后回退到沙盒。** 工具默认使用沙盒时，须选择单次命令的沙盒外执行方式并遵循所需审批；不可用或被拒绝时停止并说明阻碍，不得修改全局沙盒或网络设置。
+- 同一文稿已有本对话启动且确认在宿主机沙盒外运行的服务时复用，外部源码修改由编辑器正常同步；有未保存编辑或冲突时不得直接覆盖。切换文稿遵循插件的文件打开流程。
 - 此约定控制代理的打开和编译流程，不替换应用自带的 `.tex` 文件预览入口。不要为此调用 `open_in_codex` 的文件目标或 `compile_latex_document`，应打开插件服务的浏览器 URL；不要修改应用内部文件或全局设置。
 
 ## 安装
@@ -18,7 +19,11 @@
 
 先检查已登录的 Codex 桌面应用与 CLI、Python 3.10+、本地 TeX Live / MiKTeX / MacTeX。TeX 环境需提供 `xelatex` / `pdflatex` 和 `synctex`；文献按项目所选后端需要 `bibtex` 或 `biber`。缺少依赖时说明缺项，不自动安装 TeX 环境或更改全局设置。前端资源已随插件附带，无需 npm、pip 或 Poppler 安装。PDF 页尺寸与文字位置由自带 PDF.js 读取，服务端只调用本地 TeX / SyncTeX。macOS 优先使用 PATH 中的 TeX，找不到时检查 `/Library/TeX/texbin`，不修改全局 PATH。Windows / Linux 的系统文件选择器使用可选的 tkinter；缺少时仍可通过启动命令打开文稿。macOS 使用系统原生文件选择器。
 
-用户要求原生插件安装或更新时，在仓库根目录执行：
+原生插件的安装和更新遵循以下流程。
+
+“更新 latex-codex”应触发技能中的按需 [更新流程](plugins/latex-codex/skills/latex-codex/references/update-guide.md)。先取得并确认用户要求的源码及提交，再安装；普通 GitHub 更新不得混入工作区未发布的改动。市场已绑定其他目录时，保留旧来源以便失败恢复，仅重新注册 `latex-codex-shared`；任何命令失败立即停止，不能继续从旧来源安装。安装后核对实际市场目录与 `plugin add --json` 返回的 `installedPath`，逐文件比较原生插件分发内容的 SHA-256；版本号相同或安装命令成功不足以证明更新完成。更新后打开文稿使用安装副本的新服务，并保留原服务未保存的草稿。
+
+确认源码后，在其仓库根目录执行：
 
 ```sh
 codex plugin marketplace add .
@@ -35,6 +40,8 @@ Windows 中 CLI 不在 PATH 时，优先使用当前桌面应用提供的 CLI：
 安装后让用户新开对话，使用 latex-codex 打开指定的 `.tex` 文件。保持仓库目录可用，作为本地插件源。当前版本已在 Windows 验证；macOS 路径查找和文件选择器有模拟检查，仍需真机验证。迁移时复制仓库并在新电脑重新注册本地市场和安装插件，文稿相对依赖及 `.latex-codex/` 历史随项目目录一起复制。
 
 安装机制参见 [官方文档](https://developers.openai.com/plugins/build/plugins#install-a-local-plugin-manually)。
+
+后续公开发布默认递增原生插件版本并创建新标签，保持已发布标签不变，避免不同代码共用同一版本号；版本递增不替代上述安装文件核验。
 
 ### 可选的独立 DeepSeek Harness 插件
 
@@ -74,7 +81,7 @@ DeepSeek 安装前需运行上面的打包命令。`scripts/build_deepseek_plugi
 
 ## 启动与数据
 
-独立启动编辑器：
+独立启动编辑器（必须在宿主机终端、代理沙盒外运行）：
 
 ```sh
 python plugins/latex-codex/scripts/editor.py /path/to/main.tex

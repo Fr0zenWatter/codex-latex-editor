@@ -1,5 +1,16 @@
 # Changelog / 更新日志
 
+## 0.3.6 — 2026-10-18
+
+- Require the editor service to launch directly on the host, outside the agent sandbox, from its first launch. Prohibit sandboxed trial runs and fallbacks; report unavailable or denied host execution without changing global sandbox/network settings.
+- Route explicit install/update requests, including “更新 latex-codex”, to an on-demand workflow. Resolve the requested GitHub source, replace stale marketplace registrations with failure recovery, and verify the actual installed path and distributed files by SHA-256 before reporting success.
+- After an update, launch a fresh host-side service from the verified installation while preserving existing drafts and annotations. Keep ordinary document opening separate from plugin updates and retain the compact startup skill.
+- Give this release a distinct native plugin version; keep the existing v0.3.5 tag and independent DeepSeek version unchanged. The Emacs shortcut fixes from 0.3.5 remain included.
+
+明确要求编辑器首次启动就在宿主机沙盒外运行，禁止沙盒内试跑或回退；新增按需更新流程，处理旧市场绑定、失败恢复与真实安装文件核验。原生版本递增至 0.3.6，不再覆盖 0.3.5；保留已有 Emacs 快捷键修复。
+
+Validation / 验证：skill metadata, reference paths and diff whitespace checked; local native installation verified against all 449 distributed files by SHA-256. No runtime code changed. Isolated-sandbox behavior and update-failure recovery were not exercised end to end.
+
 ## 0.3.5 — 2026-10-13
 
 2026-10-18 startup guidance fix / 启动说明修复：
