@@ -50,7 +50,7 @@ def chat_models(backend='codex'):
         raise ValueError('无法读取 Codex 模型列表，可继续使用默认模型。') from error
 
 
-def revision_segments(before, after):
+def revision_segments(before, after, *, prefix='', safe=False):
     # ponytail: lexical TeX diff, not macro expansion. Unknown macro arguments and metadata stay uncolored.
     # Add a known rendering command below when its arguments can safely contain local color groups.
     rendering = set('text textrm textsf texttt textbf textit textnormal emph underline section subsection '
@@ -61,7 +61,7 @@ def revision_segments(before, after):
                   'mu nu xi pi varpi rho varrho sigma varsigma tau upsilon phi varphi chi psi omega '
                   'Gamma Delta Theta Lambda Xi Pi Sigma Upsilon Phi Psi Omega infty partial nabla ell'.split())
     math_envs = set('math displaymath equation align alignat aligned alignedat gather gathered multline '
-                    'eqnarray split cases matrix pmatrix bmatrix Bmatrix vmatrix Vmatrix'.split())
+                    'eqnarray split cases matrix pmatrix bmatrix Bmatrix vmatrix Vmatrix array smallmatrix'.split())
 
     def group_end(text, start):
         closing, depth, cursor = {'{': '}', '[': ']'}[text[start]], 1, start + 1
@@ -101,6 +101,13 @@ def revision_segments(before, after):
                         cursor = end
                         if name == 'begin': environments.append(env.rstrip('*') in math_envs)
                         elif environments: environments.pop()
+                        if safe and name == 'begin':
+                            # Column specifications, dimensions and environment options are not text.
+                            while True:
+                                following = cursor
+                                while following < len(text) and text[following].isspace(): following += 1
+                                if text[following:following + 1] not in ('{', '['): break
+                                cursor = group_end(text, following)
                 elif name.rstrip('*') == 'verb' and cursor < len(text):
                     end = text.find(text[cursor], cursor + 1)
                     cursor = len(text) if end < 0 else end + 1
@@ -108,12 +115,36 @@ def revision_segments(before, after):
                     delimiter = re.match(r'\s*(?:\\[a-zA-Z]+|\\.|.)', text[cursor:])
                     if delimiter: cursor += len(delimiter[0])
                 elif name in symbols: kind = 'mathord'
+                elif safe and name in ('kern', 'hskip', 'vskip', 'penalty', 'char'):
+                    parameter = re.match(r'\s*(?:[+-]?(?:\d+(?:\.\d*)?|\.\d+)|[\x22\x27][0-9A-Fa-f]+)(?:\s*(?:true\s*)?[A-Za-z]+)?', text[cursor:])
+                    if parameter: cursor += len(parameter[0])
+                elif safe and name in rendering and (not (math or any(environments)) or name in ('text', 'textrm', 'textsf', 'texttt', 'textbf', 'textit', 'textnormal', 'emph', 'operatorname')):
+                    following = cursor
+                    while following < len(text) and text[following].isspace(): following += 1
+                    if text[following:following + 1] == '[':
+                        cursor = group_end(text, following)
+                        following = cursor
+                        while following < len(text) and text[following].isspace(): following += 1
+                    if text[following:following + 1] == '{':
+                        # Math text commands switch modes internally; do not put math atoms in them.
+                        if math or any(environments):
+                            cursor = group_end(text, following)
+                            if name != 'operatorname': kind = 'mathord'
+                    elif following < len(text) and text[following] != '\\':
+                        cursor = following + 1
                 elif name not in rendering:
                     while True:
                         following = cursor
                         while following < len(text) and text[following].isspace(): following += 1
                         if text[following:following + 1] not in ('{', '['): break
                         cursor = group_end(text, following)
+                    if safe:
+                        following = cursor
+                        while following < len(text) and text[following].isspace(): following += 1
+                        # Leave unbraced macro/accent arguments intact when their arity is unknown.
+                        if following < len(text) and text[following].isalnum():
+                            argument = re.match(r'[^\s\\{}$%]+', text[following:])
+                            if argument: cursor = following + len(argument[0])
             elif char == '$':
                 cursor += 2 if text[cursor:cursor + 2] == '$$' else 1
                 math = not math
@@ -130,7 +161,15 @@ def revision_segments(before, after):
             parts.append((text[start:cursor], kind))
         return parts
 
-    old, new = tokens(before), tokens(after)
+    def contextual_tokens(text):
+        remaining, parts = len(prefix), []
+        for part, kind in tokens(prefix + text):
+            if remaining < len(part):
+                parts.append((part[max(0, remaining):], kind))
+            remaining -= len(part)
+        return parts
+
+    old, new = contextual_tokens(before), contextual_tokens(after)
     changed = set()
     for tag, _, _, start, end in SequenceMatcher(None, [p[0] for p in old], [p[0] for p in new], autojunk=False).get_opcodes():
         if tag in ('insert', 'replace'): changed.update(range(start, end))

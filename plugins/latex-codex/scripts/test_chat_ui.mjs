@@ -950,6 +950,22 @@ assert.equal(operations,bulkOperations+1);assert.equal(calls.length,bulkCalls,'B
 assert.deepEqual(bulkPainted,[unsent]);assert.equal(unsent.original,'tail');assert.equal(bulkChat.hasAnnotations,true);
 console.log('PASS: bulk Keep, same-anchor insertion order, one save/undo step, failed-save preservation and unsent-comment exclusion');
 
+doc={};source='Old sentence. tail';selection={from:{line:0,ch:0},to:{line:0,ch:13}};
+let undoSaves=0;
+const undoChat=attachSelectionChat(editor,request,items=>{painted=[...items];},async()=>undoSaves++);
+chooseColor('');undoChat.openQuick({left:100,top:100});el('#chat-quick-input').value='Revise this';
+await el('#chat-quick-form').onsubmit({preventDefault(){}});
+answer={status:'done',reply:'Changed.',replacement:null,replacements:[{id:painted[0].id,replacement:'New sentence.'}]};
+await el('#annotations-send').onclick();assert.equal(painted.filter(item=>item.review).length,1);
+selection={from:{line:0,ch:14},to:{line:0,ch:18}};
+undoChat.openQuick({left:100,top:100});el('#chat-quick-input').value='Keep this note unsent';
+await el('#chat-quick-form').onsubmit({preventDefault(){}});
+const pendingNote=painted.find(item=>!item.review),beforeUndoCalls=calls.length;
+undoChat.undoAll();
+assert.equal(source,'Old sentence. tail');assert.equal(undoSaves,0);assert.equal(calls.length,beforeUndoCalls);
+assert.deepEqual(painted,[pendingNote]);assert.equal(undoChat.hasAnnotations,true);
+console.log('PASS: bulk Undo removes generated suggestions without editing source, saving, model calls or discarding unsent notes');
+
 doc={};source='a'.repeat(101);selection={from:{line:0,ch:0},to:{line:0,ch:101}};
 let largeBulkSaves=[];
 const largeBulkChat=attachSelectionChat(editor,request,items=>{painted=[...items];},async(after,change)=>{

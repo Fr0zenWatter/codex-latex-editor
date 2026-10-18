@@ -184,6 +184,8 @@ class ProjectReview:
             if action == 'keep-all':
                 self.put(db, file, after)
                 return None
+            if action == 'undo-all':
+                return before
             hunk = next((item for item in review_hunks(before, after) if item['id'] == identifier), None)
             if not hunk or action not in ('keep', 'undo'):
                 raise ValueError('请选择有效的项目修改及 Keep / Undo。')

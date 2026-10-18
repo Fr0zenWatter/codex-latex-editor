@@ -1,5 +1,16 @@
 # Changelog / 更新日志
 
+## 0.3.7 — 2026-10-18
+
+- Show PDF proofreading with dark text, pale red/green row backgrounds and deeper backgrounds for actual changes. Join adjacent changed words across spaces, while keeping separate lines and unchanged text distinct.
+- Separate original and proposed prose into temporary preview paragraphs. Keep applies only the original replacement and never writes preview layout or markup to the document.
+- Add **Undo all** beside **Accept all** for the current file. Preserve accepted/manual edits, unsent annotations and other files; validate versions and baselines before reverting external edits.
+- Harden PDF markup around math selections, scripts, unbraced arguments, text inside math, table/environment parameters, accents and numeric primitives. Use a clearly identified unmarked revised preview when safe decoration is unavailable; invalid replacements still fail without modifying source or the formal PDF.
+
+新增 PDF 校对两级背景及连续改词色块、预览分段和“全部 Undo”；修复公式与命令参数边界，增加安全回退，保留正式文稿结构和待确认建议。
+
+Validation / 验证：28 boundary cases passed with each of pdfLaTeX and XeLaTeX (56 cases total), including fallback, invalid-replacement rejection and source/formal-PDF preservation. Targeted chat, project review, PDF geometry, UI and locale checks passed on Windows. macOS/Linux hardware was not retested; arbitrary custom macros may require the unmarked preview fallback.
+
 ## 0.3.6 — 2026-10-18
 
 - Require the editor service to launch directly on the host, outside the agent sandbox, from its first launch. Prohibit sandboxed trial runs and fallbacks; report unavailable or denied host execution without changing global sandbox/network settings.

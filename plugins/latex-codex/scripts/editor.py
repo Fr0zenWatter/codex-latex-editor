@@ -326,7 +326,7 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 <span style="color:var(--environment-command)">\end</span>{<span style="color:var(--environment)">equation</span>}
 <span style="color:var(--command)">\cite</span>{<span style="color:var(--reference)">example2026</span>}</pre><div class="theme-sample-capsule"><span data-i18n="询问 Codex…">询问 Codex…</span><span class="theme-sample-send" aria-hidden="true">↑</span></div></div>
 </div><div class="theme-dialog-actions"><button id="theme-save" disabled data-i18n="保存并使用">保存并使用</button></div></dialog>
-<main><section><div id="source-files"><button id="source-file" disabled aria-label="项目源码" data-i18n-aria-label="项目源码" aria-expanded="false" aria-controls="source-file-wheel"></button><div id="source-file-wheel" popover="auto"></div><small id="inline-completion-status" role="status" aria-live="polite"></small></div><label id="filename" hidden for="source" data-i18n="LaTeX 源码">LaTeX 源码</label><textarea id="source" spellcheck="false" disabled aria-label="LaTeX 源码" data-i18n-aria-label="LaTeX 源码"></textarea><button id="proofread-keep-all" type="button" class="proofread-navigation" aria-controls="source" hidden disabled aria-busy="false" title="接受当前文件的全部待确认校对修改" data-i18n-title="接受当前文件的全部待确认校对修改" data-i18n="全部接受">全部接受</button><button id="proofread-previous" class="proofread-navigation proofread-previous" type="button" hidden aria-controls="source"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V4m-6 6 6-6 6 6"/></svg><span></span></button><button id="proofread-next" class="proofread-navigation proofread-next" type="button" hidden aria-controls="source"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16m-6-6 6 6 6-6"/></svg><span></span></button></section>
+<main><section><div id="source-files"><button id="source-file" disabled aria-label="项目源码" data-i18n-aria-label="项目源码" aria-expanded="false" aria-controls="source-file-wheel"></button><div id="source-file-wheel" popover="auto"></div><small id="inline-completion-status" role="status" aria-live="polite"></small></div><label id="filename" hidden for="source" data-i18n="LaTeX 源码">LaTeX 源码</label><textarea id="source" spellcheck="false" disabled aria-label="LaTeX 源码" data-i18n-aria-label="LaTeX 源码"></textarea><div id="proofread-bulk-actions"><button id="proofread-keep-all" type="button" class="proofread-navigation" aria-controls="source" hidden disabled aria-busy="false" title="接受当前文件的全部待确认校对修改" data-i18n-title="接受当前文件的全部待确认校对修改" data-i18n="全部接受">全部接受</button><button id="proofread-undo-all" type="button" class="proofread-navigation" aria-controls="source" hidden disabled aria-busy="false" title="撤销当前文件的全部待确认校对修改" data-i18n-title="撤销当前文件的全部待确认校对修改" data-i18n="全部 Undo">全部 Undo</button></div><button id="proofread-previous" class="proofread-navigation proofread-previous" type="button" hidden aria-controls="source"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V4m-6 6 6-6 6 6"/></svg><span></span></button><button id="proofread-next" class="proofread-navigation proofread-next" type="button" hidden aria-controls="source"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16m-6-6 6 6 6-6"/></svg><span></span></button></section>
 <div class="sync-rail"><div id="splitter" role="separator" tabindex="0" aria-label="调整 LaTeX 和 PDF 宽度" data-i18n-aria-label="调整 LaTeX 和 PDF 宽度" aria-orientation="vertical" aria-valuemin="15" aria-valuemax="85" aria-valuenow="50" title="拖动调整宽度 · 双击恢复各半" data-i18n-title="拖动调整宽度 · 双击恢复各半"></div><button id="forward" disabled aria-label="定位光标到 PDF" data-i18n-aria-label="定位光标到 PDF" title="跳到光标对应的 PDF 位置" data-i18n-title="跳到光标对应的 PDF 位置">→</button></div>
 <section><div class="pdf-toolbar"><div class="compile-group"><button id="compile" aria-busy="false" disabled><span class="compile-idle" data-i18n="保存并编译">保存并编译</span><span class="compile-busy" data-i18n="正在编译…">正在编译…</span></button><button id="compile-menu-button" popovertarget="compile-menu" aria-label="编译选项" data-i18n-aria-label="编译选项" title="编译选项" data-i18n-title="编译选项" aria-expanded="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></button></div><div id="compile-menu" class="toolbar-menu" popover="auto" aria-label="编译选项" data-i18n-aria-label="编译选项"><label for="auto-compile"><span data-i18n="自动编译">自动编译</span><input id="auto-compile" type="checkbox" checked aria-label="自动编译" data-i18n-aria-label="自动编译"></label></div><button id="markdown-pdf-toggle" hidden aria-pressed="false" data-i18n="PDF 预览">PDF 预览</button><button id="log-toggle" aria-label="编译日志" data-i18n-aria-label="编译日志" title="编译日志" data-i18n-title="编译日志" aria-pressed="false" aria-controls="log"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 2H5v20h14V7zM14 2v6h5M8 12h8M8 16h8"/></svg></button><span id="pan-hint" role="status" hidden data-i18n="空格拖动 · Alt + 空格缩放">空格拖动 · Alt + 空格缩放</span><button id="pan-mode" aria-pressed="true" title="切换拖动页面与选择文字" data-i18n-title="切换拖动页面与选择文字" ><svg class="toolbar-icon pan-hand-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 11V7a2 2 0 0 0-4 0v3M14 10V5a2 2 0 0 0-4 0v6M10 10.5V7a2 2 0 0 0-4 0v5l-1-1a2 2 0 0 0-3 2l4 6a6 6 0 0 0 5 3h3a6 6 0 0 0 6-6v-3a2 2 0 0 0-4 0v1"/></svg><svg class="toolbar-icon pan-select-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m4 3 15 10-7 1-4 7Z"/></svg><span id="pan-label" data-i18n="拖动">拖动</span></button><button id="zoom-fit" aria-label="PDF 缩放" aria-expanded="false" aria-controls="pdf-zoom-dial">100%</button><div id="pdf-zoom-dial" popover="manual" role="slider" tabindex="0" aria-label="PDF 缩放" aria-orientation="horizontal" aria-valuemin="30" aria-valuemax="500" aria-valuenow="100" aria-controls="preview"><div class="pdf-zoom-face"><svg class="pdf-zoom-arc" viewBox="0 0 240 240" aria-hidden="true"><path d="M 50 0 A 190 190 0 0 0 240 190"/></svg><div class="pdf-zoom-rotor" aria-hidden="true"></div><span class="pdf-zoom-indicator" aria-hidden="true"></span></div></div></div><div class="preview-shell"><div id="preview" class="hand-tool" role="region" aria-label="编译后的 PDF" data-i18n-aria-label="编译后的 PDF" tabindex="0"><div id="pdf-viewer" class="pdfViewer"></div></div><div id="markdown-preview" hidden role="region" aria-label="Markdown 预览" data-i18n-aria-label="Markdown 预览" tabindex="0"></div><nav id="pdf-outline" aria-label="章节目录" data-i18n-aria-label="章节目录" hidden></nav><button id="pdf-proofread-previous" class="proofread-navigation proofread-previous" type="button" hidden aria-controls="preview"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V4m-6 6 6-6 6 6"/></svg><span></span></button><button id="pdf-proofread-next" class="proofread-navigation proofread-next" type="button" hidden aria-controls="preview"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16m-6-6 6 6 6-6"/></svg><span></span></button><div id="log" hidden tabindex="0" role="region" aria-label="编译日志" data-i18n-aria-label="编译日志"><button id="log-jump" type="button" hidden></button><pre id="log-text"></pre></div></div></section></main>
 <div id="chat-panel" role="dialog" aria-label="项目浮动对话" data-i18n-aria-label="项目浮动对话" hidden>
@@ -479,16 +479,18 @@ projectReview=attachProjectReview({editor,request,
   changed:()=>paintPdfAnnotations(localReviewItems,localReviewEdit),
 });
 function updateAcceptAll(){
-  const button=document.querySelector('#proofread-keep-all');
   const count=localReviewItems.filter(item=>item.review).length+(projectReview?.items.length||0);
-  button.hidden=!count;
-  button.disabled=!count||acceptingAll||busy||syncBusy||conflict||editor.getOption('readOnly')||selectionChat?.busy||projectReview?.busy
-    ||!!projectReview?.items.length&&editor.getValue()!==saved;
-  button.setAttribute('aria-busy',String(acceptingAll));
+  for(const id of ['#proofread-keep-all','#proofread-undo-all']){
+    const button=document.querySelector(id);
+    button.hidden=!count;
+    button.disabled=!count||acceptingAll||busy||syncBusy||conflict||editor.getOption('readOnly')||selectionChat?.busy||projectReview?.busy
+      ||!!projectReview?.items.length&&editor.getValue()!==saved;
+    button.setAttribute('aria-busy',String(acceptingAll));
+  }
 }
-document.querySelector('#proofread-keep-all').onclick=async()=>{
+async function resolveAllProofread(action){
   updateAcceptAll();
-  if(document.querySelector('#proofread-keep-all').disabled)return;
+  if(document.querySelector(action==='keep'?'#proofread-keep-all':'#proofread-undo-all').disabled)return;
   acceptingAll=true;updateAcceptAll();
   try{
     if(localReviewItems.some(item=>{
@@ -496,12 +498,20 @@ document.querySelector('#proofread-keep-all').onclick=async()=>{
       const pos=item.marker?.find();
       return !pos||item.doc!==editor.getDoc()||editor.getRange(pos.from,pos.to)!==item.original;
     }))throw new Error(t('批注选区已变化，未应用任何修改。批注已保留。'));
-    await projectReview.keepAll();
-    await selectionChat.keepAll();
-    setText(status,'已接受当前文件的全部校对修改。');
+    if(action==='keep'){
+      await projectReview.keepAll();
+      await selectionChat.keepAll();
+      setText(status,'已接受当前文件的全部校对修改。');
+    }else{
+      await projectReview.undoAll();
+      selectionChat.undoAll();
+      setText(status,'已撤销当前文件的全部待确认校对修改。');
+    }
   }catch(error){status.textContent=error.message;}
   finally{acceptingAll=false;updateAcceptAll();}
-};
+}
+document.querySelector('#proofread-keep-all').onclick=()=>resolveAllProofread('keep');
+document.querySelector('#proofread-undo-all').onclick=()=>resolveAllProofread('undo');
 pdfEvents.on('pagerendered',()=>selectionChat.refreshAnnotations());
 const historyDialog=document.querySelector('#history-dialog');
 attachHistory(editor,request,()=>({path:document.querySelector('#filename').title,source:editor.getValue(),version}),restoreHistory);
@@ -1700,7 +1710,7 @@ function paintPdfAnnotations(items,edit){
   items=[...items,...(projectReview?.items||[])];
   proofreadPdf?.update(items);
   editorReviewNavigation.update();pdfReviewNavigation.update();
-  preview.querySelectorAll('.pdf-comment-highlight,.pdf-comment-pin,.pdf-proofread-actions').forEach(mark=>mark.remove());
+  preview.querySelectorAll('.pdf-comment-highlight,.pdf-comment-pin,.pdf-proofread-actions,.pdf-proofread-highlights').forEach(mark=>mark.remove());
   if(proofreadPdf?.active){paintProofreadActions(pdfViewer,proofreadPdf.data,items,pdfBuild,t);return;}
   const pinRows=new Map();
   for(const item of items){
@@ -2526,7 +2536,20 @@ def proofread_pdf(server, path, source, items):
         raise ValueError('PDF 校对预览目前支持 LaTeX 源码。')
     start = document_start(source)
     marked, ranges = proofread_source(source, items, start.end() if start else 0)
-    compiled = compile_source_snapshot(server, path, marked, proofread=True)
+    # A comparison group cannot replace several arguments of an unbraced command.
+    plain_preview = any(re.search(r'\\(?:frac|dfrac|tfrac|binom|overset|underset)\s*$', source[:item['start']]) for item in items)
+    if plain_preview:
+        marked, ranges = proofread_source(source, items, start.end() if start else 0, decorate=False)
+    try:
+        compiled = compile_source_snapshot(server, path, marked, proofread=True)
+    except ValueError as error:
+        if plain_preview or not str(error).startswith('PDF 校对预览编译失败：'):
+            raise
+        # Unusual macros or partial structural selections may reject instrumentation.
+        # Compile the exact proposed source, never silently accept or write it.
+        marked, ranges = proofread_source(source, items, start.end() if start else 0, decorate=False)
+        compiled = compile_source_snapshot(server, path, marked, proofread=True)
+        plain_preview = True
     try:
         compiled['individual_boxes'] = True
         index = history_pdf_line_index(compiled) or {}
@@ -2544,7 +2567,7 @@ def proofread_pdf(server, path, source, items):
                             rect = pages[page]
                             rect[:] = [min(rect[0],box[0]),min(rect[1],box[1]),max(rect[2],box[2]),max(rect[3],box[3])]
             regions.extend({'id':item['id'], 'page':page, 'rect':rect} for page, rect in sorted(pages.items()))
-        return {'pdf':compiled['pdf'].read_bytes(), 'pdf_revision':compiled['revision'], 'top_origin':True,
+        return {'pdf':compiled['pdf'].read_bytes(), 'pdf_revision':compiled['revision'], 'top_origin':True, 'plain_preview':plain_preview,
                 'outline':compiled_outline(compiled['pdf'].with_suffix('.aux')), 'regions':regions}
     finally:
         compiled['directory'].cleanup()

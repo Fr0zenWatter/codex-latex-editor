@@ -88,6 +88,15 @@ with tempfile.TemporaryDirectory() as directory:
         assert main.read_bytes()==main_bytes, 'Bulk Keep only approves the already-written current file.'
         pending = request(server, '/project-review')[1]['files']
         assert len(pending)==1 and pending[0]['path']==str(child), 'Other source files remain pending.'
+        main.write_bytes(main_bytes.replace(b'Unchanged middle',b'Externally revised middle')+b'% pending addition\n')
+        current = next(file for file in request(server, '/project-review')[1]['files'] if file['path']==str(main))
+        undo_bulk = {key:current[key] for key in ('path','version','signature')} | {'action':'undo-all'}
+        assert request(server, '/project-review', {**undo_bulk,'signature':'stale'})[0]==409
+        assert request(server, '/project-review', {**undo_bulk,'version':'stale'})[0]==409
+        assert request(server, '/project-review', undo_bulk)[0]==200
+        assert main.read_bytes()==main_bytes, 'Bulk Undo preserves previously accepted and manual changes.'
+        pending = request(server, '/project-review')[1]['files']
+        assert len(pending)==1 and pending[0]['path']==str(child), 'Bulk Undo affects only the current source file.'
         assert request(server, '/preferences', {'latex-codex-proofread-project':'off'})[0] == 200
         assert request(server, '/project-review')[1]['files'] == []
         assert request(server, '/preferences', {'latex-codex-proofread-project':'on'})[0] == 200
@@ -99,7 +108,7 @@ deletion = review_hunks('before\nremoved\nafter\n', 'before\nafter\n')[0]
 assert deletion['start'] == deletion['end'] and deletion['after'] == ''
 marked, _ = proofread_source('before\nafter\n', [{'id':1, 'start':7, 'end':7, 'selection':'',
     'replacement':'', 'display_original':'removed\n'}])
-assert 'removed' in marked and '0.78,0.12,0.16' in marked and '0.02,0.48,0.20' not in marked
+assert 'removed' in marked and '/LCBeforeChanged1 BMC' in marked and '/LCAfter' not in marked
 marked, _ = proofread_source('new\n', [{'id':1, 'start':0, 'end':4, 'selection':'new\n',
     'replacement':'new\n', 'display_original':'old\n'}])
 assert 'old' in marked and 'new' in marked

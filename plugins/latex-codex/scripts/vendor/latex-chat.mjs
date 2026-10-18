@@ -1106,6 +1106,13 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
       await applyAnnotations(group,group.map(item=>({id:item.id,replacement:item.proposed})),
         [...new Set(group.map(item=>item.reviewReply))].filter(Boolean).join('\n\n'));
     }
+  }, undoAll() {
+    if (sending || annotationCommitting) throw new Error(t('正在保存，请稍后重试。'));
+    for (const item of annotations.filter(item => item.review)) {
+      item.review.destroy(); item.marker.clear();
+    }
+    annotations = annotations.filter(item => !item.review);
+    refreshAnnotations();
   }, get busy() { return sending || annotationCommitting; },
     get hasAnnotations() { return !!annotations.length || !!quickInput.value.trim(); }};
 }

@@ -2,6 +2,7 @@
 import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {analyzePdf, pdfPageBoxes} from './vendor/latex-pdf-analysis.mjs';
+import {proofreadHighlights} from './vendor/latex-proofread-pdf.mjs';
 console.log = (...args) => console.error(...args);
 // The modern browser build uses ES2026 APIs that Node 24 lacks.
 Uint8Array.prototype.toHex ??= function () { return Buffer.from(this).toString('hex'); };
@@ -9,7 +10,7 @@ Map.prototype.getOrInsertComputed ??= function(key,compute){if(!this.has(key))th
 const {getDocument,OPS} = await import('./vendor/pdfjs/build/pdf.mjs');
 let input = '';
 for await (const chunk of process.stdin) input += chunk;
-const {path,url,text = true,colors = false} = JSON.parse(input);
+const {path,url,text = true,colors = false,proofread = null} = JSON.parse(input);
 const data = path ? new Uint8Array(await readFile(path)) : new Uint8Array(await (await fetch(url)).arrayBuffer());
 const task = getDocument({data,verbosity:0,isEvalSupported:false,
   standardFontDataUrl:fileURLToPath(new URL('./vendor/pdfjs/standard_fonts/',import.meta.url)).replaceAll('\\','/'),
@@ -17,6 +18,13 @@ const task = getDocument({data,verbosity:0,isEvalSupported:false,
 try {
   const pdf = await task.promise;
   const analysis = text ? await analyzePdf(pdf) : {boxes:await pdfPageBoxes(pdf)};
+  if (proofread) {
+    analysis.proofread = [];
+    for (let page=1;page<=pdf.numPages;page++) {
+      const content = await (await pdf.getPage(page)).getTextContent({includeMarkedContent:true,disableNormalization:true,disableCombineTextItems:true});
+      analysis.proofread.push(...proofreadHighlights(content,new Set(proofread)).map(mark=>({...mark,page})));
+    }
+  }
   if(colors){
     analysis.fillColors=[];
     for(let number=1;number<=pdf.numPages;number++){

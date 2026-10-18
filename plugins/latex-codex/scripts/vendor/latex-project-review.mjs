@@ -91,5 +91,8 @@ export function attachProjectReview({editor, request, capture, adopt, open, mess
   return {refresh, clear, async keepAll() {
     const file = files.find(item => item.path === capture().path);
     if (file?.hunks.length) await resolve(file,null,'keep-all');
+  }, async undoAll() {
+    const file = files.find(item => item.path === capture().path);
+    if (file?.hunks.length) await resolve(file,null,'undo-all');
   }, get items(){return rows;}, get busy(){return committing;}};
 }
