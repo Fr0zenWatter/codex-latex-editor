@@ -2,7 +2,7 @@
 const prefix = '/source-quote?ref=';
 export function referenceToken(href) {
   const token = typeof href === 'string' && href.startsWith(prefix) ? href.slice(prefix.length) : '';
-  return /^[A-Za-z0-9_-]{1,4096}$/.test(token) ? token : null;
+  return /^[A-Za-z0-9_-]{1,32768}$/.test(token) ? token : null;
 }
 export function attachSourceQuotes({button, panel, list, empty, capture, request, navigate, message, translate}) {
   let enabled = false, navigating = false, project;

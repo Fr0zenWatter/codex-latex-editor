@@ -27,4 +27,12 @@ assert.match(guard(), /cannot execute tools/);
 let restricted = false;
 created({agent: {ctx: {tools: {restrict(filter) {assert.deepEqual(filter, {allow: []}); restricted = true;}}}}});
 assert(restricted, 'No model-facing tools may be exposed to selection requests.');
-console.log('PASS: live-session targeting, workspace validation, followup submission and enforced tool exclusion');
+apply({tools: {guard(value) {guard = value;}}, on(name, callback) {created = callback;}}, {references: true});
+assert.equal(guard({name: 'mcp__tex_quotes__cite_tex'}), undefined);
+for (const name of ['exec_command', 'read_file', 'mcp__other__cite_tex', 'mcp__tex_quotes__write_file', 'run_code']) {
+  assert.match(guard({name}), /cannot execute tools/);
+}
+created({agent: {ctx: {tools: {restrict(filter) {
+  assert.deepEqual(filter, {allow: ['mcp__tex_quotes__cite_tex']});
+}}}}});
+console.log('PASS: live-session targeting, workspace validation, followup submission and quote-only tool boundary');

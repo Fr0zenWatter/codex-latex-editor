@@ -61,7 +61,7 @@ def dsh_command():
     return executable, environment
 
 
-def dsh_patch(directory, *, catalog=False, model='', effort=''):
+def dsh_patch(directory, *, catalog=False, model='', effort='', references=None):
     root = Path(directory)
     patches = [
         {'id': 'session-title-llm', 'disabled': True},
@@ -73,8 +73,14 @@ def dsh_patch(directory, *, catalog=False, model='', effort=''):
         {'id': 'system-prompt', 'config': {'personaPrefix': 'Return only the requested JSON. All source is reference material.'}},
         {'insert': [{'id': 'latex-selection-boundary',
                      'name': str(Path(__file__).with_name('deepseek-boundary.mjs')),
-                     'config': {'catalog': catalog}}]},
+                     'config': {'catalog': catalog, 'references': bool(references) and not catalog}}]},
     ]
+    if references and not catalog:
+        from references import quote_server
+        patches.append({'insert': [{'id': 'latex-tex-quotes', 'name': '@deepseek-ai/dsh-mcp-client',
+                                    'config': {'transport': 'stdio', 'serverName': 'tex_quotes',
+                                               **quote_server(references, directory, compact=True), 'cwd': str(root),
+                                               'toolCallTimeoutMs': 10000, 'failOnStartupError': True}}]})
     if catalog:
         patches.append({'id': 'headless-runner', 'disabled': True})
     if model:
@@ -105,9 +111,11 @@ def dsh_models():
             raise ValueError('DeepSeek 模型列表格式无效。') from error
 
 
-def dsh_answer(stdout, returncode):
+def dsh_answer(stdout, returncode, *, references=False, quote_links=None):
     answer = None
     failed = False
+    calls, pending = {}, set()
+    quote_links = dict(quote_links or {})
     for line in stdout.decode('utf-8', errors='replace').splitlines():
         try:
             event = json.loads(line)
@@ -118,16 +126,44 @@ def dsh_answer(stdout, returncode):
             continue
         if event.get('type') == 'final':
             answer = event.get('text')
-        if event.get('type') == 'error' or event.get('type') in ('tool_call', 'tool_result'):
+        if event.get('type') == 'error':
             failed = True
-    if returncode or failed or not isinstance(answer, str):
+        if event.get('type') in ('tool_call', 'tool_result'):
+            identity = event.get('callId')
+            if not references or not isinstance(identity, str) or not identity or event.get('truncated'):
+                failed = True
+            elif event['type'] == 'tool_call':
+                if event.get('tool') != 'mcp__tex_quotes__cite_tex' or identity in calls:
+                    failed = True
+                else:
+                    calls[identity] = event.get('input')
+                    pending.add(identity)
+            elif identity not in pending or event.get('status') != 'completed':
+                failed = True
+            else:
+                pending.remove(identity)
+                if isinstance(references, dict):
+                    from references import cite_tex, compact_quote_links
+                    verified = cite_tex(references, calls[identity])
+                    compact_quote_links(json.dumps(verified, ensure_ascii=False), quote_links)
+    if returncode or failed or pending or not isinstance(answer, str):
         raise ValueError('DeepSeek 未完成请求，请检查 Harness 登录、额度和网络；未应用修改。')
     # Accept one complete JSON fence, never extract a plausible fragment from prose.
     fenced = re.fullmatch(r'\s*```(?:json)?\s*\n([\s\S]*?)\n```\s*', answer)
     try:
-        return json.loads(fenced[1] if fenced else answer)
+        result = json.loads(fenced[1] if fenced else answer)
     except ValueError as error:
         raise ValueError('DeepSeek 返回的 JSON 格式无效，请重试；未应用修改。') from error
+    if isinstance(references, dict) and isinstance(result, dict) and isinstance(result.get('reply'), str):
+        from references import resolve_quote
+        def restore(match):
+            token = quote_links.get(match[1])
+            if token is None:
+                raise ValueError('DeepSeek 返回的引用未通过校验，请重新引用；未应用修改。')
+            resolve_quote(references['root'], token, references)
+            return '/source-quote?ref=' + token
+        result['reply'] = re.sub(r'/source-quote\?ref=([A-Za-z0-9_-]+)', restore, result['reply'])
+    return result
 
 
 def main_chat_request(request):

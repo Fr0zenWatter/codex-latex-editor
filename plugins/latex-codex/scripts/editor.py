@@ -3507,7 +3507,7 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
                         memory, memory_revision = history, state['revision']
                     context = chat_context(data, path, main_thread, ai_backend)
                     quotes = ({'root': str(root), 'path': path.relative_to(root).as_posix(), 'source': data['source']}
-                              if data.get('references') is True and path.suffix.lower() == '.tex' and ai_backend == 'codex' else None)
+                              if data.get('references') is True and path.suffix.lower() == '.tex' else None)
                     job = ChatJob(context, memory, memory_revision, backend=ai_backend, references=quotes)
                     if request_id:
                         job.id = request_id

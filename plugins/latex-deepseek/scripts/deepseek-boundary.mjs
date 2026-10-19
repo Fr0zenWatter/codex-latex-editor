@@ -3,8 +3,10 @@ export const name = 'latex-selection-boundary';
 export const inject = ['tools', 'llm', 'agentDefaultModel', 'appExit'];
 
 export function apply(ctx, config) {
-  ctx.tools.guard(() => 'This selection assistant cannot execute tools.');
-  ctx.on('agent/created', ({agent}) => agent.ctx.tools.restrict({allow: []}));
+  const quotes = config.references === true && !config.catalog;
+  const tool = 'mcp__tex_quotes__cite_tex';
+  ctx.tools.guard(exec => quotes && exec?.name === tool ? undefined : 'This selection assistant cannot execute tools.');
+  ctx.on('agent/created', ({agent}) => agent.ctx.tools.restrict({allow: quotes ? [tool] : []}));
   if (!config.catalog) return;
   setImmediate(async () => {
     try {

@@ -6,6 +6,9 @@ const token=encode({project:'a'.repeat(64),path:'chapters/child.tex',digest:'b'.
 const href='/source-quote?ref='+token;
 assert.equal(referenceToken(href),token);
 for(const value of [null,'https://example.com'+href,'//evil'+href,href+'&x=1','/source-quote?ref=!',href+'='.repeat(1)])assert.equal(referenceToken(value),null);
+const longToken=encode({quote:'字'.repeat(4000),before:'',after:''});
+assert(longToken.length>4096);assert.equal(referenceToken('/source-quote?ref='+longToken),longToken);
+assert.equal(referenceToken('/source-quote?ref='+'a'.repeat(32769)),null);
 function element(){return {events:{},dataset:{},attributes:{},children:[],hidden:false,style:{},
   classList:{add(name){this[name]=true;}},addEventListener(name,fn){this.events[name]=fn;},
   setAttribute(name,value){this.attributes[name]=value;},matches(){return !!this.open;},

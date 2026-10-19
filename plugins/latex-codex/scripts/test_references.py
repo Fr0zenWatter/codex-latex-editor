@@ -14,7 +14,7 @@ from urllib.request import ProxyHandler, Request, build_opener
 
 from chat import ChatJob, chat_context, codex_executable
 from editor import PAGE, make_server
-from references import cite_tex, decode_quote, mcp_config, resolve_quote
+from references import cite_tex, compact_quote_links, decode_quote, mcp_config, resolve_quote
 
 
 def token(match):
@@ -79,6 +79,11 @@ with tempfile.TemporaryDirectory(prefix='latex quotes ') as directory:
     assert first['markdown'].startswith('[First sentence.]('), 'Inline quotations should be the hyperlink text.'
     named = cite_tex(context, {'quote': 'First sentence.', 'text': 'Lemma 2.3'})['matches'][0]
     assert named['markdown'].startswith('[Lemma 2.3](') and token(named) == token(first), 'Changing the label must not change its verified target.'
+    links = {}
+    compact = compact_quote_links(named['markdown'], links)
+    compact_match = cite_tex(context, {'quote': 'First sentence.', 'text': 'Lemma 2.3'}, compact=True)['matches'][0]
+    assert compact == compact_match['markdown'] and len(token(compact_match)) == 21
+    assert links[token(compact_match)] == token(named), 'Short transport IDs retain the exact original token.'
     math_link = cite_tex(context, {'quote': 'First sentence.', 'text': r'$M_{[1]}$ is simple.'})['matches'][0]
     assert math_link['markdown'].startswith(r'[$M_{[1]}$ is simple.](')
     plain_link = cite_tex(context, {'quote': 'First sentence.', 'text': '<img src=x> [test] *name*'})['matches'][0]
@@ -96,19 +101,62 @@ with tempfile.TemporaryDirectory(prefix='latex quotes ') as directory:
     assert not cite_tex(draft, {'quote': 'First sentence.'})['matches']
     draft_quote = cite_tex(draft, {'quote': 'Unsaved draft sentence.'})['matches'][0]
     assert resolve_quote(root, token(draft_quote), draft)['quote'] == 'Unsaved draft sentence.'
-    rejects(lambda: resolve_quote(root, token(first), draft), '源码已变化')
+    rejects(lambda: resolve_quote(root, token(first), draft), '不存在或已改写')
     rejects(lambda: resolve_quote(root.parent, token(first)), '其他项目')
-    rejects(lambda: resolve_quote(root, token(draft_quote)), '源码已变化')
+    rejects(lambda: resolve_quote(root, token(draft_quote)), '不存在或已改写')
+    inserted = {**context, 'source': '% Unrelated edit 😀\n' + context['source']}
+    relocated = resolve_quote(root, token(first), inserted)
+    assert relocated['line'] == 6 and relocated['quote'] == 'First sentence.'
+    assert relocated['start'] == len(inserted['source'][:inserted['source'].index('First sentence.')].encode('utf-16-le')) // 2
+    wrapped = {**inserted, 'source': inserted['source'].replace('First sentence.', 'First\n  sentence.')}
+    assert resolve_quote(root, token(first), wrapped)['quote'] == 'First\n  sentence.'
+    moved = {**context, 'source': context['source'].replace('First sentence.\n', '').replace(r'\end{document}', 'First sentence.\n' + r'\end{document}')}
+    moved_quote = resolve_quote(root, token(first), moved)
+    assert moved_quote['line'] == moved['source'].count('\n', 0, moved['source'].index('First sentence.')) + 1
+    assert resolve_quote(root, token(repeated[1]), inserted)['line'] == 8, 'Nearby context distinguishes repeated sentences after offsets shift.'
+    legacy = {key: value for key, value in decode_quote(token(first)).items() if key not in ('quote', 'before', 'after')}
+    legacy_token = base64.urlsafe_b64encode(json.dumps(legacy).encode()).decode().rstrip('=')
+    assert resolve_quote(root, legacy_token, inserted)['line'] == 6, 'Existing short links can relocate unique quotes.'
+    anchor_file = root / 'anchors.tex'
+    block = 'Before.\n' + 'padding ' * 30 + 'Repeated phrase.' + ' padding' * 30
+    anchor_file.write_text(block, encoding='utf-8')
+    anchor_context = {'root': str(root), 'path': 'anchors.tex', 'source': block}
+    ambiguous = cite_tex(anchor_context, {'quote': 'Repeated phrase.', 'path': 'anchors.tex'})['matches'][0]
+    rejects(lambda: resolve_quote(root, token(ambiguous), {**anchor_context, 'source': block + '\n' + block}), '上下文无法区分')
+    rejects(lambda: resolve_quote(root, token(ambiguous), {**anchor_context, 'source': 'Repeated phrase.\n' * 65}), '出现多处')
+    long_quote = 'A' * 240 + ' unique ending.'
+    anchor_file.write_text(long_quote, encoding='utf-8')
+    long_context = {**anchor_context, 'source': long_quote}
+    long_link = cite_tex(long_context, {'quote': long_quote, 'path': 'anchors.tex'})['matches'][0]
+    long_changed = {**long_context, 'source': 'A' * 240 + ' different ending.\n' + long_quote}
+    assert resolve_quote(root, token(long_link), long_changed)['quote'] == long_quote, 'Validate the full quote beyond its 240-character preview.'
+    long_legacy = {key: value for key, value in decode_quote(token(long_link)).items() if key not in ('quote', 'before', 'after')}
+    long_legacy_token = base64.urlsafe_b64encode(json.dumps(long_legacy).encode()).decode().rstrip('=')
+    rejects(lambda: resolve_quote(root, long_legacy_token, long_changed), '缺少完整原句')
+    unicode_context = {**anchor_context, 'source': '字' * 4000}
+    unicode_link = cite_tex(unicode_context, {'quote': unicode_context['source'], 'path': 'anchors.tex'})['matches'][0]
+    assert 4096 < len(token(unicode_link)) <= 32768
+    assert resolve_quote(root, token(unicode_link), {**unicode_context, 'source': '% moved\n' + unicode_context['source']})['quote'] == unicode_context['source']
+    anchor_file.unlink()
     for args in (None, {'quote': ''}, {'quote': 'word', 'line': True}, {'quote': 'word', 'path': '../outside.tex'},
                  {'quote': 'word', 'path': str(main)}, {'quote': 'word', 'path': 'note.md'}, {'quote': 'word', 'extra': 1},
                  {'quote': 'word', 'text': ''}, {'quote': 'word', 'text': True}, {'quote': 'word', 'text': 'x' * 4001}):
         rejects(lambda: cite_tex(context, args), '.')
-    for value in ('broken!', '', 'a' * 4097, 'e30'):
+    for value in ('broken!', '', 'a' * 32769, 'e30'):
         rejects(lambda: decode_quote(value), '无效')
     data = decode_quote(token(first))
     data['line'] += 1
     bad = base64.urlsafe_b64encode(json.dumps(data).encode()).decode().rstrip('=')
     rejects(lambda: resolve_quote(root, bad), '位置无效')
+    damaged = {**decode_quote(token(first)), 'after': 'damaged context ' * 12, 'digest': '0' * 64}
+    damaged_token = base64.urlsafe_b64encode(json.dumps(damaged).encode()).decode().rstrip('=')
+    rejects(lambda: decode_quote(damaged_token), '无效')
+    assert resolve_quote(root, damaged_token, context)['quote'] == 'First sentence.'
+    rejects(lambda: resolve_quote(root, damaged_token, inserted), '位置无效')
+    for changed in ({'line': damaged['line'] + 1}, {'end': damaged['end'] + 1},
+                    {'preview': 'Invented.'}, {'quote': 'Invented.'}, {'path': '../outside.tex'}):
+        broken = base64.urlsafe_b64encode(json.dumps({**damaged, **changed}).encode()).decode().rstrip('=')
+        rejects(lambda: resolve_quote(root, broken, context), '.')
     outside = root.parent / (root.name + '-outside.tex')
     outside.write_text('Outside secret sentence.', encoding='utf-8')
     try:
@@ -141,7 +189,7 @@ with tempfile.TemporaryDirectory(prefix='latex quotes ') as directory:
     listed = subprocess.run([codex_executable(), 'mcp', 'list', '--json', '-c', config], capture_output=True, timeout=15, check=True)
     configured = next(item for item in json.loads(listed.stdout) if item['name'] == 'tex_quotes')
     assert configured['enabled'] and configured['transport']['command'] == sys.executable
-    print('PASS: project quotations, drafts, Unicode offsets, ambiguity, stale links, boundaries and read-only MCP/CLI configuration')
+    print('PASS: project quotations, edits/rewrapping, full/legacy anchors, Unicode offsets, ambiguity, boundaries and read-only MCP/CLI configuration')
 
     answer = {'reply': first['markdown'], 'replacement': None}
     chat_data = {'source': context['source'], 'selection': '', 'messages': [{'role': 'user', 'content': 'Quote the first sentence.'}]}
@@ -167,7 +215,10 @@ with tempfile.TemporaryDirectory(prefix='latex quotes ') as directory:
             guarded = ChatJob({}, references=context)
             guarded.process = ai
             rejects(lambda: guarded.codex_answer(json.dumps({'item': item}).encode()), '只允许')
-    assert ChatJob({}, backend='deepseek', references=context).references is None
+    assert ChatJob({}, backend='deepseek', references=context).references == context
+    for backend in ('codex', 'deepseek'):
+        for excluded in ({'file': 'note.md'}, {'task': 'inline-completion'}, {'task': 'history-summary'}):
+            assert ChatJob(excluded, backend=backend, references=context).references is None
 
     server = make_server(main, main_thread='', preferences_path=root / 'preferences.sqlite3')
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -207,11 +258,31 @@ with tempfile.TemporaryDirectory(prefix='latex quotes ') as directory:
                                            'boxes': [[0, 0, 612, 792], [0, 0, 612, 792]]})
         assert code == 200 and located['page'] == 2, located
         assert request('/source-quote', payload)[0] == 409
+        code, active_main = request('/source', {'path': str(main), 'version': compiled['version']})
+        assert code == 200, active_main
+        changed_source = context['source'].replace('First sentence.', 'Inserted page.\n\\newpage\nFirst sentence.')
+        code, updated = request('/save', {'source': changed_source, 'version': active_main['version']})
+        assert code == 200, updated
+        updated_payload = {**payload, 'source': changed_source, 'version': updated['version']}
+        code, relocated = request('/source-quote', updated_payload)
+        assert code == 200 and relocated['line'] == first['line'] + 2, relocated
+        child.write_bytes(b'% unrelated child edit\n' + original[child].removeprefix(b'\xef\xbb\xbf'))
+        code, relocated_child = request('/source-quote', {**updated_payload, 'reference': token(quoted_child)})
+        assert code == 200 and relocated_child['line'] == 3, relocated_child
+        code, rebuilt = request('/compile', {'source': changed_source, 'version': updated['version']})
+        assert code == 200 and rebuilt['ok'], rebuilt
+        code, relocated_pdf = request('/synctex', {'direction': 'forward', 'line': relocated['line'], 'column': 1,
+                                                  'version': rebuilt['version'], 'pdf_revision': rebuilt['pdf_revision'],
+                                                  'boxes': [[0, 0, 612, 792]] * 3})
+        assert code == 200 and relocated_pdf['page'] == 2, relocated_pdf
+        code, current_child = request('/source', {'path': str(child), 'version': rebuilt['version']})
+        assert code == 200, current_child
         child.write_text('Changed child sentence.', encoding='utf-8')
         current = request('/state')[1]
         assert request('/source-quote', {'path': str(child), 'source': current['source'], 'version': current['version'],
                                          'reference': token(quoted_child)})[0] == 400
         child.write_bytes(original[child])
+        main.write_bytes(original[main])
         note = root / 'note.md'
         note.write_text('# Note', encoding='utf-8')
         assert request('/open', {'path': str(note)})[0] == 200

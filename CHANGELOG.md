@@ -1,5 +1,23 @@
 # Changelog / 更新日志
 
+## 0.3.8-deepseek.3 — 2026-10-19
+
+- Prevent corrupted citation URLs: give DeepSeek short reference IDs, then verify and restore complete source / PDF links in code before saving or displaying the answer. Compact historical assistant links too, while preserving source, selections and user requests.
+- Recover legacy links with damaged context only when the project, file, complete quotation, range and line still match the current source exactly. Unknown IDs and invalid targets fail before applying a reply.
+
+修复 DeepSeek 抄写长编码导致“引用链接无效”；保留已经保存的完整链接格式，并核实当前原句以恢复可验证的旧链接。
+
+Validation / 验证：adapter, shared chat, reference / real PDF navigation and independent package checks passed on Windows. A real Harness account-model request returned two 21-character tool IDs that were restored to verified 994/1020-character URLs. The reported four links were checked against the current manuscript without editing it. macOS/Linux hardware was not retested.
+
+## 0.3.8-deepseek.2 — 2026-10-19
+
+- Enable the existing quotation toggle for DeepSeek TeX project chat. Use the same read-only `cite_tex` MCP server and verified source / PDF links as native Codex; encourage citations for specific paper passages.
+- Keep every other tool blocked, and leave Markdown, inline completion and history summaries tool-free. Validate citation call/result pairs and reject failed, truncated or foreign tool events. Temporary quote snapshots and MCP configuration are removed after the request.
+
+DeepSeek 打开引用开关后可主动生成论文原句定位链接；其他工具仍禁用。原生版本号保持 `0.3.8`。
+
+Validation / 验证：DeepSeek adapter, tool boundary, shared chat, quotation / real PDF navigation and standalone package checks passed on Windows. A separate Harness account-model test called the real quotation tool and returned a verified link; no existing main chat was messaged. macOS/Linux hardware was not retested.
+
 ## 0.3.8 / 0.3.8-deepseek.1 — 2026-10-19
 
 - Keep the compact chat bar open when clicking source or PDF text. Preserve the conversation reading position across expanded, compact, bubble and hidden states; newly received replies remain visible when reopening.

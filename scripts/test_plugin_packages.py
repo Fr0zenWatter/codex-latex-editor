@@ -88,7 +88,29 @@ with tempfile.TemporaryDirectory() as directory:
         bundle.extractall(folder / 'extracted')
     assert standalone.resolve().parent == folder.resolve()
     shutil.rmtree(standalone)
-    check_editor(folder / 'extracted/latex-deepseek', 'deepseek', folder)
+    extracted = folder / 'extracted/latex-deepseek'
+    check_editor(extracted, 'deepseek', folder)
+    # Citation configuration and its MCP server must survive without the source checkout.
+    (folder / 'citation.tex').write_text('Standalone quote.', encoding='utf-8')
+    configure = '''import json, sys
+from pathlib import Path
+sys.path[:0] = [sys.argv[1], sys.argv[2]]
+from deepseek import dsh_patch
+context = {'root': sys.argv[3], 'path': 'citation.tex', 'source': 'Standalone quote.'}
+print(Path(dsh_patch(sys.argv[3], references=context)).read_text(encoding='utf-8'))
+'''
+    configured = subprocess.run([sys.executable, '-X', 'utf8', '-c', configure,
+                                 str(extracted / 'scripts'), str(extracted / 'runtime'), str(folder)],
+                                capture_output=True, check=True, timeout=10)
+    quote_server = next(item['config'] for entry in json.loads(configured.stdout)
+                        for item in entry.get('insert', []) if item['id'] == 'latex-tex-quotes')
+    assert Path(quote_server['args'][-2]).is_relative_to(extracted), 'Use this package’s own quotation server.'
+    call = {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
+            'params': {'name': 'cite_tex', 'arguments': {'quote': 'Standalone quote.'}}}
+    quoted = subprocess.run([quote_server['command'], *quote_server['args']],
+                            input=(json.dumps(call) + '\n').encode(), capture_output=True, check=True, timeout=10)
+    matches = json.loads(json.loads(quoted.stdout)['result']['content'][0]['text'])['matches']
+    assert matches[0]['quote'] == 'Standalone quote.' and '/source-quote?ref=' in matches[0]['markdown']
 
 market = json.loads((ROOT / '.agents/plugins/marketplace.json').read_text(encoding='utf-8'))
 assert {item['name'] for item in market['plugins']} == {'latex-codex', 'latex-deepseek'}
