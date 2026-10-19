@@ -517,17 +517,49 @@ const historyDialog=document.querySelector('#history-dialog');
 attachHistory(editor,request,()=>({path:document.querySelector('#filename').title,source:editor.getValue(),version}),restoreHistory);
 const layout=document.querySelector('main'),splitter=document.querySelector('#splitter');
 let splitRatio=.5,splitDrag=null,splitFrame=0;
+let sourceWidth=sourceWrapper.clientWidth,sourceHeight=sourceWrapper.clientHeight,sourceAnchor=null,sourceResizing=false;
+function sourcePosition(){
+  const rect=sourceWrapper.getBoundingClientRect(),pos=editor.coordsChar({left:rect.left,top:rect.top+1},'window');
+  return {doc:editor.getDoc(),pos,y:editor.charCoords(pos,'window').top-rect.top,left:editor.getScrollInfo().left};
+}
+function rememberSourcePosition(){
+  if(sourceResizing||splitDrag||sourceWrapper.clientWidth!==sourceWidth||sourceWrapper.clientHeight!==sourceHeight)return;
+  if(sourceWidth&&sourceHeight)sourceAnchor=sourcePosition();
+}
+function resizeSource(position=sourceAnchor){
+  if(splitDrag||!sourceWrapper.clientWidth||!sourceWrapper.clientHeight)return;
+  sourceWidth=sourceWrapper.clientWidth;sourceHeight=sourceWrapper.clientHeight;sourceResizing=true;
+  try{
+    editor.refresh();
+    if(position&&position.doc===editor.getDoc()){
+      // Entering rewrapped lines can refine CodeMirror's estimated heights once more.
+      for(let pass=0;pass<3;pass++){
+        const delta=editor.charCoords(position.pos,'window').top-sourceWrapper.getBoundingClientRect().top-position.y;
+        if(pass&&Math.abs(delta)<1)break;
+        editor.scrollTo(position.left,editor.getScrollInfo().top+delta);
+      }
+    }
+  }finally{sourceResizing=false;}
+  rememberSourcePosition();
+}
+for(const name of ['scroll','changes','swapDoc','refresh'])editor.on(name,rememberSourcePosition);
+new ResizeObserver(()=>{
+  if(sourceWidth!==sourceWrapper.clientWidth||sourceHeight!==sourceWrapper.clientHeight)resizeSource();
+  else rememberSourcePosition();
+}).observe(sourceWrapper);
+rememberSourcePosition();
 function setSplitRatio(value){
+  const position=splitDrag?null:sourcePosition();
   splitRatio=Math.max(.15,Math.min(.85,value));
   layout.style.gridTemplateColumns=`minmax(0,${splitRatio}fr) 6px minmax(0,${1-splitRatio}fr)`;
   splitter.setAttribute('aria-valuenow',String(Math.round(splitRatio*100)));
-  if(!splitDrag)editor.refresh();
+  if(!splitDrag)resizeSource(position);
 }
 function saveSplitRatio(){try{preferences.setItem('latex-codex-split',String(splitRatio));}catch(e){}}
 try{const saved=Number.parseFloat(preferences.getItem('latex-codex-split'));if(Number.isFinite(saved))setSplitRatio(saved);}catch(e){}
 splitter.onpointerdown=e=>{
   if(e.button!==0||layout.clientWidth<=640)return;
-  e.preventDefault();splitDrag={x:e.clientX,ratio:splitRatio,next:splitRatio,width:layout.clientWidth-6,position:previewPosition()};
+  e.preventDefault();splitDrag={x:e.clientX,ratio:splitRatio,next:splitRatio,width:layout.clientWidth-6,position:previewPosition(),source:sourcePosition()};
   splitter.setPointerCapture(e.pointerId);layout.classList.add('resizing');
 };
 splitter.onpointermove=e=>{
@@ -543,9 +575,9 @@ splitter.onpointerup=splitter.onpointercancel=splitter.onlostpointercapture=e=>{
   if(!splitDrag)return;
   if(splitFrame){cancelAnimationFrame(splitFrame);splitFrame=0;}
   setSplitRatio(splitDrag.next);
-  const position=splitDrag.position;
+  const position=splitDrag.position,source=splitDrag.source;
   splitDrag=null;layout.classList.remove('resizing');saveSplitRatio();
-  editor.refresh();
+  resizeSource(source);
   resizePdfPreview(position);
   if(splitter.hasPointerCapture(e.pointerId))splitter.releasePointerCapture(e.pointerId);
 };
@@ -611,11 +643,24 @@ function setPdfZoom(value,position=previewPosition(),fit=false){
   preview.querySelectorAll('.sync-highlight').forEach(mark=>mark.remove());
   pdfZoomControl.update();
 }
-let previewWidth=0;
+let previewWidth=0,previewHeight=0,previewAnchor=null,previewResizing=false;
+function rememberPreviewPosition(){
+  if(previewResizing||splitDrag||preview.clientWidth!==previewWidth||preview.clientHeight!==previewHeight)return;
+  previewAnchor={doc:pdfViewer.pdfDocument,position:previewPosition()};
+}
+preview.addEventListener('scroll',rememberPreviewPosition,{passive:true});
+pdfEvents.on('updateviewarea',rememberPreviewPosition);
 function resizePdfPreview(position){
-  if(splitDrag||preview.clientWidth===previewWidth)return;
-  previewWidth=preview.clientWidth;
-  setPdfZoom(pdfZoom,position,true);
+  if(splitDrag||!preview.clientWidth||!preview.clientHeight)return;
+  const widthChanged=preview.clientWidth!==previewWidth,heightChanged=preview.clientHeight!==previewHeight;
+  if(!widthChanged&&!heightChanged&&!position){rememberPreviewPosition();return;}
+  position=position??(previewAnchor&&previewAnchor.doc===pdfViewer.pdfDocument?previewAnchor.position:previewPosition());
+  previewWidth=preview.clientWidth;previewHeight=preview.clientHeight;previewResizing=true;
+  try{
+    if(widthChanged)setPdfZoom(pdfZoom,position,true);
+    else restorePreviewPosition(position);
+  }finally{previewResizing=false;}
+  rememberPreviewPosition();
 }
 new ResizeObserver(()=>resizePdfPreview()).observe(preview);
 const pdfZoomControl=attachPdfZoom({button:document.querySelector('#zoom-fit'),dial:document.querySelector('#pdf-zoom-dial'),preview,getZoom:()=>pdfZoom,setZoom:setPdfZoom,t});

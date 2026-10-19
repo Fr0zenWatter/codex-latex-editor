@@ -9,8 +9,9 @@ import sys
 import tempfile
 import threading
 from urllib.request import ProxyHandler, build_opener
+from zipfile import ZipFile
 
-from build_deepseek_plugin import ROOT, build_runtime
+from build_deepseek_plugin import ROOT, build_archive, build_runtime
 
 
 def check_editor(plugin, backend, folder):
@@ -71,7 +72,23 @@ with tempfile.TemporaryDirectory() as directory:
     shutil.rmtree(native)
     standalone = folder / 'standalone-deepseek'
     harness.rename(standalone)
-    check_editor(standalone, 'deepseek', folder)
+    (standalone / '.env').write_text('do not package', encoding='utf-8')
+    (standalone / 'paper.tex').write_text('private paper', encoding='utf-8')
+    archive = build_archive(standalone, folder / 'deepseek.zip')
+    with ZipFile(archive) as bundle:
+        names = bundle.namelist()
+        assert bundle.testzip() is None
+        assert 'latex-deepseek/runtime/vendor/pdfjs/build/pdf.worker.mjs' in names
+        assert 'latex-deepseek/AGENTS.md' in names
+        assert not any(name.endswith(('.env', '.tex', '.sqlite3', '.pyc')) for name in names)
+        assert not any('/test_' in name or '/node_modules/' in name or '/__pycache__/' in name for name in names)
+        skill = bundle.read('latex-deepseek/SKILL.md').decode('utf-8')
+        assert '`scripts/editor.py` relative to this skill directory' in skill
+        assert '../../scripts/editor.py' not in skill
+        bundle.extractall(folder / 'extracted')
+    assert standalone.resolve().parent == folder.resolve()
+    shutil.rmtree(standalone)
+    check_editor(folder / 'extracted/latex-deepseek', 'deepseek', folder)
 
 market = json.loads((ROOT / '.agents/plugins/marketplace.json').read_text(encoding='utf-8'))
 assert {item['name'] for item in market['plugins']} == {'latex-codex', 'latex-deepseek'}
@@ -80,4 +97,4 @@ for item in market['plugins']:
     assert manifest['name'] == item['name']
     skill = ROOT / item['source']['path'] / 'skills' / item['name'] / 'SKILL.md'
     assert skill.is_file(), 'Each plugin must have its own discoverable skill.'
-print('PASS: native isolation, independent defaults, complete rebuilds and standalone DeepSeek package')
+print('PASS: native isolation, independent defaults, complete rebuilds and standalone DeepSeek ZIP without private files')

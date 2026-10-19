@@ -42,7 +42,8 @@ const editor = {
   lastLine:()=>99,lineCount:()=>100,addLineClass(line,where,name){this.marks??=new Set();this.marks.add(where+':'+name);return {line};},
   removeLineClass(line,where,name){this.marks.delete(where+':'+name);},
   scrollIntoView(cursor,margin){this.jump={...cursor,margin};},
-  on(name,fn) {editorEvents[name]=fn;}, setOption(key, value) { options[key] = value; },
+  on(name,fn) {const previous=editorEvents[name];editorEvents[name]=(...args)=>{previous?.(...args);fn(...args);};}, setOption(key, value) { options[key] = value; },
+  getDoc(){return this.doc;},
   toggleComment(){commentCalls++;},somethingSelected:()=>selected,
   coordsChar:()=>({line:3,ch:2}),setCursor(cursor){cursorChanges++;this.cursor=cursor;},focus(){},refresh(){this.refreshes=(this.refreshes||0)+1;},
   setSelection(from,to){this.selection={from,to};},
@@ -267,8 +268,8 @@ assert.equal(element('#forward').attributes['aria-keyshortcuts'],'Control+E');
 assert.equal(typeof options.extraKeys['Ctrl-S'],'function');assert.equal(typeof options.extraKeys['Ctrl-Space'],'function');
 const splitter=element('#splitter');element('main').clientWidth=1006;
 const sourceShare=()=>Number(element('main').style.gridTemplateColumns.match(/minmax\(0,([\d.]+)fr\)/)[1]);
-const resizePreview=resizeObservers.find(item=>item.target===element('#preview')).callback;
-resizePreview();
+const resizePreview=resizeObservers.find(item=>item.target===element('#preview')&&item.callback.toString().includes('resizePdfPreview')).callback;
+viewer.pdfDocument=undefined;resizePreview();viewer.pdfDocument=null;
 const dragRefreshes=editor.refreshes||0,dragFits=viewer.fitChanges||0;
 const resizePointer={pointerId:2,button:0,buttons:1,clientX:500,preventDefault(){}};
 splitter.onpointerdown(resizePointer);splitter.onpointermove({...resizePointer,clientX:700});
@@ -292,6 +293,54 @@ splitter.onkeydown({key:'ArrowLeft',preventDefault(){}});assert.equal(sourceShar
 splitter.onkeydown({key:'Home',preventDefault(){}});assert.equal(sourceShare(),0.5);
 splitter.onpointerdown(resizePointer);splitter.onpointercancel(resizePointer);
 splitter.onpointermove({...resizePointer,clientX:700});assert.equal(sourceShare(),0.5);
+// Width changes rewrap earlier source lines; keeping scrollTop alone shows different text.
+const sourcePane=editor.getWrapperElement(),resizeSourcePane=resizeObservers.filter(item=>item.target===sourcePane).at(-1).callback;
+const originalSourceGeometry={coords:editor.coordsChar,chars:editor.charCoords,scroll:editor.getScrollInfo,to:editor.scrollTo,width:sourcePane.clientWidth,height:sourcePane.clientHeight};
+let sourceTop=4827,refinedHeight=0,pendingRemeasure=0;
+const wraps=()=>Math.ceil(240/Math.floor(sourcePane.clientWidth/10));
+editor.coordsChar=()=>{const row=Math.floor((sourceTop-refinedHeight)/20);return {line:Math.floor(row/wraps()),ch:(row%wraps())*Math.floor(sourcePane.clientWidth/10)};};
+editor.charCoords=pos=>({top:sourcePane.getBoundingClientRect().top+(pos.line*wraps()+Math.floor(pos.ch/Math.floor(sourcePane.clientWidth/10)))*20+refinedHeight-sourceTop});
+editor.getScrollInfo=()=>({left:0,top:sourceTop,clientHeight:sourcePane.clientHeight});
+editor.scrollTo=(_left,top)=>{sourceTop=top;refinedHeight+=pendingRemeasure;pendingRemeasure=0;};
+vm.runInContext('rememberSourcePosition()',context);
+const readingSource=vm.runInContext('sourcePosition()',context);
+sourcePane.clientWidth=250;pendingRemeasure=60;editorEvents.scroll();resizeSourcePane();
+assert.equal(editor.charCoords(readingSource.pos).top-sourcePane.getBoundingClientRect().top,readingSource.y,'Sidebar resize keeps the same wrapped source text at the same screen height.');
+assert(sourceTop>4827,'Source scroll pixels must follow the rewrapped content.');
+const readingSplit=vm.runInContext('sourcePosition()',context);
+splitter.onpointerdown(resizePointer);sourcePane.clientWidth=400;resizeSourcePane();
+const duringSplit=sourceTop;splitter.onpointermove({...resizePointer,clientX:600});flushAnimationFrames();splitter.onpointerup(resizePointer);
+assert.notEqual(sourceTop,duringSplit,'Splitter release restores the pre-drag source anchor.');
+assert.equal(editor.charCoords(readingSplit.pos).top-sourcePane.getBoundingClientRect().top,readingSplit.y);
+const beforeDocSwitch=sourceTop;editor.doc={};sourcePane.clientWidth=300;resizeSourcePane();
+assert.equal(sourceTop,beforeDocSwitch,'A new source document cannot reuse the old reading anchor.');
+editor.coordsChar=originalSourceGeometry.coords;editor.charCoords=originalSourceGeometry.chars;
+editor.getScrollInfo=originalSourceGeometry.scroll;editor.scrollTo=originalSourceGeometry.to;
+sourcePane.clientWidth=originalSourceGeometry.width;sourcePane.clientHeight=originalSourceGeometry.height;resizeSourcePane();
+// Simulate PDF.js changing its page sizes and scroll offsets during fit-to-width.
+const pdfResizePane=element('#preview'),secondPage=views[1].div;
+const originalPdfGeometry={scale:Object.getOwnPropertyDescriptor(viewer,'currentScaleValue'),height:secondPage.clientHeight,top:secondPage.offsetTop,page:viewer.currentPageNumber};
+Object.defineProperty(secondPage,'clientHeight',{configurable:true,get:()=>900*viewer.currentScale});
+Object.defineProperty(secondPage,'offsetTop',{configurable:true,get:()=>900*viewer.currentScale+14});
+Object.defineProperty(viewer,'currentScaleValue',{configurable:true,set(value){assert.equal(value,'page-width');this.fitChanges++;this.currentScale=pdfResizePane.clientWidth/400;pdfResizePane.scrollTop=0;}});
+viewer.currentScale=1;viewer.currentPageNumber=2;pdfResizePane.scrollTop=secondPage.offsetTop+secondPage.clientHeight*.3;
+vm.runInContext('rememberPreviewPosition()',context);
+pdfResizePane.clientWidth=260;pdfResizePane.scrollTop=10;pdfResizePane.events.scroll();resizePreview();
+assert(Math.abs((pdfResizePane.scrollTop-secondPage.offsetTop)/secondPage.clientHeight-.3)<1e-8,'Sidebar resize preserves the point on a later PDF page despite automatic scroll changes.');
+pdfResizePane.scrollTop=secondPage.offsetTop+secondPage.clientHeight*.45;pdfResizePane.events.scroll();
+splitter.onpointerdown(resizePointer);pdfResizePane.clientWidth=500;pdfResizePane.scrollTop=0;resizePreview();
+splitter.onpointerup(resizePointer);
+assert(Math.abs((pdfResizePane.scrollTop-secondPage.offsetTop)/secondPage.clientHeight-.45)<1e-8,'Splitter release preserves the latest PDF reading point.');
+const beforeHeightResize=pdfResizePane.scrollTop,heightFits=viewer.fitChanges;
+pdfResizePane.clientHeight=300;pdfResizePane.scrollTop=0;resizePreview();
+assert.equal(viewer.fitChanges,heightFits,'Height-only resize does not rescale the PDF.');
+assert.equal(pdfResizePane.scrollTop,beforeHeightResize);
+Object.defineProperty(viewer,'currentScaleValue',originalPdfGeometry.scale);
+Object.defineProperty(secondPage,'clientHeight',{configurable:true,writable:true,value:originalPdfGeometry.height});
+Object.defineProperty(secondPage,'offsetTop',{configurable:true,writable:true,value:originalPdfGeometry.top});
+viewer.currentPageNumber=originalPdfGeometry.page;pdfResizePane.clientWidth=400;pdfResizePane.clientHeight=600;viewer.currentScale=1;pdfResizePane.scrollTop=200;
+vm.runInContext('resizePdfPreview(previewPosition())',context);
+console.log('PASS: sidebar/window and splitter resizes retain wrapped source text and later-page PDF anchors, with document-switch and height-only guards');
 options.readOnly=false;
 options.extraKeys['Alt-/'](editor);assert.equal(commentCalls,1);
 assert.equal(options.extraKeys['Alt-/'],options.extraKeys['Ctrl-/']);

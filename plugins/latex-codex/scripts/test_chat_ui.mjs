@@ -30,7 +30,7 @@ function el(id) {
     setPointerCapture(id){this.capture=id;},hasPointerCapture(id){return this.capture===id;},releasePointerCapture(){this.capture=null;},matches(){return !!this.open;},
     append(...nodes){this.children.push(...nodes);},prepend(...nodes){this.children.unshift(...nodes);},replaceChildren(...nodes){this.children=nodes;},
     events:{},offsetWidth:320,offsetHeight:46,getBoundingClientRect(){return {left:Number.parseFloat(this.style.left)||950,top:Number.parseFloat(this.style.top)||750,bottom:780,width:Number.parseFloat(this.style.width)||this.offsetWidth,height:Number.parseFloat(this.style.height)||this.offsetHeight};},
-    scrollHeight:68,contains(node){return !!node && node===this;},
+    scrollTop:0,scrollHeight:68,contains(node){return !!node && node===this;},
     clientWidth:500,querySelector(){return null;},querySelectorAll(){return [];},
     classList:{values:new Set(),add(name){this.values.add(name);},remove(name){this.values.delete(name);},
       toggle(name,on){if(on)this.values.add(name);else this.values.delete(name);},contains(name){return this.values.has(name);}},
@@ -114,6 +114,8 @@ assert.equal(el('#chat-panel').style.top,'714px','The persistent bubble starts a
 el('#chat-mini').onclick({detail:1});await new Promise(resolve=>setTimeout(resolve,330));
 assert.equal(el('#chat-panel').dataset.mini,'false');
 assert.equal(el('#chat-panel').style.top,'710px','The compact bar starts at the PDF pane bottom left.');
+windowEvents.pointerdown({target:el('#outside')});
+assert.equal(el('#chat-panel').dataset.mini,'false','Clicking the document keeps the chosen compact bar.');
 const reviewActions=item=>item.review.root.children.at(-1).children;
 const keepReview=item=>reviewActions(item).at(-1).onclick();
 const undoReview=item=>reviewActions(item).at(-2).onclick();
@@ -166,7 +168,9 @@ assert.equal(wheel(0),false);
 assert.equal(wheel(-100),true);
 assert.equal(panel.style['--chat-content-size'],'11px');
 el('#chat-input').value='Keep my draft while moving.';
+el('#chat-messages').scrollTop=37;
 windowEvents.pointerdown({target:el('#outside')});assert.equal(panel.dataset.collapsed,'true');
+el('#chat-messages').scrollTop=0; // Hidden browser scrollers lose their rendered offset.
 assert.equal(wheel(-100),false,'Collapsed chat leaves Ctrl+wheel to the page.');
 assert.equal(panel.style['--chat-content-size'],'11px');
 const compactStart={left:Number.parseFloat(panel.style.left),top:Number.parseFloat(panel.style.top)};
@@ -188,12 +192,16 @@ assert.equal(panel.dataset.collapsed,'true');assert.equal(panel.dataset.mini,'fa
 expand.onclick();assert.equal(panel.dataset.mini,'true');
 mini.onclick({detail:1});mini.onclick({detail:2});
 assert.equal(panel.dataset.collapsed,'false','Double-clicking the bubble opens the floating chat directly.');
+assert.equal(el('#chat-messages').scrollTop,37,'Reopening restores the reading position across bar and bubble modes.');
+el('#chat-messages').scrollTop=24;chat.open();
+assert.equal(el('#chat-messages').scrollTop,24,'Opening an already expanded panel keeps its current reading position.');
 await new Promise(resolve=>setTimeout(resolve,330));
 assert.equal(panel.dataset.collapsed,'false','The pending single-click cannot reopen the bar.');
 el('#chat-close').onclick();assert.equal(panel.dataset.mini,'true','Closing a panel opened from the bubble returns to the bubble.');
 mini.onclick({detail:1});await new Promise(resolve=>setTimeout(resolve,330));
 assert.equal(panel.dataset.mini,'false');
 panel.events.dblclick({target:el('#chat-input'),preventDefault(){}});
+assert.equal(el('#chat-messages').scrollTop,24);
 assert.equal(panel.dataset.collapsed,'false');assert.equal(panel.style.height,'620px');
 assert.equal(el('#chat-input').value,'Keep my draft while moving.');
 windowEvents.pointerdown({target:el('#outside')});assert.equal(panel.dataset.mini,'false','A panel opened from the bar returns to the bar.');
@@ -816,6 +824,10 @@ releasePlain({id:'plain-job'});await compactReply;
 assert.equal(plainBody.references,true,'Subsequent chat requests receive tools after quotations are enabled.');
 assert.equal(el('#chat-panel').dataset.collapsed,'true');
 assert.equal(el('#chat-panel').dataset.sending,'false');
+el('#chat-messages').scrollTop=0;
+chat.open();
+assert.equal(el('#chat-messages').scrollTop,el('#chat-messages').scrollHeight,'A reply received while collapsed opens at the new reply.');
+el('#chat-close').onclick();
 el('#chat-bar-permanent').checked=false;el('#chat-bar-permanent').onchange();
 assert.equal(el('#chat-panel').hidden,true,'Disabling permanence hides the collapsed chat.');
 let shortcutPrevented=0,shortcutStopped=0;

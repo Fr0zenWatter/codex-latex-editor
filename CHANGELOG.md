@@ -1,5 +1,16 @@
 # Changelog / 更新日志
 
+## 0.3.8 / 0.3.8-deepseek.1 — 2026-10-19
+
+- Keep the compact chat bar open when clicking source or PDF text. Preserve the conversation reading position across expanded, compact, bubble and hidden states; newly received replies remain visible when reopening.
+- Preserve the visible source text and PDF page position when resizing the window/sidebar or moving the source/PDF divider. Compensate for rewrapped source-line measurements, retain document identity guards and avoid PDF rescaling for height-only changes.
+- Rebuild the independent DeepSeek package from the same shared editor snapshot. Native Codex is `0.3.8`; DeepSeek is `0.3.8-deepseek.1`, with separate plugin names, AI backends and installation locations.
+- Add a portable DeepSeek ZIP builder and installation guide. Include all required runtime assets and licenses while excluding papers, credentials, history databases, development tests and Python caches.
+
+修复悬浮栏自动收起及聊天滚动位置丢失；窗口、侧边栏和分界线调整后保留源码与 PDF 阅读位置。Codex 和 DeepSeek 使用同一份共享编辑器快照，分别发布为 `0.3.8` 和 `0.3.8-deepseek.1`，并提供可独立运行的 DeepSeek 打包流程。
+
+Validation / 验证：shared UI/chat regressions, HTTP serving and standalone plugin packaging checks passed on Windows. Divider dragging was checked in the browser; sidebar/window geometry changes were simulated. No real model request or main-chat message was sent; macOS/Linux hardware was not retested.
+
 ## 0.3.7 — 2026-10-18
 
 - Show PDF proofreading with dark text, pale red/green row backgrounds and deeper backgrounds for actual changes. Join adjacent changed words across spaces, while keeping separate lines and unchanged text distinct.

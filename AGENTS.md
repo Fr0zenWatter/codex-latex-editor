@@ -45,6 +45,10 @@ Windows 中 CLI 不在 PATH 时，优先使用当前桌面应用提供的 CLI：
 
 ### 可选的独立 DeepSeek Harness 插件
 
+版本前缀标记共享编辑器发布基线：原生 `0.3.8` 对应 DeepSeek `0.3.8-deepseek.1`，仅 DeepSeek 适配更新递增末尾编号。两个插件的 ID、安装目录与后端独立；共享修复发布时须从同一源码重新生成 DeepSeek runtime，不能只修改版本号或复制旧安装包。
+
+独立包可通过 `python scripts/build_deepseek_plugin.py --output share/latex-deepseek-VERSION.zip` 生成，直接解压到 Harness 的技能目录。具体安装和可选桥接更新见 `plugins/latex-deepseek/AGENTS.md`；原生插件更新不安装 DeepSeek。
+
 `latex-deepseek` 有独立的插件名、版本、技能和启动入口，默认使用 DeepSeek；原生 `latex-codex` 入口只接受 Codex。Python 和本地 TeX 依赖沿用上文。当前在 Windows、DeepSeek Harness `0.2.0-rc.2` 实测账号登录的 Send；其他平台尚未实机验证。服务在本机运行，浏览器需允许访问回环地址。
 
 ```sh
@@ -101,6 +105,10 @@ python plugins/latex-codex/scripts/editor.py /path/to/project/paper/main.tex --p
 BibTeX 在临时构建目录内以主文稿基名运行，避免 TeX Live / MacTeX 的 `openout_any=p` 拒绝绝对 `.blg` / `.bbl` 输出路径。`./` / `../` 开头的文献与样式不走 Kpathsea 搜索路径，因此本次调用将它们复制到构建目录，并临时替换 `.aux` 中的输入名称；结束、失败或超时均恢复原 `.aux` 并清理副本，不修改文稿或全局 TeX 安全设置。检查覆盖严格输出规则、相对资源、嵌套辅助文件、带空格路径、历史／校对预览及失败清理；macOS 仍需真机验证。
 
 ## 维护
+
+调整 Codex 侧边栏、浏览器窗口或 TeX/PDF 分界线时，源码按顶部可见字符及屏幕偏移恢复位置，PDF 按页码及页内相对位置恢复。分界线拖动仍合并布局更新，松手统一刷新；补偿 CodeMirror 的换行高度再测量，仅改变高度不额外缩放 PDF，切换文稿不使用旧锚点。检查在 `editor.py` 和 `test_ui.cjs`。
+
+项目浮动对话的圆球单击展开为短栏后，点击源码或 PDF 保持短栏；缩小按钮切回圆球。完整对话框沿用固定开关与点击外部收起；再次展开保留聊天阅读位置，新回复仍滚动到末尾。检查在 `test_chat_ui.mjs`。
 
 论文原句引用通过浮动对话中的开关启用。显示历史消息的项目浮动对话窗口标题栏中“新对话”旁边的 `”` 按钮是定位工具开关，点击后持续高亮并打开引用列表，为本页面后续原生 Codex 的 TeX 对话请求启用只读 `cite_tex` 工具；再次点击关闭，收起列表或对话窗口、点击引用链接均不改变开启状态，刷新后需重新点击。开启时提示 AI 在讨论论文中的具体定义、引理、定理、公式或原句时主动使用 `cite_tex`，无需等用户要求定位；涉及多个不同段落时提供相关链接，避免重复链接。工具可通过 `text` 参数返回“Lemma 2.3”等名称作为超链接文字，默认以原句作链接文字，定位仍按验证的原句范围；查找项目内 TeX 原句，返回含项目、文件和源码摘要的 Markdown 链接。点击链接通过现有源码切换和 SyncTeX 正向定位，保留源码选区并从句子起点定位；源码改变后拒绝旧引用，提示重新引用。不支持 Markdown 引用，也不启用 DeepSeek 模型工具。每次引用调用使用临时 MCP 配置并忽略用户配置，不改全局设置，仅允许原句工具。实现与检查在 `references.py`、`vendor/latex-references.mjs`、`test_references.py` / `.mjs` 和 `test_ui.cjs`。
 

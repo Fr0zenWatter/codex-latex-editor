@@ -1,6 +1,6 @@
 {
   "name": "latex-deepseek",
-  "version": "0.3.1-deepseek.2",
+  "version": "0.3.8-deepseek.1",
   "description": "Local LaTeX and Markdown editor for DeepSeek Harness, independently installed from LaTeX Codex.",
   "author": {
     "name": "Local developer"

@@ -17,7 +17,7 @@ export function colorReplacement(text, color, segments) {
 export function attachSelectionChat(editor, request, paintAnnotations = () => {}, recordAnnotations = async () => {}, getMacroSource = () => editor.getValue(), referencesEnabled = () => false) {
   const $ = id => document.querySelector('#' + id);
   const panel = $('chat-panel'), input = $('chat-input'), messages = $('chat-messages'), status = $('chat-status');
-  let macroSource = null, macros = {};
+  let macroSource = null, macros = {}, messagesScrollTop = null;
   function renderReply(container, text) {
     const source = getMacroSource();
     if (source !== macroSource) { macros = documentMacros(source, katex); macroSource = source; }
@@ -163,6 +163,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   }
   function syncPlaceholder() { input.placeholder = t(panel.dataset.collapsed === 'true' ? '双击放大悬浮框' : '修改要求或问题'); }
   function finishCollapse(mini) {
+    if (!panel.hidden && panel.dataset.collapsed === 'false') messagesScrollTop = messages.scrollTop;
     panel.hidden = !!miniButton && !permanentBar.checked;
     if (panel.dataset.collapsed === 'true' && panel.dataset.mini === String(mini)) return;
     endPanelResize();endCornerResize();panelSettings.hidePopover();panel.dataset.collapsed = 'true';panel.dataset.mini = String(mini);
@@ -186,11 +187,13 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   }
   function expandPanel() {
     clearTimeout(miniClickTimer);miniClickTimer = null;
+    const reopening = panel.hidden || panel.dataset.collapsed === 'true';
     const fromHidden = panel.hidden || panel.dataset.closing === 'true';
     stopVisibilityAnimation();
     if (panel.dataset.collapsed === 'true') returnToMini = panel.dataset.mini === 'true';
     panel.hidden = false;panel.dataset.collapsed = 'false';panel.dataset.mini = 'false';syncPlaceholder();placeExpanded();
     setPanelWidth(Number.parseFloat(panel.style.width) || 440);
+    if (reopening) messages.scrollTop = messagesScrollTop ?? messages.scrollHeight;
     if (fromHidden && !reducedMotion()) {
       panel.classList.add('chat-pop-in');
       visibilityTimer = setTimeout(stopVisibilityAnimation, 260);
@@ -283,7 +286,6 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     if (panel.contains(event.target) || panelSettings.contains(event.target)) return;
     clearTimeout(miniClickTimer);
     if (panel.dataset.collapsed === 'false' && pinButton.getAttribute('aria-pressed') !== 'true') collapsePanel();
-    else if (miniButton && panel.dataset.collapsed === 'true' && panel.dataset.mini !== 'true' && permanentBar.checked) collapsePanel(true);
   });
   if (permanentControl) {
     permanentBar.checked = preferences.getItem('latex-codex-chat-bar-permanent') !== 'off';
@@ -710,7 +712,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
       };
       item.append(exportButton);
     }
-    messages.append(item); messages.scrollTop = messages.scrollHeight;
+    messages.append(item); messagesScrollTop = null; messages.scrollTop = messages.scrollHeight;
   }
   async function loadMemory() {
     if(memoryRevision!==null)return;
@@ -762,7 +764,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     refreshContext();
     loadMemory().catch(e=>notice(e.message));
     loadModels();
-    input.focus();
+    input.focus({preventScroll:true});
   }
   $('chat-view').onclick = () => {
     $('settings-menu').hidePopover();
@@ -782,7 +784,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     const previous = range(), from = editor.getCursor('from'), to = editor.getCursor('to');
     if (editor.somethingSelected() && !sending && (!previous || previous.from.line !== from.line || previous.from.ch !== from.ch || previous.to.line !== to.line || previous.to.ch !== to.ch)) useSelection();
     else if (!marker) notice('');
-    input.focus();
+    input.focus({preventScroll:true});
   }
   async function stop() {
     if (annotationCommitting) return;
