@@ -1,18 +1,18 @@
 {
   "name": "latex-deepseek",
   "version": "0.3.8-deepseek.3",
-  "description": "Local LaTeX and Markdown editor for DeepSeek Harness, independently installed from LaTeX Codex.",
+  "description": "LaTeX in AI Sidebar for DeepSeek Harness, with an independently packaged local editor.",
   "author": {
     "name": "Local developer"
   },
   "skills": "./skills/",
   "interface": {
-    "displayName": "LaTeX DeepSeek",
-    "shortDescription": "Edit LaTeX and Markdown with DeepSeek Harness.",
-    "longDescription": "A local editor with automatic TeX compilation, bundled PDF.js, Markdown previews and per-change Keep / Undo. Send, project chat and history summaries use the installed signed-in DeepSeek Harness CLI. Optional main-chat forwarding uses a separately configured bridge. Requires Python 3.10+ and an existing TeX installation for PDF compilation. Installed independently from the native LaTeX Codex plugin.",
+    "displayName": "LaTeX in AI Sidebar for DeepSeek Harness",
+    "shortDescription": "Write, revise and review papers in the DeepSeek Harness sidebar.",
+    "longDescription": "Bring paper writing, AI edits and PDF review into the DeepSeek Harness sidebar. Includes automatic TeX compilation, bundled PDF.js, Markdown previews and per-change Keep / Undo. Send, project chat and history summaries use the installed signed-in DeepSeek Harness CLI. Optional main-chat forwarding uses a separately configured bridge. Requires Python 3.10+ and an existing TeX installation for PDF compilation. Installed independently from the native latex-codex plugin.",
     "developerName": "Local developer",
     "category": "Productivity",
     "capabilities": [],
-    "defaultPrompt": "Use LaTeX DeepSeek to open my LaTeX file with DeepSeek Harness."
+    "defaultPrompt": "Use latex-deepseek to open my LaTeX or Markdown file with DeepSeek Harness."
   }
 }

@@ -1,4 +1,4 @@
 interface:
-  display_name: "LaTeX DeepSeek"
+  display_name: "LaTeX in AI Sidebar for DeepSeek Harness"
   short_description: "在本地编辑 LaTeX 与 Markdown，使用 DeepSeek Harness 生成建议"
   default_prompt: "$latex-deepseek 打开 main.tex，使用 DeepSeek Harness"

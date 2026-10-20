@@ -1,13 +1,17 @@
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-# LaTeX Codex
+# LaTeX in AI Sidebar
 
-Edit LaTeX and Markdown in the Codex side panel, with local previews, autosave and history.
+**Your LaTeX workspace inside your AI app.**
 
-- Source/PDF navigation, PDF text and formula box selection, and a choice of PDF reading backgrounds.
-- **Send** proposes edits through your signed-in Codex; review each change with **Keep / Undo** in source and PDF, or **Accept all** at the source pane’s upper-left corner.
-- Model and reasoning controls, writing styles, floating project chat and Markdown reply notes. Enable **”** for clickable paper quotations and PDF links.
-- Live Markdown previews and PDF compilation using your existing TeX installation.
+Bring the final step of research into your AI app's sidebar: write LaTeX and Markdown, discuss passages and formulas, and review AI edits alongside a local preview.
+
+Supports **Codex** and **DeepSeek Harness** through separate plugins. Claude integration is planned. Formerly **codex-latex-editor / LaTeX Codex**.
+
+- Select source or PDF text, add comments and click **Send** for AI suggestions. Review each change with **Keep / Undo** in source and PDF, or **Accept all**.
+- Discuss your paper in floating project chat, with model and reasoning controls, writing styles and Markdown reply notes. Enable **”** for clickable paper quotations and PDF links.
+- Navigate between source and PDF, select text or box-select formulas, and choose a PDF reading background.
+- Preview Markdown live, compile PDFs with your existing TeX installation, and revisit autosaved source and PDF history.
 
 Ask Codex: **Use latex-codex to open main.tex**, or launch directly:
 
@@ -18,7 +22,7 @@ python plugins/latex-codex/scripts/editor.py /path/to/main.tex
 Open the printed local URL in the side browser. Select source or PDF text, add comments and click **Send**.
 Drag one `.tex`, `.md` or `.markdown` file onto the editor or preview to open the original. If the browser hides its path, use **File → Open file**.
 
-DeepSeek Harness support is a separate optional plugin, **latex-deepseek**. Installing or updating LaTeX Codex keeps the native Codex backend. See [AGENTS.md](AGENTS.md) for installation and maintenance of either plugin.
+Use **latex-codex** for Codex or the independent **latex-deepseek** plugin for DeepSeek Harness. Existing installation commands and local history remain compatible. See [AGENTS.md](AGENTS.md) for installation and maintenance.
 
 ## Demos
 
@@ -68,4 +72,4 @@ Open `.md` or `.markdown` notes with live preview. Click **PDF preview** to comp
 
 [![Watch the Markdown compilation demo](docs/media/05-markdown.gif)](docs/media/05-markdown.mp4)
 
-See [Releases](https://github.com/Fr0zenWatter/codex-latex-editor/releases) for version updates. To subscribe, choose **Watch → Custom → Releases** on GitHub.
+See [Releases](https://github.com/Fr0zenWatter/latex-in-ai-sidebar/releases) for version updates. To subscribe, choose **Watch → Custom → Releases** on GitHub.

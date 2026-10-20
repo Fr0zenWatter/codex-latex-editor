@@ -33,7 +33,10 @@ def check_editor(plugin, backend, folder):
         assert base.startswith('http://127.0.0.1:'), base
         client = build_opener(ProxyHandler({}))
         with client.open(base, timeout=5) as response:
-            assert f'data-ai-backend="{backend}"' in response.read().decode()
+            page = response.read().decode()
+            assert f'data-ai-backend="{backend}"' in page
+            platform = 'Codex' if backend == 'codex' else 'DeepSeek Harness'
+            assert f'<title>LaTeX in AI Sidebar · {platform}</title>' in page
         with client.open(base + 'state', timeout=5) as response:
             assert json.load(response)['source'] == 'Chosen.\n'
         for asset in ('latex-chat.mjs', 'latex-pdf-selection.mjs', 'pdfjs/build/pdf.mjs', 'pdfjs/build/pdf.worker.mjs'):

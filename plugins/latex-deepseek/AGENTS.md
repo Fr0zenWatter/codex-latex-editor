@@ -1,6 +1,6 @@
-# LaTeX DeepSeek 安装与维护
+# LaTeX in AI Sidebar for DeepSeek Harness：安装与维护
 
-此包包含完整编辑器、PDF.js、字体及第三方许可证，不依赖原生 LaTeX Codex 插件或源码仓库，不需要 npm / pip 安装。
+此包包含完整编辑器、PDF.js、字体及第三方许可证，不依赖原生 Codex 插件（latex-codex）或源码仓库，不需要 npm / pip 安装。
 
 需要 Python 3.10+、已安装并登录的 DeepSeek Harness。LaTeX PDF 需要已有的 XeLaTeX / pdfLaTeX 和 SyncTeX；文献按项目需要 BibTeX 或 Biber。Markdown 实时预览不需要 TeX。不会自动安装 TeX 或修改全局环境。
 

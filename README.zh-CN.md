@@ -1,13 +1,17 @@
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-# LaTeX Codex
+# LaTeX in AI Sidebar
 
-在 Codex 侧边栏编辑 LaTeX 和 Markdown，支持本地预览、自动保存和历史。
+**在 AI 应用的侧边栏里完成论文写作、修改与校对。**
 
-- 源码与 PDF 双向跳转、PDF 选字与公式框选，支持选择 PDF 阅读底色。
-- **Send** 使用已登录的 Codex 生成修改建议，源码与 PDF 逐处 **Keep / Undo**，也可在源码栏左上角点击**全部接受**。
-- 支持模型与思考等级选择、写作风格、浮动项目对话及回复的 Markdown 记录；开启 **”** 可让 AI 提供论文原句的 PDF 跳转链接。
-- Markdown 实时预览，以及通过现有 TeX 环境生成 PDF。
+把研究的最后一步带进 AI 应用的侧边栏：撰写 LaTeX 与 Markdown，与 AI 讨论原文和公式，并结合本地预览逐处审阅 AI 的修改。
+
+目前通过独立插件支持 **Codex** 和 **DeepSeek Harness**，Claude 适配在规划中。项目原名 **codex-latex-editor / LaTeX Codex**。
+
+- 选中源码或 PDF 内容，添加批注，点击 **Send** 生成 AI 建议；在源码与 PDF 中逐处 **Keep / Undo**，或点击**全部接受**。
+- 在浮动项目对话中讨论论文，选择模型、思考等级和写作风格，并将回复记录为 Markdown；开启 **”** 可获取论文原句的 PDF 跳转链接。
+- 源码与 PDF 双向跳转、PDF 选字及公式框选，支持选择 PDF 阅读底色。
+- Markdown 实时预览、使用现有 TeX 环境编译 PDF，并回看自动保存的源码历史与 PDF 改动。
 
 对 Codex 说：**使用 latex-codex 打开 main.tex**，或直接运行：
 
@@ -18,7 +22,7 @@ python plugins/latex-codex/scripts/editor.py /path/to/main.tex
 在侧边浏览器打开打印的本地地址。选中源码或 PDF 内容，添加批注，然后点击 **Send**。
 可将单个 `.tex`、`.md` 或 `.markdown` 文件拖到编辑区或预览区打开原文件；若浏览器隐藏路径，请用“文件 → 打开文件”。
 
-DeepSeek Harness 由独立的可选插件 **latex-deepseek** 提供；安装或更新 LaTeX Codex 始终保留原生 Codex 后端。两种插件的安装与维护细节见 [AGENTS.md](AGENTS.md)。
+Codex 使用 **latex-codex**，DeepSeek Harness 使用独立的 **latex-deepseek** 插件。原有安装命令及本地历史继续兼容，安装与维护细节见 [AGENTS.md](AGENTS.md)。
 
 ## 功能演示
 
@@ -68,4 +72,4 @@ DeepSeek Harness 由独立的可选插件 **latex-deepseek** 提供；安装或�
 
 [![观看 Markdown 编译演示](docs/media/05-markdown.gif)](docs/media/05-markdown.mp4)
 
-版本更新见 [Releases](https://github.com/Fr0zenWatter/codex-latex-editor/releases)。订阅新版本：在 GitHub 点击 **Watch → Custom → Releases**。
+版本更新见 [Releases](https://github.com/Fr0zenWatter/latex-in-ai-sidebar/releases)。订阅新版本：在 GitHub 点击 **Watch → Custom → Releases**。

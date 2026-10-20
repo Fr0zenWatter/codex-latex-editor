@@ -1,9 +1,9 @@
 ---
 name: latex-codex
-description: Open LaTeX or Markdown in the local LaTeX Codex browser editor with local TeX or live Markdown preview. Also install or update this native plugin when requested, including "更新 latex-codex". Use this editor when project instructions select it.
+description: Open LaTeX or Markdown in the local LaTeX in AI Sidebar editor for Codex with local TeX or live Markdown preview. Also install or update this native plugin when requested, including "更新 latex-codex". Use this editor when project instructions select it.
 ---
 
-# LaTeX Codex
+# LaTeX in AI Sidebar for Codex
 
 For install/update requests, follow [the update workflow](references/update-guide.md). An ordinary document-open request does not update the plugin.
 
@@ -24,7 +24,7 @@ For an ordinary open request, launch and show the editor directly. Detailed feat
 ## Preserve the editing workflow
 
 - This native plugin uses Codex; DeepSeek has its own plugin. No npm, pip, Poppler or server installation is needed to open a document.
-- Use this browser editor and local TeX when the project selects LaTeX Codex; do not substitute the built-in file preview/compiler. Markdown opens in live preview without TeX.
+- Use this browser editor and local TeX when the project selects LaTeX in AI Sidebar for Codex; do not substitute the built-in file preview/compiler. Markdown opens in live preview without TeX.
 - Keep unsaved drafts, pending annotations and conflicts intact. Reuse the running editor's normal file-switch and synchronization flow. Do not overwrite either side of a conflict.
 - Before main-chat source edits, check the running editor's `/project-review`. When enabled, submit the latest `{action:"propose",path,version,source}` there. Otherwise use normal file edits and let external synchronization pick them up.
 - Compilation errors preserve source/cursor position; use the log's error-line button for explicit navigation. Missing TeX dependencies are reported, not installed automatically. Do not change global settings.

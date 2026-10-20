@@ -1,18 +1,18 @@
 {
   "name": "latex-codex",
   "version": "0.3.8",
-  "description": "Local LaTeX and Markdown editor with the signed-in native Codex CLI.",
+  "description": "LaTeX in AI Sidebar for Codex, with local previews and AI edits you can review.",
   "author": {
     "name": "Local developer"
   },
   "skills": "./skills/",
   "interface": {
-    "displayName": "LaTeX Codex",
-    "shortDescription": "Edit LaTeX and Markdown with live previews.",
-    "longDescription": "A small local editor with automatic local TeX compilation and a bundled PDF.js viewer in the Codex browser side panel. Supports pdfLaTeX/XeLaTeX directives, BibTeX/Biber and SyncTeX, plus Markdown live HTML preview and optional XeLaTeX PDF rendering for Obsidian callouts and TikZ. Requires Python 3.10+; PDF compilation needs an existing TeX installation. No Poppler or Node installation is needed. PDF.js reads page metadata and text positions, and pages render on demand in the browser. Can be selected as the preferred LaTeX workflow in project instructions.",
+    "displayName": "LaTeX in AI Sidebar for Codex",
+    "shortDescription": "Write, revise and review papers in the Codex sidebar.",
+    "longDescription": "Bring paper writing, AI edits and PDF review into the Codex sidebar. Includes automatic local TeX compilation and a bundled PDF.js viewer in the Codex browser side panel. Supports pdfLaTeX/XeLaTeX directives, BibTeX/Biber and SyncTeX, plus Markdown live HTML preview and optional XeLaTeX PDF rendering for Obsidian callouts and TikZ. Requires Python 3.10+; PDF compilation needs an existing TeX installation. No Poppler or Node installation is needed. PDF.js reads page metadata and text positions, and pages render on demand in the browser. Can be selected as the preferred LaTeX workflow in project instructions.",
     "developerName": "Local developer",
     "category": "Productivity",
     "capabilities": [],
-    "defaultPrompt": "Open my LaTeX file with LaTeX Codex in the side panel."
+    "defaultPrompt": "Use latex-codex to open my LaTeX or Markdown file in the Codex side panel."
   }
 }

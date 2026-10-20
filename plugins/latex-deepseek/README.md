@@ -1,6 +1,6 @@
-# LaTeX DeepSeek
+# LaTeX in AI Sidebar for DeepSeek Harness
 
-在 DeepSeek Harness 中编辑 LaTeX 和 Markdown，使用已有登录生成修改建议。
+在 DeepSeek Harness 侧边栏中撰写 LaTeX 和 Markdown，与 AI 讨论论文、生成修改建议并逐处校对。
 
 - 本地 PDF 编译、源码与 PDF 双向定位、选字及公式批注。
 - 浮动项目对话、公式显示、单条回复导出和可选 AI 行内补全。

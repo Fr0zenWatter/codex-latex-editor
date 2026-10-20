@@ -61,7 +61,7 @@ ASSETS.update({file.relative_to(VENDOR).as_posix(): {
 PAGE = r'''<!doctype html>
 <html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <link rel="modulepreload" href="/vendor/latex-locales.mjs">
-<title>LaTeX Codex</title>
+<title>LaTeX in AI Sidebar · Codex</title>
 <!--USER_PREFERENCES-->
 <link rel="stylesheet" href="/vendor/codemirror.css"><link rel="stylesheet" href="/vendor/dialog.css"><link rel="stylesheet" href="/vendor/cobalt.css">
 <link rel="stylesheet" href="/vendor/history-tabs.css">
@@ -320,7 +320,7 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 <div class="theme-generate-row"><button id="theme-generate" disabled data-i18n="生成配色">生成配色</button><span id="theme-status" role="status" aria-live="polite"></span></div>
 <div id="theme-generated" hidden><label class="theme-name-label" for="theme-name" data-i18n="主题名称">主题名称</label><input id="theme-name" maxlength="60" required placeholder="例如：Modern Minimal" data-i18n-placeholder="例如：Modern Minimal"><p class="theme-palette-label" data-i18n="识别出的配色 · 点击色块设为背景">识别出的配色 · 点击色块设为背景</p><div class="theme-palette-layout"><div class="theme-wheel-shell"><div id="theme-wheel" role="group" aria-label="色盘" data-i18n-aria-label="色盘"></div><div id="theme-neutrals" role="group" aria-label="中性色" data-i18n-aria-label="中性色"></div><small data-i18n="色相位置 · 中性色按明暗排列">色相位置 · 中性色按明暗排列</small></div><div id="theme-palette" role="group" aria-label="识别出的配色" data-i18n-aria-label="识别出的配色"></div></div><details class="theme-role-settings"><summary data-i18n="语法配色 · 可逐项微调">语法配色 · 可逐项微调</summary><div id="theme-swatches"></div></details>
 <div id="theme-sample"><div class="theme-sample-bar" data-i18n="配色预览">配色预览</div><pre><span style="color:var(--command)">\section</span>{Introduction}
-<span style="color:var(--muted)">% LaTeX Codex</span>
+<span style="color:var(--muted)">% LaTeX in AI Sidebar</span>
 <span style="color:var(--environment-command)">\begin</span>{<span style="color:var(--environment)">equation</span>}
   <span style="color:var(--math)">A</span> <span style="color:var(--operator)">=</span> <span style="color:var(--number)">2</span><span style="color:var(--math)">x</span>
 <span style="color:var(--environment-command)">\end</span>{<span style="color:var(--environment)">equation</span>}
@@ -3056,7 +3056,7 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
                     page = PAGE.replace('<!--USER_PREFERENCES-->', '<script id="user-preferences" type="application/json">' + saved + '</script>')
                     page = page.replace('<html ', '<html data-ai-backend="' + ai_backend + '" ', 1)
                     if ai_backend == 'deepseek':
-                        page = page.replace('<title>LaTeX Codex</title>', '<title>LaTeX · DeepSeek Harness</title>')
+                        page = page.replace('<title>LaTeX in AI Sidebar · Codex</title>', '<title>LaTeX in AI Sidebar · DeepSeek Harness</title>')
                     self.reply(200, page.encode('utf-8'), 'text/html; charset=utf-8')
                 except (OSError, sqlite3.Error) as error:
                     self.reply(500, {'error': str(error)})

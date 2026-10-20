@@ -1,5 +1,12 @@
 # Changelog / 更新日志
 
+## Unreleased / 未发布
+
+- Rename the project to **LaTeX in AI Sidebar** (formerly **codex-latex-editor / LaTeX Codex**) and introduce the AI sidebar workflow in both READMEs. Codex and DeepSeek Harness are supported; Claude integration is planned.
+- Refresh plugin display names, editor titles and repository links. Keep plugin IDs, marketplace identity, installation commands, preferences and project history compatible.
+
+项目更名为 **LaTeX in AI Sidebar**，突出 AI 侧边栏中的论文写作、修改与校对；保留原有安装入口、偏好与历史。此项记录尚未发布，不改写已有版本或标签。
+
 ## 0.3.8-deepseek.3 — 2026-10-19
 
 - Prevent corrupted citation URLs: give DeepSeek short reference IDs, then verify and restore complete source / PDF links in code before saving or displaying the answer. Compact historical assistant links too, while preserving source, selections and user requests.

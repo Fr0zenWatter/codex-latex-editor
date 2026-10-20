@@ -1,7 +1,7 @@
 {
   "name": "latex-codex-shared",
   "interface": {
-    "displayName": "LaTeX Codex"
+    "displayName": "LaTeX in AI Sidebar"
   },
   "plugins": [
     {

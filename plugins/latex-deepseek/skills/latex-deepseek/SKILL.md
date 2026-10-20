@@ -1,9 +1,9 @@
 ---
 name: latex-deepseek
-description: Open local LaTeX or Markdown in the LaTeX DeepSeek editor when the user requests DeepSeek Harness or this plugin. Uses the installed signed-in Harness CLI for AI edits, project chat and history summaries.
+description: Open local LaTeX or Markdown in the LaTeX in AI Sidebar editor for DeepSeek Harness when the user requests DeepSeek Harness or this plugin. Uses the installed signed-in Harness CLI for AI edits, project chat and history summaries.
 ---
 
-# LaTeX DeepSeek
+# LaTeX in AI Sidebar for DeepSeek Harness
 
 Use `../../scripts/editor.py` relative to this skill directory. This launcher always uses DeepSeek Harness. Native Codex users use the separate `latex-codex` plugin.
 
