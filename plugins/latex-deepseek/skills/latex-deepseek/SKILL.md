@@ -5,9 +5,11 @@ description: Open local LaTeX or Markdown in the LaTeX in AI Sidebar editor for 
 
 # LaTeX in AI Sidebar for DeepSeek Harness
 
-Use `../../scripts/editor.py` relative to this skill directory. This launcher always uses DeepSeek Harness. Native Codex users use the separate `latex-codex` plugin.
+Use only `../../scripts/editor.py` relative to this skill directory. This launcher always uses DeepSeek Harness. **Do not choose `runtime/editor.py`: it is a shared implementation module.** Updated packages redirect that old mistaken entry to the DeepSeek launcher, but older packages may start Codex. Do not substitute the native `latex-codex` launcher.
 
-Launch `<python-interpreter> -u <absolute-editor.py> <absolute-document>` in a persistent shell session, then open its printed loopback URL in the requested application's side browser. Use Python 3.10+ (`python` on Windows, usually `python3` elsewhere). Reuse a server already started for this file in this chat. The file may be `.tex`, `.md` or `.markdown`; add `--project-root <folder>` when the main file and appendices need a common root. Keep the main compilation file fixed when editing included sources.
+Resolve the launcher's absolute path from this skill file before running it; do not search for another `editor.py` in the package. For example: `python -u "<absolute-skill-directory>/../../scripts/editor.py" "<absolute-document>"`.
+
+Launch `<python-interpreter> -u <absolute-editor.py> <absolute-document>` in a persistent host shell outside the agent sandbox from the first launch. Use Python 3.10+ (`python` on Windows, usually `python3` elsewhere). Read the printed loopback URL's `/` page and verify `data-ai-backend="deepseek"` before opening it in the requested application's side browser. If the backend differs, stop and report the wrong entry; do not open or reuse that service. Reuse only a confirmed host-side DeepSeek server already started for this file in this chat. The file may be `.tex`, `.md` or `.markdown`; add `--project-root <folder>` when the main file and appendices need a common root. Keep the main compilation file fixed when editing included sources.
 
 An installed package includes its editor and browser resources; it does not need the native Codex plugin or a checkout. If launching from an unbuilt source checkout reports missing resources, run `python scripts/build_deepseek_plugin.py` from the repository root and retry. Install or update only `latex-deepseek@latex-codex-shared` for Harness; its version and update identity are independent of `latex-codex`.
 

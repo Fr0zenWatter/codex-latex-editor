@@ -27,6 +27,17 @@ def build_runtime(core_scripts=ROOT / 'plugins/latex-codex/scripts',
         snapshot.mkdir()
         for name in MODULES:
             shutil.copy2(core_scripts / name, snapshot / name)
+        entry = snapshot / 'editor.py'
+        source = entry.read_text(encoding='utf-8')
+        launch = "\nif __name__ == '__main__':\n    main()\n"
+        if not source.endswith(launch):
+            raise ValueError('The shared editor entry point changed; update the DeepSeek runtime redirect.')
+        entry.write_text(source[:-len(launch)] + "\nif __name__ == '__main__':\n"
+                         "    import runpy\n"
+                         "    entry = Path(__file__).resolve().parents[1] / 'scripts/editor.py'\n"
+                         "    sys.path.insert(0, str(entry.parent))\n"
+                         "    runpy.run_path(str(entry), run_name='__main__')\n",
+                         encoding='utf-8', newline='\n')
         shutil.copytree(core_scripts / 'vendor', snapshot / 'vendor',
                         ignore=shutil.ignore_patterns('__pycache__', '*.pyc', '*.pyo', 'node_modules'))
         if target.exists():

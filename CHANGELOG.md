@@ -7,6 +7,15 @@
 
 项目更名为 **LaTeX in AI Sidebar**，突出 AI 侧边栏中的论文写作、修改与校对；保留原有安装入口、偏好与历史。此项记录尚未发布，不改写已有版本或标签。
 
+## 0.3.8-deepseek.4 — 2026-10-20
+
+- Resolve the DeepSeek skill's `scripts/editor.py` launcher explicitly and verify the served backend before opening or reusing an editor.
+- Redirect direct execution of the packaged `runtime/editor.py` to the DeepSeek launcher, preserving document arguments, working directory and session environment instead of starting the shared Codex default.
+
+修复从 DeepSeek 启动时误选共享运行模块而打开 Codex 后端的问题。技能明确正确入口，新包兼容误用的旧启动路径，两种入口均固定使用 DeepSeek。
+
+Validation / 验证：standalone packaging and both installed entry paths passed on Windows, including rejecting Codex and preserving the Harness session. All 405 distributed files matched the ZIP by SHA-256. A live Harness-launched editor reported `data-ai-backend="deepseek"`, with its session linked and bridge available; no model request or main-chat message was sent. macOS/Linux hardware was not retested.
+
 ## 0.3.8-deepseek.3 — 2026-10-19
 
 - Prevent corrupted citation URLs: give DeepSeek short reference IDs, then verify and restore complete source / PDF links in code before saving or displaying the answer. Compact historical assistant links too, while preserving source, selections and user requests.

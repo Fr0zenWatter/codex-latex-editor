@@ -9,6 +9,8 @@
 1. 将压缩包中的整个 `latex-deepseek` 文件夹放到 `~/.dsh/skills/` 下；Windows 默认是 `%USERPROFILE%\.dsh\skills\latex-deepseek`。设置了 `DSH_HOME` 时使用该目录下的 `skills/`。保留其中的 `SKILL.md`、`scripts/` 和 `runtime/`。
 2. 新开 DeepSeek 对话，输入“使用 latex-deepseek 打开指定文稿”。也可直接运行 `python scripts/editor.py /path/to/main.tex`，并打开打印的本地地址。
 
+正确启动入口是 `scripts/editor.py`，技能按自身位置解析绝对路径，不搜索包内其他同名文件。新版将误用的 `runtime/editor.py` 自动转到同一 DeepSeek 启动器；旧包没有此保护。打开或复用服务前，读取首页并确认 `data-ai-backend="deepseek"`，避免误用 Codex 后端。
+
 更新前关闭此插件启动的编辑器服务并保存草稿，再用新包替换整个插件文件夹；不要合并旧 runtime。文稿、`.latex-codex/` 项目历史、Harness 登录及用户偏好独立保存，不放进插件目录。
 
 Codex 用户也可沿用仓库本地市场的 `latex-deepseek@latex-codex-shared` 安装入口；普通原生 Codex 更新仍使用独立的 `latex-codex` 插件。

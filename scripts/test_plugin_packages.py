@@ -14,13 +14,14 @@ from zipfile import ZipFile
 from build_deepseek_plugin import ROOT, build_archive, build_runtime
 
 
-def check_editor(plugin, backend, folder):
-    entry = plugin / 'scripts/editor.py'
+def check_editor(plugin, backend, folder, entry='scripts/editor.py'):
+    entry = plugin / entry
     other = 'deepseek' if backend == 'codex' else 'codex'
     rejected = subprocess.run([sys.executable, str(entry), str(folder / 'note.md'), '--ai-backend', other],
                               capture_output=True, timeout=20)
     assert rejected.returncode == 2, 'Each plugin must reject the other backend.'
     environment = {**os.environ, 'USERPROFILE': str(folder), 'HOME': str(folder),
+                   'DSH_HOME': str(folder / '.dsh'),
                    'DSH_SESSION_ID': 'test-deepseek-session', 'CODEX_THREAD_ID': 'test-codex-thread'}
     environment.pop('PYTHONPATH', None)
     process = subprocess.Popen([sys.executable, '-u', str(entry), str(folder / 'note.md')],
@@ -39,6 +40,8 @@ def check_editor(plugin, backend, folder):
             assert f'<title>LaTeX in AI Sidebar · {platform}</title>' in page
         with client.open(base + 'state', timeout=5) as response:
             assert json.load(response)['source'] == 'Chosen.\n'
+        with client.open(base + 'main-chat', timeout=5) as response:
+            assert json.load(response)['linked'] is (backend == 'deepseek'), 'Preserve the launching Harness session.'
         for asset in ('latex-chat.mjs', 'latex-pdf-selection.mjs', 'pdfjs/build/pdf.mjs', 'pdfjs/build/pdf.worker.mjs'):
             with client.open(base + 'vendor/' + asset, timeout=5) as response:
                 assert response.status == 200 and response.read(32)
@@ -68,6 +71,19 @@ with tempfile.TemporaryDirectory() as directory:
     else:
         raise AssertionError('An incomplete core must not replace the existing package.')
     assert (runtime / 'editor.py').read_bytes() == before
+    core_entry = native / 'scripts/editor.py'
+    original = core_entry.read_bytes()
+    try:
+        core_entry.write_bytes(original + b'\n# changed entry point\n')
+        try:
+            build_runtime(native / 'scripts', harness)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('An unrecognized entry must not leave the Codex default in the package.')
+        assert (runtime / 'editor.py').read_bytes() == before
+    finally:
+        core_entry.write_bytes(original)
     assert (runtime / 'vendor/README.md').is_file(), 'Keep bundled third-party license documentation.'
     check_editor(native, 'codex', folder)
     # Relocate the package and remove the native source: Harness must have no cross-plugin dependency.
@@ -93,6 +109,7 @@ with tempfile.TemporaryDirectory() as directory:
     shutil.rmtree(standalone)
     extracted = folder / 'extracted/latex-deepseek'
     check_editor(extracted, 'deepseek', folder)
+    check_editor(extracted, 'deepseek', folder, entry='runtime/editor.py')
     # Citation configuration and its MCP server must survive without the source checkout.
     (folder / 'citation.tex').write_text('Standalone quote.', encoding='utf-8')
     configure = '''import json, sys
@@ -122,4 +139,4 @@ for item in market['plugins']:
     assert manifest['name'] == item['name']
     skill = ROOT / item['source']['path'] / 'skills' / item['name'] / 'SKILL.md'
     assert skill.is_file(), 'Each plugin must have its own discoverable skill.'
-print('PASS: native isolation, independent defaults, complete rebuilds and standalone DeepSeek ZIP without private files')
+print('PASS: native isolation, DeepSeek entry redirect, independent defaults, complete rebuilds and standalone DeepSeek ZIP without private files')
