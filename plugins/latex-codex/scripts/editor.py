@@ -45,6 +45,7 @@ ASSETS.update({'history-tabs.mjs':'text/javascript','history-tabs.css':'text/css
 ASSETS.update({'latex-proofread.mjs':'text/javascript','latex-proofread.css':'text/css','latex-project-review.mjs':'text/javascript'})
 ASSETS.update({'latex-proofread-pdf.mjs':'text/javascript','latex-writing-styles.mjs':'text/javascript'})
 ASSETS.update({'latex-completion.mjs':'text/javascript','latex-completion.css':'text/css'})
+ASSETS.update({'latex-chat-branches.mjs':'text/javascript','latex-chat-branches.css':'text/css'})
 ASSETS['gpt-temp-mark.svg'] = 'image/svg+xml'
 ASSETS['latex-references.mjs'] = 'text/javascript'
 ASSETS.update({'latex-outline.mjs':'text/javascript','latex-outline.css':'text/css','latex-zoom.mjs':'text/javascript','latex-zoom.css':'text/css','latex-search.mjs':'text/javascript','latex-search.css':'text/css'})
@@ -76,6 +77,8 @@ PAGE = r'''<!doctype html>
 <link rel="stylesheet" href="/vendor/latex-markdown.css">
 <link rel="stylesheet" href="/vendor/latex-proofread.css">
 <link rel="stylesheet" href="/vendor/latex-completion.css">
+<link rel="stylesheet" href="/vendor/latex-chat-branches.css">
+<link rel="modulepreload" href="/vendor/latex-chat-branches.mjs">
 <link rel="modulepreload" href="/vendor/latex-proofread.mjs">
 <link rel="modulepreload" href="/vendor/latex-proofread-pdf.mjs">
 <link rel="modulepreload" href="/vendor/latex-writing-styles.mjs">
@@ -85,6 +88,12 @@ PAGE = r'''<!doctype html>
 :root[data-theme=dracula]{--quick-accent:#bd93f9;--bg:#282a36;--panel:#21222c;--border:#44475a;--text:#f8f8f2;--muted:#99a7ce;--math:#50fa7b;--operator:#ff79c6;--reference:#ffb86c;--command:#8be9fd;--environment:#bd93f9;--number:#f1fa8c}
 :root[data-theme=monokai]{--quick-accent:#a6e22e;--bg:#272822;--panel:#1e1f1c;--border:#49483e;--text:#f8f8f2;--muted:#a6a28c;--math:#a6e22e;--operator:#f92672;--reference:#fd971f;--command:#66d9ef;--environment:#ae81ff;--number:#e6db74}
 :root[data-theme=nord]{--quick-accent:#88c0d0;--bg:#2e3440;--panel:#242933;--border:#4c566a;--text:#eceff4;--muted:#a4b0c3;--math:#a3be8c;--operator:#b48ead;--reference:#d08770;--command:#88c0d0;--environment:#81a1c1;--number:#ebcb8b}
+:root[data-theme=gray-25]{color-scheme:light;--quick-accent:#505050;--quick-foreground:#ffffff;--bg:#bfbfbf;--panel:#c7c7c7;--border:#5c5c5c;--text:#202020;--muted:#484848;--math:#315326;--operator:#623459;--reference:#664521;--command:#164e63;--environment:#4c3968;--environment-command:#4c3968;--number:#594b18}
+:root[data-theme=gray-d2d2d2]{color-scheme:light;--quick-accent:#505050;--quick-foreground:#ffffff;--bg:#d2d2d2;--panel:#dadada;--border:#747474;--text:#202020;--muted:#505050;--math:#315326;--operator:#623459;--reference:#664521;--command:#164e63;--environment:#4c3968;--environment-command:#4c3968;--number:#594b18}
+:root[data-theme=gray-dfdfdf]{color-scheme:light;--quick-accent:#505050;--quick-foreground:#ffffff;--bg:#dfdfdf;--panel:#e7e7e7;--border:#747474;--text:#202020;--muted:#505050;--math:#315326;--operator:#623459;--reference:#664521;--command:#164e63;--environment:#4c3968;--environment-command:#4c3968;--number:#594b18}
+:root[data-theme=gray-50]{color-scheme:light;--quick-accent:#303030;--quick-foreground:#ffffff;--bg:#808080;--panel:#8a8a8a;--border:#303030;--text:#111111;--muted:#171717;--math:#0a1a0d;--operator:#210c20;--reference:#1c1405;--command:#091821;--environment:#191125;--environment-command:#191125;--number:#181703}
+:root[data-theme=gray-75]{--quick-accent:#c6c6c6;--quick-foreground:#303030;--bg:#404040;--panel:#383838;--border:#8c8c8c;--text:#f0f0f0;--muted:#bdbdbd;--math:#d5e4c8;--operator:#e0ccdd;--reference:#e8d4b6;--command:#c4deea;--environment:#d8cde6;--environment-command:#d8cde6;--number:#e6dfb7}
+:is(.cm-s-gray-25,.cm-s-gray-50,.cm-s-gray-d2d2d2,.cm-s-gray-dfdfdf) .CodeMirror-selected{background:#b0b0b0}.cm-s-gray-75 .CodeMirror-selected{background:#666666}:is(.cm-s-gray-25,.cm-s-gray-50,.cm-s-gray-75,.cm-s-gray-d2d2d2,.cm-s-gray-dfdfdf) .CodeMirror-activeline-background{background:var(--panel)}:is(.cm-s-gray-25,.cm-s-gray-50,.cm-s-gray-75,.cm-s-gray-d2d2d2,.cm-s-gray-dfdfdf) :is(.cm-keyword,.cm-def){color:var(--command)}:is(.cm-s-gray-25,.cm-s-gray-50,.cm-s-gray-75,.cm-s-gray-d2d2d2,.cm-s-gray-dfdfdf) :is(.cm-string,.cm-variable-2){color:var(--math)}
 :root[data-theme=eclipse]{--quick-accent:#7f0055;color-scheme:light;--environment-command:#8f5c00;--bg:#ffffff;--panel:#f5f7fa;--border:#d2dae2;--text:#242424;--muted:#536b57;--math:#237a37;--operator:#7f0055;--reference:#9a4f00;--command:#0000c0;--environment:#4f348f;--number:#164d30}
 :root[data-theme=idea]{--quick-accent:#005cc5;color-scheme:light;--environment-command:#8f5c00;--bg:#ffffff;--panel:#f5f5f5;--border:#d6d6d6;--text:#202020;--muted:#686868;--math:#008000;--operator:#7f0055;--reference:#8c4b00;--command:#000080;--environment:#000080;--number:#0000ff}
 :root[data-theme=neo]{--quick-accent:#047d65;color-scheme:light;--environment-command:#8f5c00;--bg:#ffffff;--panel:#f4f6f8;--border:#d7dee3;--text:#2e383c;--muted:#626b70;--math:#047d65;--operator:#75438a;--reference:#9c3328;--command:#1d75b3;--environment:#75438a;--number:#75438a}
@@ -104,6 +113,7 @@ main{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 6px minm
 .sync-rail{position:relative;background:var(--panel)}#splitter{position:absolute;inset:0;cursor:col-resize;touch-action:none;z-index:2}#splitter::before{content:'';position:absolute;inset:0 -3px}#splitter:hover,#splitter:focus-visible,main.resizing #splitter{background:var(--command)}main.resizing,main.resizing *{cursor:col-resize!important;user-select:none!important}#splitter:focus-visible{outline:2px solid var(--command)}#forward{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:3;padding:3px 0;width:22px;font-size:18px}
 main>section{min-width:0;min-height:0;display:flex;flex-direction:column;background:var(--bg)}label,.caption{padding:9px 14px;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #filename[hidden]{display:none}
+#source-readonly{width:24px;height:24px;padding:3px;border:0;background:transparent;color:var(--muted);flex-shrink:0}#source-readonly[aria-pressed=true]{color:var(--command)}
 #source-files{display:flex;align-items:center;gap:8px;padding:5px 10px;min-width:0;font-size:12px;color:var(--muted)}#source-file{min-width:0;max-width:100%;padding:3px 0;border:0;border-radius:3px;background:transparent;font-size:12px;font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#source-file.is-main{font-weight:700}#source-file:hover{color:var(--command)}#project-dialog{width:min(600px,calc(100vw - 32px));border:1px solid var(--border);border-radius:12px;background:var(--panel);color:var(--text);padding:20px}#project-dialog::backdrop{background:#0006}#project-dialog label{display:block;padding:10px 0 4px;color:var(--text)}#project-dialog input{width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font:inherit}#project-dialog p{color:var(--muted);line-height:1.6}#project-error{color:#ff6262!important}
 #status,#native-annotation-status{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #status,.native-annotation-feedback{animation:status-fade 4s ease forwards}
@@ -310,7 +320,7 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 <button id="project-review-open" popovertarget="project-review-menu" hidden></button><button id="history-open" class="icon-button" disabled><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2.6 7M3 4v7h7M12 7v5l3 2"/></svg><span data-i18n="历史">历史</span></button><button id="settings-menu-button" class="icon-button" popovertarget="settings-menu" aria-label="设置" data-i18n-aria-label="设置" title="设置" data-i18n-title="设置" aria-expanded="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3 1-2h4l1 2 2 1 2-.2 2 3-1 2v3l1 2-2 3-2-.2-2 1-1 3h-4l-1-3-2-1-2 .2-2-3 1-2V9L3 7l2-3 2 .2z" transform="translate(0 1) scale(1 .95)"/><circle cx="12" cy="11" r="3"/></svg></button></header>
 <div id="file-menu" class="toolbar-menu" popover="auto" aria-label="文件" data-i18n-aria-label="文件"><button id="open" data-i18n="打开文件">打开文件</button><button id="project-open" data-i18n="项目设置">项目设置</button><button id="reload" data-i18n="重新读取文件">重新读取文件</button><a href="/pdf" download="document.pdf" data-i18n="下载 PDF">下载 PDF</a></div>
 <dialog id="project-dialog" aria-labelledby="project-title"><h3 id="project-title" data-i18n="项目设置">项目设置</h3><form id="project-form"><label for="project-root" data-i18n="项目根目录">项目根目录</label><input id="project-root" required><label for="project-entry" data-i18n="主编译文件">主编译文件</label><input id="project-entry" required placeholder="main.tex"><p data-i18n="选择包含主文件和附录的文件夹。主编译文件可填写相对路径；切换源码始终编译此文件。">选择包含主文件和附录的文件夹。主编译文件可填写相对路径；切换源码始终编译此文件。</p><p id="project-error" role="alert"></p><div class="history-dialog-actions"><button id="project-cancel" type="button" data-i18n="取消">取消</button><button id="project-apply" type="submit" data-i18n="应用">应用</button></div></form></dialog>
-<div id="settings-menu" class="toolbar-menu" popover="auto" aria-label="设置" data-i18n-aria-label="设置"><label for="language"><span data-i18n="语言">语言</span><select id="language" aria-label="语言" data-i18n-aria-label="语言"><option value="system" data-i18n="跟随系统">跟随系统</option><option value="en">English</option><option value="zh-CN">简体中文</option><option value="zh-TW">繁體中文</option><option value="ja">日本語</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="es">Español</option></select></label><small id="language-help" data-i18n="跟随系统语言；无法识别时使用英文。可在齿轮设置中手动切换。">跟随系统语言；无法识别时使用英文。可在齿轮设置中手动切换。</small><label for="editor-mode"><span data-i18n="编辑模式">编辑模式</span><select id="editor-mode" aria-label="编辑模式" data-i18n-aria-label="编辑模式"><option value="default" data-i18n="普通编辑">普通编辑</option><option value="vim">Vim</option><option value="emacs">Emacs</option></select></label><label for="source-font-size"><span data-i18n="源码字号">源码字号</span><input id="source-font-size" type="number" min="10" max="32" step="1" value="14" aria-label="源码字号" data-i18n-aria-label="源码字号"><span>px</span></label><div class="shortcut-setting"><label for="forward-shortcut" data-i18n="源码定位 PDF 快捷键">源码定位 PDF 快捷键</label><input id="forward-shortcut" type="text" value="Ctrl+E" aria-describedby="forward-shortcut-help" autocomplete="off" spellcheck="false"><small id="forward-shortcut-help" data-i18n="直接输入组合键名称，如 Ctrl+E；Enter 或离开输入框保存，Esc 取消。">直接输入组合键名称，如 Ctrl+E；Enter 或离开输入框保存，Esc 取消。</small></div><label for="inline-completion" class="checkbox-setting"><input id="inline-completion" type="checkbox"><span data-i18n="AI 行内补全">AI 行内补全</span></label><label for="completion-model"><span data-i18n="AI 补全模型">AI 补全模型</span><select id="completion-model" disabled><option value="" data-i18n="跟随 Codex 默认">跟随 Codex 默认</option></select></label><small id="completion-model-status" role="status"></small><label for="completion-effort"><span data-i18n="AI 补全思考等级">AI 补全思考等级</span><select id="completion-effort" disabled><option value="low" data-i18n="低">低</option><option value="medium" data-i18n="中">中</option><option value="high" data-i18n="高">高</option></select></label><small data-i18n="停顿后显示简短灰色建议；使用已登录的 Codex，消耗账户额度。">停顿后显示简短灰色建议；使用已登录的 Codex，消耗账户额度。</small><label for="pdf-box-auto-comment" class="checkbox-setting"><input id="pdf-box-auto-comment" type="checkbox"><span data-i18n="框选后自动弹出 PDF 批注对话框（无需右键）">框选后自动弹出 PDF 批注对话框（无需右键）</span></label><label for="pdf-paper"><span data-i18n="PDF 背景">PDF 背景</span><select id="pdf-paper" aria-label="PDF 背景" data-i18n-aria-label="PDF 背景"><option value="original" data-i18n="原始 PDF">原始 PDF</option><option value="black" data-i18n="黑色（反相）">黑色（反相）</option><option value="gray" data-i18n="深灰色（反相）">深灰色（反相）</option><option value="straw" data-i18n="草黄色">草黄色</option><option value="green" data-i18n="浅绿色">浅绿色</option></select></label><div class="proofread-settings" role="group" aria-label="Proofread"><label for="proofread-editor" class="checkbox-setting"><input id="proofread-editor" type="checkbox" checked><span data-i18n="编辑器校对（Proofread）">编辑器校对（Proofread）</span></label><label for="proofread-pdf" class="checkbox-setting"><input id="proofread-pdf" type="checkbox" checked><span data-i18n="PDF 校对（Proofread）">PDF 校对（Proofread）</span></label></div><label for="proofread-project" class="checkbox-setting"><input id="proofread-project" type="checkbox"><span data-i18n="项目修改校对（主对话 / 外部修改）">项目修改校对（主对话 / 外部修改）</span></label><small data-i18n="记录项目 TeX 修改，逐处 Keep / Undo；手动输入照常保存。">记录项目 TeX 修改，逐处 Keep / Undo；手动输入照常保存。</small><small data-i18n="都关闭时，Send 直接应用新修改；已有建议仍可在批注列表确认。">都关闭时，Send 直接应用新修改；已有建议仍可在批注列表确认。</small><label for="outline-style"><span data-i18n="章节目录样式">章节目录样式</span><select id="outline-style" aria-label="章节目录样式" data-i18n-aria-label="章节目录样式"><option value="wheel" data-i18n="轮盘">轮盘</option><option value="cards" data-i18n="章节卡片 + 小节轮盘">章节卡片 + 小节轮盘</option><option value="timeline" data-i18n="章节时间线">章节时间线</option></select></label><div class="theme-setting"><div class="theme-setting-heading"><label for="theme" data-i18n="配色">配色</label><button id="theme-customize" class="icon-button" aria-label="截图生成主题" data-i18n-aria-label="截图生成主题" title="截图生成主题" data-i18n-title="截图生成主题"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3 1-2h4l1 2 2 1 2-.2 2 3-1 2v3l1 2-2 3-2-.2-2 1-1 3h-4l-1-3-2-1-2 .2-2-3 1-2V9L3 7l2-3 2 .2z" transform="translate(0 1) scale(1 .95)"/><circle cx="12" cy="11" r="3"/></svg></button></div><select id="theme" aria-label="配色" data-i18n-aria-label="配色"><optgroup label="浅色" data-i18n-label="浅色"><option value="eclipse" data-i18n="Eclipse · 白底">Eclipse · 白底</option><option value="idea" data-i18n="IDEA · 白底">IDEA · 白底</option><option value="neo" data-i18n="Neo · 简洁白">Neo · 简洁白</option><option value="base16-light" data-i18n="Base16 · 浅灰">Base16 · 浅灰</option><option value="solarized-light" data-i18n="Solarized · 暖白">Solarized · 暖白</option></optgroup><optgroup label="深色" data-i18n-label="深色"><option value="cobalt" data-i18n="Cobalt · 深蓝">Cobalt · 深蓝</option><option value="dracula" data-i18n="Dracula · 紫灰">Dracula · 紫灰</option><option value="monokai" data-i18n="Monokai · 炭黑">Monokai · 炭黑</option><option value="nord" data-i18n="Nord · 冷灰">Nord · 冷灰</option><option value="material-darker" data-i18n="Material · 深灰">Material · 深灰</option><option value="material-palenight" data-i18n="Palenight · 蓝紫">Palenight · 蓝紫</option><option value="ayu-dark" data-i18n="Ayu · 深夜">Ayu · 深夜</option><option value="gruvbox-dark" data-i18n="Gruvbox · 暖黑">Gruvbox · 暖黑</option><option value="solarized-dark" data-i18n="Solarized · 深青">Solarized · 深青</option></optgroup></select></div><label for="chat-color"><span data-i18n="修改标记颜色">修改标记颜色</span><select id="chat-color" aria-label="修改标记颜色" data-i18n-aria-label="修改标记颜色"><option value="" data-i18n="无">无</option><option value="blue" data-i18n="蓝色">蓝色</option><option value="red" data-i18n="红色">红色</option><option value="teal" data-i18n="青色">青色</option><option value="magenta" data-i18n="洋红">洋红</option><option value="orange" data-i18n="橙色">橙色</option><option value="violet" data-i18n="紫色">紫色</option></select></label><label for="revision-color"><span data-i18n="当前用户修订色">当前用户修订色</span><select id="revision-color" aria-label="当前用户修订色" data-i18n-aria-label="当前用户修订色"><option value="orange" data-i18n="橙色">橙色</option><option value="blue" data-i18n="蓝色">蓝色</option><option value="purple" data-i18n="紫色">紫色</option><option value="green" data-i18n="绿色">绿色</option><option value="red" data-i18n="红色">红色</option></select></label><button id="settings-save" data-i18n="保存设置">保存设置</button><small id="settings-save-status" role="status" data-i18n="设置更改会自动保存，并在下次打开时恢复。">设置更改会自动保存，并在下次打开时恢复。</small><div class="chat-view-controls"><button id="chat-view" aria-controls="chat-panel" title="Ctrl+Q" data-i18n="查看对话">查看对话</button><label for="chat-bar-permanent" class="checkbox-setting"><input id="chat-bar-permanent" type="checkbox"><span data-i18n="常驻临时对话圆球">常驻临时对话圆球</span></label></div><details id="chat-context-settings"><summary data-i18n="上下文记录">上下文记录</summary><pre id="chat-selection"></pre><button id="chat-use-selection" data-i18n="使用当前选区">使用当前选区</button><small id="chat-context" data-i18n="携带论文全文；正在读取主对话…">携带论文全文；正在读取主对话…</small></details></div>
+<div id="settings-menu" class="toolbar-menu" popover="auto" aria-label="设置" data-i18n-aria-label="设置"><label for="language"><span data-i18n="语言">语言</span><select id="language" aria-label="语言" data-i18n-aria-label="语言"><option value="system" data-i18n="跟随系统">跟随系统</option><option value="en">English</option><option value="zh-CN">简体中文</option><option value="zh-TW">繁體中文</option><option value="ja">日本語</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="es">Español</option></select></label><small id="language-help" data-i18n="跟随系统语言；无法识别时使用英文。可在齿轮设置中手动切换。">跟随系统语言；无法识别时使用英文。可在齿轮设置中手动切换。</small><label for="editor-mode"><span data-i18n="编辑模式">编辑模式</span><select id="editor-mode" aria-label="编辑模式" data-i18n-aria-label="编辑模式"><option value="default" data-i18n="普通编辑">普通编辑</option><option value="vim">Vim</option><option value="emacs">Emacs</option></select></label><label for="source-font-size"><span data-i18n="源码字号">源码字号</span><input id="source-font-size" type="number" min="10" max="32" step="1" value="14" aria-label="源码字号" data-i18n-aria-label="源码字号"><span>px</span></label><div class="shortcut-setting"><label for="forward-shortcut" data-i18n="源码定位 PDF 快捷键">源码定位 PDF 快捷键</label><input id="forward-shortcut" type="text" value="Ctrl+E" aria-describedby="forward-shortcut-help" autocomplete="off" spellcheck="false"><small id="forward-shortcut-help" data-i18n="直接输入组合键名称，如 Ctrl+E；Enter 或离开输入框保存，Esc 取消。">直接输入组合键名称，如 Ctrl+E；Enter 或离开输入框保存，Esc 取消。</small></div><label for="inline-completion" class="checkbox-setting"><input id="inline-completion" type="checkbox"><span data-i18n="AI 行内补全">AI 行内补全</span></label><label for="completion-model"><span data-i18n="AI 补全模型">AI 补全模型</span><select id="completion-model" disabled><option value="" data-i18n="跟随 Codex 默认">跟随 Codex 默认</option></select></label><small id="completion-model-status" role="status"></small><label for="completion-effort"><span data-i18n="AI 补全思考等级">AI 补全思考等级</span><select id="completion-effort" disabled><option value="low" data-i18n="低">低</option><option value="medium" data-i18n="中">中</option><option value="high" data-i18n="高">高</option></select></label><small data-i18n="停顿后显示简短灰色建议；使用已登录的 Codex，消耗账户额度。">停顿后显示简短灰色建议；使用已登录的 Codex，消耗账户额度。</small><label for="pdf-box-auto-comment" class="checkbox-setting"><input id="pdf-box-auto-comment" type="checkbox"><span data-i18n="框选后自动弹出 PDF 批注对话框（无需右键）">框选后自动弹出 PDF 批注对话框（无需右键）</span></label><label for="pdf-paper"><span data-i18n="PDF 背景">PDF 背景</span><select id="pdf-paper" aria-label="PDF 背景" data-i18n-aria-label="PDF 背景"><option value="original" data-i18n="原始 PDF">原始 PDF</option><option value="black" data-i18n="黑色（反相）">黑色（反相）</option><option value="gray" data-i18n="深灰色（反相）">深灰色（反相）</option><option value="straw" data-i18n="草黄色">草黄色</option><option value="green" data-i18n="浅绿色">浅绿色</option></select></label><div class="proofread-settings" role="group" aria-label="Proofread"><label for="proofread-editor" class="checkbox-setting"><input id="proofread-editor" type="checkbox" checked><span data-i18n="编辑器校对（Proofread）">编辑器校对（Proofread）</span></label><label for="proofread-pdf" class="checkbox-setting"><input id="proofread-pdf" type="checkbox" checked><span data-i18n="PDF 校对（Proofread）">PDF 校对（Proofread）</span></label></div><label for="proofread-project" class="checkbox-setting"><input id="proofread-project" type="checkbox"><span data-i18n="项目修改校对（主对话 / 外部修改）">项目修改校对（主对话 / 外部修改）</span></label><small data-i18n="记录项目 TeX 修改，逐处 Keep / Undo；手动输入照常保存。">记录项目 TeX 修改，逐处 Keep / Undo；手动输入照常保存。</small><small data-i18n="都关闭时，Send 直接应用新修改；已有建议仍可在批注列表确认。">都关闭时，Send 直接应用新修改；已有建议仍可在批注列表确认。</small><label for="outline-style"><span data-i18n="章节目录样式">章节目录样式</span><select id="outline-style" aria-label="章节目录样式" data-i18n-aria-label="章节目录样式"><option value="wheel" data-i18n="轮盘">轮盘</option><option value="cards" data-i18n="章节卡片 + 小节轮盘">章节卡片 + 小节轮盘</option><option value="timeline" data-i18n="章节时间线">章节时间线</option></select></label><div class="theme-setting"><div class="theme-setting-heading"><label for="theme" data-i18n="配色">配色</label><button id="theme-customize" class="icon-button" aria-label="截图生成主题" data-i18n-aria-label="截图生成主题" title="截图生成主题" data-i18n-title="截图生成主题"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3 1-2h4l1 2 2 1 2-.2 2 3-1 2v3l1 2-2 3-2-.2-2 1-1 3h-4l-1-3-2-1-2 .2-2-3 1-2V9L3 7l2-3 2 .2z" transform="translate(0 1) scale(1 .95)"/><circle cx="12" cy="11" r="3"/></svg></button></div><select id="theme" aria-label="配色" data-i18n-aria-label="配色"><optgroup label="浅色" data-i18n-label="浅色"><option value="eclipse" data-i18n="Eclipse · 白底">Eclipse · 白底</option><option value="idea" data-i18n="IDEA · 白底">IDEA · 白底</option><option value="neo" data-i18n="Neo · 简洁白">Neo · 简洁白</option><option value="base16-light" data-i18n="Base16 · 浅灰">Base16 · 浅灰</option><option value="gray-dfdfdf" data-i18n="#DFDFDF 灰">#DFDFDF 灰</option><option value="gray-d2d2d2" data-i18n="#D2D2D2 灰">#D2D2D2 灰</option><option value="gray-25" data-i18n="25% 灰">25% 灰</option><option value="gray-50" data-i18n="50% 灰">50% 灰</option><option value="solarized-light" data-i18n="Solarized · 暖白">Solarized · 暖白</option></optgroup><optgroup label="深色" data-i18n-label="深色"><option value="cobalt" data-i18n="Cobalt · 深蓝">Cobalt · 深蓝</option><option value="dracula" data-i18n="Dracula · 紫灰">Dracula · 紫灰</option><option value="monokai" data-i18n="Monokai · 炭黑">Monokai · 炭黑</option><option value="nord" data-i18n="Nord · 冷灰">Nord · 冷灰</option><option value="gray-75" data-i18n="75% 灰">75% 灰</option><option value="material-darker" data-i18n="Material · 深灰">Material · 深灰</option><option value="material-palenight" data-i18n="Palenight · 蓝紫">Palenight · 蓝紫</option><option value="ayu-dark" data-i18n="Ayu · 深夜">Ayu · 深夜</option><option value="gruvbox-dark" data-i18n="Gruvbox · 暖黑">Gruvbox · 暖黑</option><option value="solarized-dark" data-i18n="Solarized · 深青">Solarized · 深青</option></optgroup></select></div><label for="chat-color"><span data-i18n="修改标记颜色">修改标记颜色</span><select id="chat-color" aria-label="修改标记颜色" data-i18n-aria-label="修改标记颜色"><option value="" data-i18n="无">无</option><option value="blue" data-i18n="蓝色">蓝色</option><option value="red" data-i18n="红色">红色</option><option value="teal" data-i18n="青色">青色</option><option value="magenta" data-i18n="洋红">洋红</option><option value="orange" data-i18n="橙色">橙色</option><option value="violet" data-i18n="紫色">紫色</option></select></label><label for="revision-color"><span data-i18n="当前用户修订色">当前用户修订色</span><select id="revision-color" aria-label="当前用户修订色" data-i18n-aria-label="当前用户修订色"><option value="orange" data-i18n="橙色">橙色</option><option value="blue" data-i18n="蓝色">蓝色</option><option value="purple" data-i18n="紫色">紫色</option><option value="green" data-i18n="绿色">绿色</option><option value="red" data-i18n="红色">红色</option></select></label><button id="settings-save" data-i18n="保存设置">保存设置</button><small id="settings-save-status" role="status" data-i18n="设置更改会自动保存，并在下次打开时恢复。">设置更改会自动保存，并在下次打开时恢复。</small><div class="chat-view-controls"><button id="chat-view" aria-controls="chat-panel" title="Ctrl+Q" data-i18n="查看对话">查看对话</button><label for="chat-bar-permanent" class="checkbox-setting"><input id="chat-bar-permanent" type="checkbox"><span data-i18n="常驻临时对话圆球">常驻临时对话圆球</span></label></div><details id="chat-context-settings"><summary data-i18n="上下文记录">上下文记录</summary><pre id="chat-selection"></pre><button id="chat-use-selection" data-i18n="使用当前选区">使用当前选区</button><small id="chat-context" data-i18n="携带论文全文；正在读取主对话…">携带论文全文；正在读取主对话…</small></details></div>
 <dialog id="theme-dialog" aria-labelledby="theme-dialog-title">
 <div class="theme-dialog-heading"><strong id="theme-dialog-title" data-i18n="截图生成主题">截图生成主题</strong><button id="theme-close" aria-label="关闭" data-i18n-aria-label="关闭">×</button></div>
 <a href="https://21st.dev/community/themes" target="_blank" rel="noopener noreferrer">21st.dev / Community Themes ↗</a>
@@ -326,7 +336,7 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 <span style="color:var(--environment-command)">\end</span>{<span style="color:var(--environment)">equation</span>}
 <span style="color:var(--command)">\cite</span>{<span style="color:var(--reference)">example2026</span>}</pre><div class="theme-sample-capsule"><span data-i18n="询问 Codex…">询问 Codex…</span><span class="theme-sample-send" aria-hidden="true">↑</span></div></div>
 </div><div class="theme-dialog-actions"><button id="theme-save" disabled data-i18n="保存并使用">保存并使用</button></div></dialog>
-<main><section><div id="source-files"><button id="source-file" disabled aria-label="项目源码" data-i18n-aria-label="项目源码" aria-expanded="false" aria-controls="source-file-wheel"></button><div id="source-file-wheel" popover="auto"></div><small id="inline-completion-status" role="status" aria-live="polite"></small></div><label id="filename" hidden for="source" data-i18n="LaTeX 源码">LaTeX 源码</label><textarea id="source" spellcheck="false" disabled aria-label="LaTeX 源码" data-i18n-aria-label="LaTeX 源码"></textarea><div id="proofread-bulk-actions"><button id="proofread-keep-all" type="button" class="proofread-navigation" aria-controls="source" hidden disabled aria-busy="false" title="接受当前文件的全部待确认校对修改" data-i18n-title="接受当前文件的全部待确认校对修改" data-i18n="全部接受">全部接受</button><button id="proofread-undo-all" type="button" class="proofread-navigation" aria-controls="source" hidden disabled aria-busy="false" title="撤销当前文件的全部待确认校对修改" data-i18n-title="撤销当前文件的全部待确认校对修改" data-i18n="全部 Undo">全部 Undo</button></div><button id="proofread-previous" class="proofread-navigation proofread-previous" type="button" hidden aria-controls="source"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V4m-6 6 6-6 6 6"/></svg><span></span></button><button id="proofread-next" class="proofread-navigation proofread-next" type="button" hidden aria-controls="source"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16m-6-6 6 6 6-6"/></svg><span></span></button></section>
+<main><section><div id="source-files"><button id="source-file" disabled aria-label="项目源码" data-i18n-aria-label="项目源码" aria-expanded="false" aria-controls="source-file-wheel"></button><div id="source-file-wheel" popover="auto"></div><button id="source-readonly" type="button" hidden disabled aria-pressed="false" aria-label="只读" data-i18n-aria-label="只读" title="C-x C-q"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></svg></button><small id="inline-completion-status" role="status" aria-live="polite"></small></div><label id="filename" hidden for="source" data-i18n="LaTeX 源码">LaTeX 源码</label><textarea id="source" spellcheck="false" disabled aria-label="LaTeX 源码" data-i18n-aria-label="LaTeX 源码"></textarea><div id="proofread-bulk-actions"><button id="proofread-keep-all" type="button" class="proofread-navigation" aria-controls="source" hidden disabled aria-busy="false" title="接受当前文件的全部待确认校对修改" data-i18n-title="接受当前文件的全部待确认校对修改" data-i18n="全部接受">全部接受</button><button id="proofread-undo-all" type="button" class="proofread-navigation" aria-controls="source" hidden disabled aria-busy="false" title="撤销当前文件的全部待确认校对修改" data-i18n-title="撤销当前文件的全部待确认校对修改" data-i18n="全部 Undo">全部 Undo</button></div><button id="proofread-previous" class="proofread-navigation proofread-previous" type="button" hidden aria-controls="source"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V4m-6 6 6-6 6 6"/></svg><span></span></button><button id="proofread-next" class="proofread-navigation proofread-next" type="button" hidden aria-controls="source"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16m-6-6 6 6 6-6"/></svg><span></span></button></section>
 <div class="sync-rail"><div id="splitter" role="separator" tabindex="0" aria-label="调整 LaTeX 和 PDF 宽度" data-i18n-aria-label="调整 LaTeX 和 PDF 宽度" aria-orientation="vertical" aria-valuemin="15" aria-valuemax="85" aria-valuenow="50" title="拖动调整宽度 · 双击恢复各半" data-i18n-title="拖动调整宽度 · 双击恢复各半"></div><button id="forward" disabled aria-label="定位光标到 PDF" data-i18n-aria-label="定位光标到 PDF" title="跳到光标对应的 PDF 位置" data-i18n-title="跳到光标对应的 PDF 位置">→</button></div>
 <section><div class="pdf-toolbar"><div class="compile-group"><button id="compile" aria-busy="false" disabled><span class="compile-idle" data-i18n="保存并编译">保存并编译</span><span class="compile-busy" data-i18n="正在编译…">正在编译…</span></button><button id="compile-menu-button" popovertarget="compile-menu" aria-label="编译选项" data-i18n-aria-label="编译选项" title="编译选项" data-i18n-title="编译选项" aria-expanded="false"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></button></div><div id="compile-menu" class="toolbar-menu" popover="auto" aria-label="编译选项" data-i18n-aria-label="编译选项"><label for="auto-compile"><span data-i18n="自动编译">自动编译</span><input id="auto-compile" type="checkbox" checked aria-label="自动编译" data-i18n-aria-label="自动编译"></label></div><button id="markdown-pdf-toggle" hidden aria-pressed="false" data-i18n="PDF 预览">PDF 预览</button><button id="log-toggle" aria-label="编译日志" data-i18n-aria-label="编译日志" title="编译日志" data-i18n-title="编译日志" aria-pressed="false" aria-controls="log"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 2H5v20h14V7zM14 2v6h5M8 12h8M8 16h8"/></svg></button><span id="pan-hint" role="status" hidden data-i18n="空格拖动 · Alt + 空格缩放">空格拖动 · Alt + 空格缩放</span><button id="pan-mode" aria-pressed="true" title="切换拖动页面与选择文字" data-i18n-title="切换拖动页面与选择文字" ><svg class="toolbar-icon pan-hand-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 11V7a2 2 0 0 0-4 0v3M14 10V5a2 2 0 0 0-4 0v6M10 10.5V7a2 2 0 0 0-4 0v5l-1-1a2 2 0 0 0-3 2l4 6a6 6 0 0 0 5 3h3a6 6 0 0 0 6-6v-3a2 2 0 0 0-4 0v1"/></svg><svg class="toolbar-icon pan-select-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m4 3 15 10-7 1-4 7Z"/></svg><span id="pan-label" data-i18n="拖动">拖动</span></button><button id="zoom-fit" aria-label="PDF 缩放" aria-expanded="false" aria-controls="pdf-zoom-dial">100%</button><div id="pdf-zoom-dial" popover="manual" role="slider" tabindex="0" aria-label="PDF 缩放" aria-orientation="horizontal" aria-valuemin="30" aria-valuemax="500" aria-valuenow="100" aria-controls="preview"><div class="pdf-zoom-face"><svg class="pdf-zoom-arc" viewBox="0 0 240 240" aria-hidden="true"><path d="M 50 0 A 190 190 0 0 0 240 190"/></svg><div class="pdf-zoom-rotor" aria-hidden="true"></div><span class="pdf-zoom-indicator" aria-hidden="true"></span></div></div></div><div class="preview-shell"><div id="preview" class="hand-tool" role="region" aria-label="编译后的 PDF" data-i18n-aria-label="编译后的 PDF" tabindex="0"><div id="pdf-viewer" class="pdfViewer"></div></div><div id="markdown-preview" hidden role="region" aria-label="Markdown 预览" data-i18n-aria-label="Markdown 预览" tabindex="0"></div><nav id="pdf-outline" aria-label="章节目录" data-i18n-aria-label="章节目录" hidden></nav><button id="pdf-proofread-previous" class="proofread-navigation proofread-previous" type="button" hidden aria-controls="preview"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V4m-6 6 6-6 6 6"/></svg><span></span></button><button id="pdf-proofread-next" class="proofread-navigation proofread-next" type="button" hidden aria-controls="preview"><svg class="toolbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16m-6-6 6 6 6-6"/></svg><span></span></button><div id="log" hidden tabindex="0" role="region" aria-label="编译日志" data-i18n-aria-label="编译日志"><button id="log-jump" type="button" hidden></button><pre id="log-text"></pre></div></div></section></main>
 <div id="chat-panel" role="dialog" aria-label="项目浮动对话" data-i18n-aria-label="项目浮动对话" hidden>
@@ -335,11 +345,15 @@ main>section{min-width:0;min-height:0;display:flex;flex-direction:column;backgro
 <div id="chat-compact-thinking" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><span id="chat-compact-status" class="sr-only" role="status"></span>
 <div id="chat-bar" class="chat-bar" tabindex="0" aria-label="拖动浮动对话" data-i18n-aria-label="拖动浮动对话"><div class="chat-brand"><span class="chat-brand-icon" aria-hidden="true"></span></div><button id="chat-pin" type="button" aria-label="固定浮动对话" data-i18n-aria-label="固定浮动对话" aria-pressed="false" title="固定浮动对话" data-i18n-title="固定浮动对话"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 9V3H8v6l-3 4v2h14v-2zM12 15v7"/></svg></button><button id="chat-end" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2.6 7M3 4v7h7"/></svg><span data-i18n="新对话">新对话</span></button><button id="source-quotes-open" type="button" aria-pressed="false" aria-expanded="false" aria-controls="source-quotes" aria-label="原句引用" title="原句引用"><span aria-hidden="true">”</span></button><button id="chat-close" type="button" aria-label="收起浮动对话" data-i18n-aria-label="收起浮动对话">×</button></div>
 <div id="source-quotes" popover="auto"><strong>原句引用</strong><p id="source-quotes-empty">引号高亮表示定位工具已开启，再次点击关闭；收起列表不影响开启状态。回复可直接链接“Lemma 2.3”等名称或原句，点击定位 PDF。</p><div id="source-quotes-list"></div></div>
+<nav id="chat-tree" aria-label="对话分支" hidden><select id="chat-roots" aria-label="主对话"></select><div id="chat-tree-nodes"></div></nav>
+<div id="chat-workspace"><div id="chat-main">
 <div id="chat-messages" role="log" aria-label="对话记录" data-i18n-aria-label="对话记录" aria-live="polite"></div>
 <div id="chat-typing" hidden aria-hidden="true"><span class="chat-typing-avatar"></span><span class="chat-typing-bubble"><i></i><i></i><i></i></span></div>
 <div id="chat-proposal" hidden><strong data-i18n="选区修改建议">选区修改建议</strong><pre id="chat-replacement"></pre><button id="chat-apply" data-i18n="应用到选区">应用到选区</button></div>
 <div id="chat-status" role="status"></div>
 <form id="chat-form"><div id="chat-settings" hidden><label for="chat-model"><span data-i18n="模型">模型</span><select id="chat-model"><option value="" data-i18n="跟随 Codex 默认">跟随 Codex 默认</option></select></label><label for="chat-effort"><span data-i18n="思考等级">思考等级</span><select id="chat-effort" disabled><option value="" data-i18n="跟随默认">跟随默认</option></select></label></div><label for="chat-input" data-i18n="修改要求或问题">修改要求或问题</label><div class="chat-composer"><button id="chat-expand" type="button" aria-label="缩小对话条" data-i18n-aria-label="缩小对话条" title="缩小对话条" data-i18n-title="缩小对话条" aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown">−</button><textarea id="chat-input" placeholder="修改要求或问题" data-i18n-placeholder="修改要求或问题"></textarea><div class="chat-composer-tools"><button id="chat-config" type="button" popovertarget="chat-panel-settings" aria-label="选择模型和思考等级" data-i18n-aria-label="选择模型和思考等级" aria-expanded="false" title="选择模型和思考等级" data-i18n-title="选择模型和思考等级"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 18V5a3 3 0 0 0-5.8-1A4 4 0 0 0 3 10a4 4 0 0 0 .5 7A4 4 0 0 0 12 18Zm0 0V5a3 3 0 0 1 5.8-1A4 4 0 0 1 21 10a4 4 0 0 1-.5 7A4 4 0 0 1 12 18M8 8c-2 0-3-1-3-2m3 8c-2 0-3 1-3 3m11-9c2 0 3-1 3-2m-3 8c2 0 3 1 3 3"/></svg><span id="chat-config-name">跟随 Codex 默认</span></button><button id="chat-send" type="submit" aria-label="发送" data-i18n-aria-label="发送"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg></button></div></div><div class="chat-actions"><button id="chat-stop" type="button" hidden data-i18n="停止">停止</button></div></form>
+</div><aside id="chat-branch" hidden aria-label="侧边子对话"><header><strong id="chat-branch-title"></strong><button id="chat-branch-close" type="button" aria-label="关闭侧边栏">×</button></header><div id="chat-branch-messages" role="log" aria-live="polite" aria-label="子对话记录"></div><div id="chat-branch-status" role="status"></div><form id="chat-branch-form"><label for="chat-branch-input" class="sr-only">子对话问题</label><textarea id="chat-branch-input" placeholder="围绕引用继续追问…"></textarea><div><small id="chat-branch-model"></small><button id="chat-branch-stop" type="button" hidden>停止</button><button id="chat-branch-send" type="submit">发送</button></div></form></aside></div>
+<div id="chat-text-menu" popover="auto"><button id="chat-text-add" type="button">添加到对话</button><button id="chat-text-branch" type="button">在侧边栏中打开</button></div>
 </div>
 <div id="chat-panel-settings" popover="auto" role="group" aria-label="模型和思考等级" data-i18n-aria-label="模型和思考等级"><div class="chat-settings-columns"><div id="chat-panel-models" role="group" aria-label="模型" data-i18n-aria-label="模型"></div><div id="chat-panel-efforts" role="group" aria-label="思考等级" data-i18n-aria-label="思考等级" hidden></div></div><small id="chat-model-status" role="status"></small></div>
 <div id="annotations-review" popover="auto" aria-label="待发送批注" data-i18n-aria-label="待发送批注"><p id="annotations-empty" data-i18n="选中 PDF 文字，写下要求，再点顶部 Send。">选中 PDF 文字，写下要求，再点顶部 Send。</p><div id="annotations-list"></div><div id="annotations-status" role="status" aria-live="polite"></div></div>
@@ -689,6 +703,19 @@ editor.openDialog=function(template,callback,options={}){
   }});
 };
 editor.on('vim-mode-change',mode=>{if(mode.mode!=='insert')editor.closeHint();});
+let emacsReadOnly=false,sourceLocked='nocursor';
+function setSourceReadOnly(locked){
+  sourceLocked=locked;editor.setOption('readOnly',locked||emacsReadOnly);
+}
+function toggleEmacsReadOnly(cm){
+  if(cm.getOption('keyMap')!=='emacs'||!version||busy||syncBusy||loading||conflict||sourceLocked)return;
+  emacsReadOnly=!emacsReadOnly;setSourceReadOnly(false);updateSyncControls();
+}
+document.querySelector('#source-readonly').onclick=()=>{toggleEmacsReadOnly(editor);editor.focus();};
+editor.on('keydown',(cm,event)=>{
+  // Native app accelerators may intercept keys before the page receives them.
+  if(cm.getOption('keyMap')==='emacs'&&(cm.state.keySeq||CodeMirror.lookupKey(CodeMirror.keyName(event),'emacs',()=>true)))event.stopPropagation();
+});
 const editorMode=document.querySelector('#editor-mode');
 try{editorMode.value=preferences.getItem('latex-codex-editor-mode')||'default';}catch(e){}
 if(!['vim','default','emacs'].includes(editorMode.value))editorMode.value='default';
@@ -705,11 +732,11 @@ function setEditorKeys(){
   const keys={'Cmd-S':compile,'Cmd-/':toggleSourceComment,'Cmd-F':sourceSearch.open};
   if(editorMode.value==='vim')keys['Ctrl-C']=false;
   Object.assign(keys,editorMode.value==='emacs'
-    ? {'Alt-/':completeLatex,'Alt-;':toggleSourceComment}
+    ? {'Alt-/':completeLatex,'Alt-;':toggleSourceComment,'Ctrl-X Ctrl-Q':toggleEmacsReadOnly}
     : {'Ctrl-F':sourceSearch.open,'Ctrl-S':compile,'Ctrl-Space':completeLatex,'Alt-/':toggleSourceComment,'Ctrl-/':toggleSourceComment});
   const forwardEnabled=editorMode.value!=='emacs'||!/(?:^|-)Ctrl-/.test(forwardShortcut);
   if(forwardEnabled)keys[forwardShortcut]=()=>synchronize('forward');
-  editor.setOption('extraKeys',keys);
+  editor.setOption('extraKeys',CodeMirror.normalizeKeyMap(keys));
   forwardShortcutInput.value=forwardShortcut.replace(/(Shift|Cmd|Ctrl|Alt)-/g,'$1+');
   forwardButton.setAttribute('aria-keyshortcuts',forwardEnabled?forwardShortcutInput.value.replace('Cmd','Meta').replace('Ctrl','Control'):'');
 }
@@ -756,6 +783,8 @@ function setEditorMode(){
   editor.closeHint();editor.setExtending(false);editor.setOption('keyMap',editorMode.value);
   setEditorKeys();
   editor.setOption('showCursorWhenSelecting',editorMode.value!=='vim');
+  document.querySelector('#source-readonly').hidden=editorMode.value!=='emacs';
+  if(emacsReadOnly&&editorMode.value!=='emacs'){emacsReadOnly=false;setSourceReadOnly(sourceLocked);updateSyncControls();}
   try{preferences.setItem('latex-codex-editor-mode',editorMode.value);}catch(e){}
 }
 editorMode.onchange=setEditorMode;setEditorMode();
@@ -821,7 +850,12 @@ logJump.onclick=async()=>{
   const cursor={line:error.line-1,ch:0};
   editor.setCursor(cursor);editor.focus();editor.scrollIntoView(cursor,editor.getScrollInfo().clientHeight/2);
 };
-function updateSyncControls(){updateAcceptAll();const disabled=busy||syncBusy||editor.getOption('readOnly');forwardButton.disabled=disabled||!!proofreadPdf?.active;compileButton.disabled=disabled;logJump.disabled=disabled||conflict;openButton.disabled=busy||syncBusy;sourcePicker.setDisabled(!!disabled);document.querySelector('#project-open').disabled=!!disabled;document.querySelector('#history-open').disabled=!!disabled;}
+function updateSyncControls(){
+  updateAcceptAll();const disabled=busy||syncBusy||sourceLocked||(editor.getOption('readOnly')&&!emacsReadOnly);
+  forwardButton.disabled=disabled||!!proofreadPdf?.active;compileButton.disabled=disabled;logJump.disabled=disabled||conflict;openButton.disabled=busy||syncBusy;sourcePicker.setDisabled(!!disabled);document.querySelector('#project-open').disabled=!!disabled;document.querySelector('#history-open').disabled=!!disabled;
+  const readOnlyButton=document.querySelector('#source-readonly');
+  readOnlyButton.disabled=!!disabled||conflict||!version;readOnlyButton.setAttribute('aria-pressed',String(emacsReadOnly));
+}
 proofreadPdf=attachProofreadPdf({request,
   capture:()=>({latex:documentType==='latex',enabled:preferences.getItem('latex-codex-proofread-pdf')!=='off',path:document.querySelector('#filename').title,version,source:editor.getValue(),doc:editor.getDoc(),range:(from,to)=>editor.getRange(from,to),index:pos=>editor.indexFromPos(pos)}),
   display:async(data,current)=>{const displayed=await refreshPreview(data,current);if(displayed!==false&&current()){pdfVersion='';compiledLabels={};compiledCitations={};showCompileLog(false);updateSyncControls();selectionChat.refreshAnnotations();}return displayed;},
@@ -844,7 +878,7 @@ async function request(url,options){
 }
 async function saveAnnotationChange(source,change){
   if(busy||syncBusy||conflict||editor.getOption('readOnly')||editor.getValue()!==change.before)throw new Error(t('批注选区已变化，未应用任何修改。批注已保留。'));
-  clearTimeout(timer);busy=true;editor.setOption('readOnly',true);updateSyncControls();
+  clearTimeout(timer);busy=true;setSourceReadOnly(true);updateSyncControls();
   try{
     const data=await request('/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:document.querySelector('#filename').title,source,version,annotation_change:change})});
     version=data.version;saved=source;
@@ -855,7 +889,7 @@ async function saveAnnotationChange(source,change){
     if(e.conflict||!e.status||e.status>=500){conflict=true;setText(status,e.conflict?'文件已被外部修改，请先重新读取':'保存状态待确认，请重新读取');}
     else if(editor.getValue()!==saved)scheduleSave();
     throw e;
-  }finally{busy=false;editor.setOption('readOnly',false);updateSyncControls();}
+  }finally{busy=false;setSourceReadOnly(false);updateSyncControls();}
 }
 function display(data,preservePdf=false){
   proofreadPdf.invalidate();
@@ -870,7 +904,7 @@ function display(data,preservePdf=false){
   mainSource=data.main_source||'';mathHover.setMainSource(mainSource);
   const text=data.source.replace(/\r\n/g,'\n');
   editor.setOption('keyMap','default');editor.swapDoc(new CodeMirror.Doc(text,editor.getOption('mode')));editor.setOption('keyMap',editorMode.value);
-  saved=text;version=data.version;pdfVersion=preservePdf&&data.sync&&data.pdf_revision===pdfBuild?version:'';compiledLabels=pdfVersion?data.labels||{}:{};compiledCitations=pdfVersion?data.citations||{}:{};editor.setOption('readOnly',false);conflict=false;updateSyncControls();
+  saved=text;version=data.version;pdfVersion=preservePdf&&data.sync&&data.pdf_revision===pdfBuild?version:'';compiledLabels=pdfVersion?data.labels||{}:{};compiledCitations=pdfVersion?data.citations||{}:{};setSourceReadOnly(false);conflict=false;updateSyncControls();
   const label=document.querySelector('#filename');label.dataset.name=data.name;label.title=data.path;updateCompileCaption();
   projectRoot=data.project_root||'';mainFile=data.main_file||data.path;projectVersion=data.project_version||'';
   sourcePicker.update({files:data.files||[{path:data.path,name:data.name}],path:data.path,mainFile});
@@ -898,10 +932,10 @@ async function switchSource(path,initialize=true){
   if(busy||conflict||selectionChat.busy||selectionChat.hasAnnotations){setText(status,'请先保存修改、处理冲突，并发送或删除批注，再切换源码。');return false;}
   if(editor.getValue()!==saved)await compile(false);
   if(conflict||editor.getValue()!==saved)return false;
-  clearTimeout(timer);busy=true;editor.setOption('readOnly','nocursor');updateSyncControls();
+  clearTimeout(timer);busy=true;setSourceReadOnly('nocursor');updateSyncControls();
   try{const data=await request('/source',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,version})});display(data,true);return true;}
   catch(e){setText(status,'打开失败：{message}',{message:e.message});return false;}
-  finally{busy=false;editor.setOption('readOnly',false);updateSyncControls();if(initialize&&!pdfVersion&&!conflict&&!autoCompilePaused)await compile(true,true);}
+  finally{busy=false;setSourceReadOnly(false);updateSyncControls();if(initialize&&!pdfVersion&&!conflict&&!autoCompilePaused)await compile(true,true);}
 }
 document.querySelector('#project-open').onclick=()=>{document.querySelector('#file-menu').hidePopover();document.querySelector('#project-root').value=projectRoot;document.querySelector('#project-entry').value=mainFile;document.querySelector('#project-error').textContent='';projectDialog.showModal();};
 document.querySelector('#project-cancel').onclick=()=>projectDialog.close();
@@ -910,24 +944,24 @@ document.querySelector('#project-form').onsubmit=async event=>{
   if(busy||syncBusy||conflict||selectionChat.busy||selectionChat.hasAnnotations){setText(error,'请先保存修改、处理冲突，并发送或删除批注，再切换源码。');return;}
   if(editor.getValue()!==saved)await compile(false);
   if(conflict||editor.getValue()!==saved)return;
-  clearTimeout(timer);busy=true;editor.setOption('readOnly','nocursor');updateSyncControls();document.querySelector('#project-apply').disabled=true;
+  clearTimeout(timer);busy=true;setSourceReadOnly('nocursor');updateSyncControls();document.querySelector('#project-apply').disabled=true;
   try{const data=await request('/project',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project_root:document.querySelector('#project-root').value,main_file:document.querySelector('#project-entry').value,version})});display(data);projectDialog.close();await clearPreview();}
   catch(e){error.textContent=e.message;}
-  finally{busy=false;editor.setOption('readOnly',false);updateSyncControls();document.querySelector('#project-apply').disabled=false;}
+  finally{busy=false;setSourceReadOnly(false);updateSyncControls();document.querySelector('#project-apply').disabled=false;}
   if(!projectDialog.open)await compile(true,true);
 };
 async function clearPreview(){endSpacePan();pdfOutline.clear();pdfViewer.setDocument(null);pdfLinks.setDocument(null);if(pdfTask)await pdfTask.destroy();pdfTask=null;pdfBuild='';logText.textContent='';showCompileError(null);}
 async function openFile(selection={}){
   if(busy||syncBusy)return;
   if((editor.getValue()!==saved||selectionChat.hasAnnotations)&&!confirm(t(selectionChat.hasAnnotations?'打开其他文件会放弃未发送批注和未保存修改。继续？':'打开其他文件会放弃尚未保存的修改。继续？')))return;
-  clearTimeout(timer);busy=true;editor.setOption('readOnly','nocursor');updateSyncControls();let opened=false;
+  clearTimeout(timer);busy=true;setSourceReadOnly('nocursor');updateSyncControls();let opened=false;
   setText(status,Object.keys(selection).length?'正在打开拖入的文件…':'请在系统窗口中选择 .tex 或 .md 文件…');
   try{
     const data=await request('/open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(selection)});
     if(data.cancelled)setText(status,'已取消打开');
     else{const sameProject=data.project_root===projectRoot&&data.main_file===mainFile;display(data,sameProject);if(!sameProject)await clearPreview();opened=true;}
   }catch(e){setText(status,'打开失败：{message}',{message:e.message});}
-  finally{busy=false;editor.setOption('readOnly',false);updateSyncControls();}
+  finally{busy=false;setSourceReadOnly(false);updateSyncControls();}
   if(opened&&!pdfVersion)await compile(true,true);
   else if(editor.getValue()!==saved&&!conflict)scheduleSave();
 }
@@ -979,7 +1013,7 @@ dropArea.addEventListener('drop',async event=>{
 window.addEventListener('blur',()=>{dropDepth=0;dropHint.hidden=true;});
 async function compile(compilePdf=true,automatic=false){
   compilePdf=compilePdf!==false&&!markdownLive();
-  clearTimeout(timer);if(busy||conflict||editor.getOption('readOnly'))return;
+  clearTimeout(timer);if(busy||conflict||sourceLocked||(editor.getOption('readOnly')&&!emacsReadOnly))return;
   if(compilePdf&&!automatic){autoCompilePaused=false;updateCompileCaption();}
   if(automatic&&autoCompilePaused)compilePdf=false;
   busy=true;compileButton.setAttribute('aria-busy',String(compilePdf));updateSyncControls();const text=editor.getValue(),changed=text!==saved;setText(status,compilePdf?'正在保存并编译…':'正在保存…');
@@ -1010,12 +1044,12 @@ async function restoreHistory(data){
   if(busy||syncBusy||editor.getValue()!==data.source||version!==data.version)throw new Error(t('编辑内容已变化，请刷新历史后重试。'));
   if(selectionChat.busy)throw new Error(t('Codex 正在回复，请稍后发送。'));
   if(selectionChat.hasAnnotations)throw new Error(t('请先发送或删除批注，再恢复历史。'));
-  clearTimeout(timer);busy=true;editor.setOption('readOnly','nocursor');updateSyncControls();
+  clearTimeout(timer);busy=true;setSourceReadOnly('nocursor');updateSyncControls();
   try{
     const restored=await request('/history/restore',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
     display(restored);historyDialog.close();setText(status,'历史版本已恢复，正在编译…');
   }catch(e){if(e.conflict)conflict=true;throw e;}
-  finally{busy=false;editor.setOption('readOnly',false);updateSyncControls();}
+  finally{busy=false;setSourceReadOnly(false);updateSyncControls();}
   await compile(true,true);
 }
 async function refreshPreview(data,isCurrent=()=>true){
@@ -3101,7 +3135,9 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
                     self.reply(500, {'error': str(error)})
             elif route == '/chat/history':
                 try:
-                    self.reply(200, history.chat_read())
+                    self.reply(200, history.chat_read(parse_qs(parsed.query).get('thread', [None])[0]))
+                except ValueError as error:
+                    self.reply(400, {'error': str(error)})
                 except (OSError, sqlite3.Error) as error:
                     self.reply(500, {'error': str(error)})
             elif route == '/history/summaries':
@@ -3206,7 +3242,7 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
             nonlocal path, history, root, main_file
             if not self.local():
                 return
-            if self.path not in ('/completion', '/main-chat', '/project-review', '/preferences', '/compile', '/proofread', '/save', '/open', '/source', '/project', '/synctex', '/chat', '/chat/cancel', '/chat/new', '/chat/export', '/source-quote', '/history/diff', '/history/label', '/history/restore', '/history/pdf', '/history/pdf-cancel', '/history/pdf-cache', '/history/summaries', '/history/summaries/cancel'):
+            if self.path not in ('/completion', '/main-chat', '/project-review', '/preferences', '/compile', '/proofread', '/save', '/open', '/source', '/project', '/synctex', '/chat', '/chat/cancel', '/chat/new', '/chat/branch', '/chat/rename', '/chat/delete', '/chat/export', '/source-quote', '/history/diff', '/history/label', '/history/restore', '/history/pdf', '/history/pdf-cancel', '/history/pdf-cache', '/history/summaries', '/history/summaries/cancel'):
                 self.reply(404, {'error': 'Not found.'})
                 return
             try:
@@ -3477,6 +3513,23 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
                         raise FileConflict('请先停止当前回复。')
                     self.reply(200, history.chat_new())
                     return
+                if self.path == '/chat/delete':
+                    if data.get('project') != str(root):
+                        raise FileConflict('项目已切换，请重新打开对话。')
+                    if self.server.chat and self.server.chat.result['status'] == 'running':
+                        raise FileConflict('请先停止当前回复。')
+                    self.reply(200, history.chat_delete(data.get('thread'), data.get('descendants')))
+                    return
+                if self.path == '/chat/rename':
+                    if data.get('project') != str(root):
+                        raise FileConflict('项目已切换，请重新打开对话。')
+                    self.reply(200, history.chat_rename(data.get('thread'), data.get('title')))
+                    return
+                if self.path == '/chat/branch':
+                    if data.get('project') != str(root):
+                        raise FileConflict('项目已切换，请重新打开对话。')
+                    self.reply(200, history.chat_branch(data.get('parent'), data.get('message_id'), data.get('quote')))
+                    return
                 if self.path == '/chat':
                     request_id = data.get('request_id')
                     if request_id is not None and (not isinstance(request_id, str) or not re.fullmatch('[0-9a-f]{32}', request_id)):
@@ -3493,7 +3546,7 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
                     memory = None
                     memory_revision = None
                     if data.get('remember') is True:
-                        state = history.chat_read()
+                        state = history.chat_read(data.get('thread'))
                         if type(data.get('memory_revision')) is not int or data['memory_revision'] != state['revision']:
                             raise FileConflict('项目对话已更新，请重新打开对话后重试。')
                         incoming = data.get('messages')
@@ -3506,6 +3559,15 @@ def make_server(path, port=0, main_thread=None, project_root=None, preferences_p
                         data = {**data, 'messages': recent + [incoming[-1]]}
                         memory, memory_revision = history, state['revision']
                     context = chat_context(data, path, main_thread, ai_backend)
+                    if memory is not None:
+                        context['memory_thread'] = state['thread']
+                        seed = history.chat_seed(state['thread'])
+                        if seed is not None:
+                            if data.get('annotations') is not None:
+                                raise ValueError('子对话用于讨论，请在源码或 PDF 中添加修改批注。')
+                            # A branch sees its fork snapshot, never later parent or sibling replies.
+                            context.update(selection='', branch_context=seed,
+                                           main_conversation={'available':False, 'messages':[]})
                     quotes = ({'root': str(root), 'path': path.relative_to(root).as_posix(), 'source': data['source']}
                               if data.get('references') is True and path.suffix.lower() == '.tex' else None)
                     job = ChatJob(context, memory, memory_revision, backend=ai_backend, references=quotes)

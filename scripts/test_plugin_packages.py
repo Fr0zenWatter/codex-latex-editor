@@ -42,7 +42,7 @@ def check_editor(plugin, backend, folder, entry='scripts/editor.py'):
             assert json.load(response)['source'] == 'Chosen.\n'
         with client.open(base + 'main-chat', timeout=5) as response:
             assert json.load(response)['linked'] is (backend == 'deepseek'), 'Preserve the launching Harness session.'
-        for asset in ('latex-chat.mjs', 'latex-pdf-selection.mjs', 'pdfjs/build/pdf.mjs', 'pdfjs/build/pdf.worker.mjs'):
+        for asset in ('latex-chat.mjs', 'latex-chat-branches.mjs', 'latex-chat-branches.css', 'latex-pdf-selection.mjs', 'pdfjs/build/pdf.mjs', 'pdfjs/build/pdf.worker.mjs'):
             with client.open(base + 'vendor/' + asset, timeout=5) as response:
                 assert response.status == 200 and response.read(32)
     finally:

@@ -1,6 +1,6 @@
 {
   "name": "latex-deepseek",
-  "version": "0.3.8-deepseek.4",
+  "version": "0.3.9-deepseek.1",
   "description": "LaTeX in AI Sidebar for DeepSeek Harness, with an independently packaged local editor.",
   "author": {
     "name": "Local developer"

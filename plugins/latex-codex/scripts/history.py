@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 import sqlite3
+import uuid
 import zlib
 
 
@@ -48,12 +49,24 @@ class History:
         self.database = root / '.latex-codex' / 'history.sqlite3'
         self.database.parent.mkdir(exist_ok=True)
         with closing(self.connect()) as db, db:
+            db.execute('BEGIN IMMEDIATE')
             db.execute('''CREATE TABLE IF NOT EXISTS revisions (
                 id INTEGER PRIMARY KEY, file TEXT NOT NULL, created TEXT NOT NULL,
                 kind TEXT NOT NULL, label TEXT NOT NULL DEFAULT '',
                 digest TEXT NOT NULL, source BLOB NOT NULL)''')
             db.execute('CREATE INDEX IF NOT EXISTS file_revisions ON revisions(file, id)')
             db.execute("CREATE TABLE IF NOT EXISTS chat_messages (id INTEGER PRIMARY KEY, role TEXT NOT NULL, content TEXT NOT NULL, file TEXT NOT NULL DEFAULT '', selection TEXT NOT NULL DEFAULT '')")
+            db.execute("CREATE TABLE IF NOT EXISTS chat_threads (id TEXT PRIMARY KEY, parent TEXT, root TEXT NOT NULL, title TEXT NOT NULL, quote TEXT NOT NULL DEFAULT '', message_id INTEGER, context TEXT NOT NULL DEFAULT '[]')")
+            if 'deleted' not in {row['name'] for row in db.execute('PRAGMA table_info(chat_threads)')}:
+                db.execute('ALTER TABLE chat_threads ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0')
+            if 'thread' not in {row['name'] for row in db.execute('PRAGMA table_info(chat_messages)')}:
+                db.execute("ALTER TABLE chat_messages ADD COLUMN thread TEXT NOT NULL DEFAULT ''")
+                db.execute("UPDATE chat_messages SET thread='main:' || COALESCE((SELECT MAX(b.id) FROM chat_messages b WHERE b.role='boundary' AND b.id<=chat_messages.id),0)")
+            db.execute('CREATE INDEX IF NOT EXISTS thread_messages ON chat_messages(thread,id)')
+            for row in db.execute("SELECT 0 AS id UNION SELECT id FROM chat_messages WHERE role='boundary'").fetchall():
+                identity = 'main:' + str(row['id'])
+                first = db.execute("SELECT content FROM chat_messages WHERE thread=? AND role='user' ORDER BY id LIMIT 1", (identity,)).fetchone()
+                db.execute('INSERT OR IGNORE INTO chat_threads(id,root,title) VALUES (?,?,?)', (identity, identity, first['content'].strip()[:60] if first else ''))
             db.execute("CREATE TABLE IF NOT EXISTS revision_activity (revision_id INTEGER NOT NULL, baseline_id INTEGER NOT NULL, sections TEXT NOT NULL, details TEXT NOT NULL, description TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', PRIMARY KEY(revision_id,baseline_id))")
             db.execute('CREATE TABLE IF NOT EXISTS revision_summaries (revision_id INTEGER NOT NULL, baseline_id INTEGER NOT NULL, language TEXT NOT NULL, summary TEXT NOT NULL, PRIMARY KEY(revision_id,baseline_id,language))')
             db.execute('CREATE TABLE IF NOT EXISTS revision_annotations (revision_id INTEGER PRIMARY KEY, request_id TEXT NOT NULL UNIQUE, baseline_id INTEGER NOT NULL, count INTEGER NOT NULL, items BLOB NOT NULL, reply TEXT NOT NULL)')
@@ -65,34 +78,108 @@ class History:
         db.row_factory = sqlite3.Row
         return db
 
-    def chat_read(self):
-        with closing(self.connect()) as db:
-            revision = db.execute('SELECT COALESCE(MAX(id),0) FROM chat_messages').fetchone()[0]
+    @staticmethod
+    def _chat_thread(db, thread=None):
+        if thread is None:
             boundary = db.execute("SELECT COALESCE(MAX(id),0) FROM chat_messages WHERE role='boundary'").fetchone()[0]
-            rows = db.execute('SELECT id, role, content, file, selection FROM chat_messages WHERE id>? ORDER BY id DESC LIMIT 41', (boundary,)).fetchall()
-        return {'revision': revision, 'messages': [dict(row) for row in reversed(rows[:40])],
-                'truncated': len(rows)>40, 'project': str(self.database.parent.parent)}
+            thread = 'main:' + str(boundary)
+        if not isinstance(thread, str):
+            raise ValueError('对话编号无效。')
+        row = db.execute('SELECT * FROM chat_threads WHERE id=? AND deleted=0', (thread,)).fetchone()
+        if row is None:
+            raise ValueError('对话不存在，请重新打开。')
+        return dict(row)
 
-    def chat_append(self, revision, question, answer, file, selection):
+    def chat_read(self, thread=None):
+        with closing(self.connect()) as db:
+            node = self._chat_thread(db, thread)
+            revision = db.execute('SELECT COALESCE(MAX(id),0) FROM chat_messages WHERE thread=?', (node['id'],)).fetchone()[0]
+            rows = db.execute("SELECT id, role, content, file, selection FROM chat_messages WHERE thread=? AND role!='boundary' ORDER BY id DESC LIMIT 41", (node['id'],)).fetchall()
+            threads = [{**dict(row), 'has_messages': bool(row['has_messages'])} for row in db.execute('''
+                SELECT id,parent,root,title,quote,message_id, EXISTS(
+                    SELECT 1 FROM chat_messages m WHERE m.thread=chat_threads.id AND m.role='user'
+                ) AS has_messages FROM chat_threads WHERE deleted=0 ORDER BY rowid''')]
+        return {'revision': revision, 'messages': [dict(row) for row in reversed(rows[:40])],
+                'truncated': len(rows)>40, 'project': str(self.database.parent.parent),
+                'thread': node['id'], 'root': node['root'], 'threads': threads, 'quote': node['quote']}
+
+    def chat_append(self, revision, question, answer, file, selection, thread=None):
         with closing(self.connect()) as db, db:
             db.execute('BEGIN IMMEDIATE')
-            if db.execute('SELECT COALESCE(MAX(id),0) FROM chat_messages').fetchone()[0] != revision:
+            node = self._chat_thread(db, thread)
+            if db.execute('SELECT COALESCE(MAX(id),0) FROM chat_messages WHERE thread=?', (node['id'],)).fetchone()[0] != revision:
                 raise ValueError('项目对话已更新，请重新打开对话后重试。')
-            db.execute('INSERT INTO chat_messages(role,content,file,selection) VALUES (?,?,?,?)', ('user',question,file,selection))
-            return db.execute('INSERT INTO chat_messages(role,content) VALUES (?,?)',
-                              ('assistant',json.dumps(answer,ensure_ascii=False))).lastrowid
+            db.execute('INSERT INTO chat_messages(role,content,file,selection,thread) VALUES (?,?,?,?,?)', ('user',question,file,selection,node['id']))
+            if not node['title']:
+                db.execute('UPDATE chat_threads SET title=? WHERE id=?', (question.strip()[:60], node['id']))
+            return db.execute('INSERT INTO chat_messages(role,content,thread) VALUES (?,?,?)',
+                              ('assistant',json.dumps(answer,ensure_ascii=False),node['id'])).lastrowid
 
     def chat_new(self):
         # Archive the preceding conversation without deleting its stored messages.
         with closing(self.connect()) as db, db:
-            db.execute("INSERT INTO chat_messages(role,content) VALUES ('boundary','')")
+            revision = db.execute("INSERT INTO chat_messages(role,content) VALUES ('boundary','')").lastrowid
+            identity = 'main:' + str(revision)
+            db.execute('UPDATE chat_messages SET thread=? WHERE id=?', (identity, revision))
+            db.execute('INSERT INTO chat_threads(id,root,title) VALUES (?,?,?)', (identity,identity,''))
         return self.chat_read()
+
+    def chat_branch(self, parent, message_id, quote):
+        if not isinstance(parent, str) or type(message_id) is not int or not isinstance(quote, str) or not 1 <= len(quote.strip()) <= 12000:
+            raise ValueError('请选择一条对话中的文字（最多 12000 字符）。')
+        with closing(self.connect()) as db, db:
+            db.execute('BEGIN IMMEDIATE')
+            node = self._chat_thread(db, parent)
+            if not db.execute("SELECT id FROM chat_messages WHERE id=? AND thread=? AND role IN ('user','assistant')", (message_id,node['id'])).fetchone():
+                raise ValueError('引用消息不存在，请重新选择。')
+            recent = [dict(row) for row in reversed(db.execute("SELECT role,content,file,selection FROM chat_messages WHERE thread=? AND id<=? AND role!='boundary' ORDER BY id DESC LIMIT 38", (node['id'],message_id)).fetchall())]
+            context = json.loads(node['context'])
+            if node['quote']:
+                context.append({'role':'user', 'content':'Quoted discussion passage:\n' + node['quote']})
+            context += recent
+            while context and (len(context)>38 or len(json.dumps(context,ensure_ascii=False))>80000):
+                context = context[1:]
+            identity = uuid.uuid4().hex
+            db.execute('INSERT INTO chat_threads(id,parent,root,title,quote,message_id,context) VALUES (?,?,?,?,?,?,?)',
+                       (identity,node['id'],node['root'],quote.strip()[:60],quote.strip(),message_id,json.dumps(context,ensure_ascii=False)))
+        return self.chat_read(identity)
+
+    def chat_rename(self, thread, title):
+        if not isinstance(thread, str) or not isinstance(title, str) or not 1 <= len(title.strip()) <= 120 or '\n' in title or '\r' in title:
+            raise ValueError('对话名称须为 1–120 字符的单行文字。')
+        with closing(self.connect()) as db, db:
+            node = self._chat_thread(db, thread)
+            db.execute('UPDATE chat_threads SET title=? WHERE id=?', (title.strip(), node['id']))
+        return {'thread': node['id'], 'title': title.strip()}
+
+    def chat_seed(self, thread):
+        with closing(self.connect()) as db:
+            node = self._chat_thread(db, thread)
+        return {'quote': node['quote'], 'messages': json.loads(node['context'])} if node['parent'] else None
+
+    def chat_delete(self, thread, descendants):
+        if not isinstance(thread, str) or not isinstance(descendants, list) or not descendants or not all(isinstance(item, str) for item in descendants):
+            raise ValueError('删除对话的范围无效。')
+        with closing(self.connect()) as db, db:
+            db.execute('BEGIN IMMEDIATE')
+            node = self._chat_thread(db, thread)
+            if not node['parent']:
+                raise ValueError('主对话不能通过分支菜单删除。')
+            deleted = [row['id'] for row in db.execute('''WITH RECURSIVE subtree(id) AS (
+                SELECT id FROM chat_threads WHERE id=? AND deleted=0
+                UNION SELECT child.id FROM chat_threads child JOIN subtree ON child.parent=subtree.id WHERE child.deleted=0
+                ) SELECT id FROM subtree''', (thread,))]
+            if len(descendants) != len(deleted) or set(descendants) != set(deleted):
+                raise ValueError('对话分支已变化，请重新打开分支图后重试。')
+            # Retain message IDs so later replies cannot reuse an ID referenced by another conversation.
+            db.executemany('UPDATE chat_threads SET deleted=1 WHERE id=?', ((item,) for item in deleted))
+        return {'deleted': deleted, 'threads': self.chat_read(node['root'])['threads']}
 
     def chat_export(self, message_id, language='zh-CN'):
         if not isinstance(language, str) or language not in CHAT_EXPORT_NAMES:
             raise ValueError('记录语言无效。')
         with closing(self.connect()) as db:
-            row = db.execute("SELECT content FROM chat_messages WHERE id=? AND role='assistant'", (message_id,)).fetchone()
+            row = db.execute("SELECT m.content FROM chat_messages m JOIN chat_threads t ON t.id=m.thread WHERE m.id=? AND m.role='assistant' AND t.deleted=0", (message_id,)).fetchone()
         if row is None:
             raise ValueError('找不到这条 AI 回复。')
         try:

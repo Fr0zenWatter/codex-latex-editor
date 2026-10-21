@@ -1,6 +1,16 @@
 import {translations} from './latex-locales.mjs';
 
 export const english = {
+  '删除对话':'Delete conversation', '确认删除':'Confirm delete', '对话已删除。':'Conversation deleted.',
+  '确定删除“{title}”？共 {count} 个对话（包含子对话），其中未发送的草稿也会清空。':'Delete “{title}”? This removes {count} conversations, including sub-branches, and clears their unsent drafts.',
+  '调整主对话和侧栏大小':'Resize main and side chats',
+  '引用 {count} 条':'{count} quotes', '修改对话名称':'Rename conversation',
+  '对话分支':'Conversation branches', '主对话':'Main chat', '侧边子对话':'Branch chat', '子对话记录':'Branch messages',
+  '添加到对话':'Add to conversation', '在侧边栏中打开':'Open in sidebar', '关闭侧边栏':'Close sidebar',
+  '子对话问题':'Branch question', '围绕引用继续追问…':'Ask about the quoted text…',
+  '在侧边聊天中提问':'Ask in side chat', '所选文本：':'Selected text:', '写下批注或问题…':'Write a comment or question…',
+  '{count} 条批注':'{count} comments', '清空引用批注':'Clear quoted comments', '请解释所选文本。':'Please explain the selected text.',
+  '请先发送或清空当前侧栏草稿，再切换对话。':'Send or clear the current sidebar draft before switching conversations.',
   '调整项目对话栏宽度':'Resize project chat',
   'PDF 反相':'Invert PDF colors',
   'PDF 背景':'PDF background',
@@ -74,6 +84,7 @@ export const english = {
   '框选失败：{message}':'Box selection failed: {message}',
   '框选后自动弹出 PDF 批注对话框（无需右键）':'Automatically open PDF comments after box selection (no right-click)',
   '源码字号':'Source font size', '保存设置':'Save settings',
+  '只读':'Read-only',
   '源码定位 PDF 快捷键':'Source to PDF shortcut',
   '直接输入组合键名称，如 Ctrl+E；Enter 或离开输入框保存，Esc 取消。':'Type a shortcut name, such as Ctrl+E; Enter or leave the field to save, Esc to cancel.',
   '快捷键无效，已保留原设置。请使用 Ctrl / Alt / Cmd 组合键或 F1–F12。':'Invalid shortcut. Previous setting kept. Use a Ctrl / Alt / Cmd combination or F1–F12.',
@@ -161,6 +172,8 @@ export const english = {
   '语言':'Language', '跟随系统':'System default', '配色':'Color theme', '当前用户修订色':'Your revision color', '当前用户':'You',
   '橙色':'Orange', '蓝色':'Blue', '紫色':'Purple', '绿色':'Green', '红色':'Red', '青色':'Teal', '洋红':'Magenta', '无':'None',
   'Cobalt · 深蓝':'Cobalt · Deep blue', 'Dracula · 紫灰':'Dracula · Purple', 'Monokai · 炭黑':'Monokai · Charcoal', 'Nord · 冷灰':'Nord · Cool gray',
+  '25% 灰':'25% Gray', '50% 灰':'50% Gray', '75% 灰':'75% Gray',
+  '#D2D2D2 灰':'#D2D2D2 Gray', '#DFDFDF 灰':'#DFDFDF Gray',
   '浅色':'Light', '深色':'Dark', 'Eclipse · 白底':'Eclipse · White', 'IDEA · 白底':'IDEA · White', 'Neo · 简洁白':'Neo · Clean white', 'Base16 · 浅灰':'Base16 · Light gray', 'Solarized · 暖白':'Solarized · Warm light', 'Material · 深灰':'Material · Dark gray', 'Palenight · 蓝紫':'Palenight · Blue violet', 'Ayu · 深夜':'Ayu · Night', 'Gruvbox · 暖黑':'Gruvbox · Warm dark', 'Solarized · 深青':'Solarized · Dark cyan',
   '版本历史':'Version history', '刷新':'Refresh', '关闭历史':'Close history', '改动对比':'Changes', '此版本源码':'Source', '对比':'Compare',
   '与上一版比较':'Previous snapshot', '当前编辑内容':'Current editor contents', '文件当前内容':'Current file contents', '历史源码与差异':'Historical source and changes',

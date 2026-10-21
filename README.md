@@ -8,9 +8,9 @@ Bring the final step of research into your AI app's sidebar: write LaTeX and Mar
 
 Supports **Codex** and **DeepSeek Harness** through separate plugins. Claude integration is planned. Formerly **codex-latex-editor / LaTeX Codex**.
 
-- Select source or PDF text, add comments and click **Send** for AI suggestions. Review each change with **Keep / Undo** in source and PDF, or **Accept all**.
+- Select source text or box-select PDF text and formulas, add internal annotations and click **Send** for AI suggestions. Review each change with **Keep / Undo** in source and PDF, or **Accept all**.
 - Discuss your paper in floating project chat, with model and reasoning controls, writing styles and Markdown reply notes. Enable **”** for clickable paper quotations and PDF links.
-- Navigate between source and PDF, select text or box-select formulas, and choose a PDF reading background.
+- Select chat text to quote it in a follow-up or open a nested sidebar discussion. Switch branches in the horizontal conversation tree while keeping the main chat visible.
 - Preview Markdown live, compile PDFs with your existing TeX installation, and revisit autosaved source and PDF history.
 
 Ask Codex: **Use latex-codex to open main.tex**, or launch directly:
@@ -26,7 +26,7 @@ Use **latex-codex** for Codex or the independent **latex-deepseek** plugin for D
 
 ## Demos
 
-Click a preview to watch the full demo. All demos include English and Chinese subtitles.
+All demos include English and Chinese subtitles. Click an image to view the GIF at full size or watch the full video.
 
 ### Annotations (main chat)
 
@@ -34,31 +34,33 @@ Select source text, click the annotation icon, and save your requests. Send them
 
 [![Watch the main chat annotation demo](docs/media/04-native-comments.gif)](docs/media/04-native-comments.mp4)
 
-### Temporary annotations (kept out of the main chat)
+### Internal annotations (kept out of the main chat)
 
-Switch between **Select text / Pan** above the PDF. In Select text mode, hold **Space** to pan, or **Space + Alt** and drag vertically to zoom. Box-select or drag directly over text, then right-click to add a comment. Settings can open comments automatically after box selection.
+**Box selection.** Select text or box-select formulas and passages in the PDF to locate their source and add an internal annotation. Right-click to add a comment, or enable automatic comments after box selection in settings.
 
-Review each suggestion in the source and a temporary red/green PDF preview. **Keep** saves that change; **Undo** preserves the original. Editor and PDF proofreading can be toggled separately under **gear**. Enable **Project change review** to review changes made by the main chat or external tools across project TeX files.
+[![Box selection and internal annotations](docs/media/01-internal-annotations.gif)](docs/media/01-internal-annotations.gif)
 
-**Style** in the comment toolbar provides prompt instructions for your edits.
+**AI editing and Proofread.** Enter your request and click **Send**, then review the red/green changes in source and PDF. **Keep** saves each change; **Undo** preserves the original. Toggle source and PDF proofreading separately under **gear**, or enable **Project change review** for edits made by the main chat or external tools.
 
-Under **gear → Replacement color**, add LaTeX `\color` to edits to show PDF changes to reviewers.
+[![AI editing and source/PDF Proofread](docs/media/02-internal-proofread.gif)](docs/media/02-internal-proofread.gif)
 
-[![Watch the annotation editing demo](docs/media/03-pdf-comments.gif)](docs/media/03-pdf-comments.mp4)
+Choose prompt instructions with **Style** in the annotation toolbar. To mark edits for reviewers, choose **gear → Replacement color**.
 
-### LaTeX ↔ PDF
+### Paper citations and side conversations
 
-In hand mode, double-click the PDF to find its source. Double-click a line number or click the middle **→** to jump back to the PDF. The chapter wheel helps you move through longer documents; setting `main.tex` enables navigation across `\input` / `\include` files.
+Enable **”** in floating project chat to get clickable paper citations. Follow a citation to locate the original passage in source and PDF. Switch between the chat bubble, compact bar and full conversation as you read.
 
-In **Select text** mode, hold **Space** to pan, or **Alt + Space** and drag to zoom from 30% to 500%.
+[![Paper citations and chat display modes](docs/media/04-cite-chat.gif)](docs/media/04-cite-chat.gif)
 
-[![Watch the navigation demo](docs/media/01-navigation.gif)](docs/media/01-navigation.mp4)
+Select chat text to add a quoted annotation or ask in a side conversation. Keep following up in nested branches while the main chat stays visible. Toggle the conversation tree to switch, rename or delete branches with confirmation; drag the divider to resize the two panes.
+
+[![Citation navigation and nested side conversations](docs/media/05-cite-branches.gif)](docs/media/05-cite-branches.gif)
 
 ### Local history
 
 Edits are saved automatically. Compare source changes and the PDF before and after, then restore a previous version.
 
-[![Watch the history demo](docs/media/02-history.gif)](docs/media/02-history.mp4)
+[![Source and PDF history comparisons](docs/media/03-local-history.gif)](docs/media/03-local-history.gif)
 
 ### Editing and personalization
 

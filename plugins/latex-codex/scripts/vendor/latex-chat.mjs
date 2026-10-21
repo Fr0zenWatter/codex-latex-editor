@@ -1,5 +1,6 @@
 import {t, preferences} from './latex-settings.mjs';
 import {attachProofread} from './latex-proofread.mjs';
+import {attachChatBranches, renderChatQuestion} from './latex-chat-branches.mjs';
 import {writingStyles, readWritingStyle, restoreWritingStyle, annotationRequest} from './latex-writing-styles.mjs';
 import {renderChatMarkdown} from './latex-markdown.mjs';
 import {documentMacros} from './latex-hover.mjs';
@@ -302,8 +303,19 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   returnToMini = panel.dataset.mini === 'true';
   positionCompact();syncPlaceholder();panel.classList.add('chat-motion-ready');
   new ResizeObserver(() => { if (panel.dataset.collapsed === 'true' && !compactPosition) positionCompact(); }).observe($('preview'));
-  let memoryRevision=null,memoryProject='',memoryLoading=null,memoryEpoch=0;
+  let memoryRevision=null,memoryProject='',memoryLoading=null,memoryEpoch=0,memoryThread=null,memoryRoot=null;
   let history = [], marker = null, job = null, generation = 0, sending = false, proposal = null;
+  let widthBeforeBranch = null;
+  const branches = attachChatBranches({panel,messages,request,renderReply,
+    mainState:() => ({thread:memoryThread,root:memoryRoot,project:memoryProject}),
+    selectMain:data => { marker?.clear(); marker = null; clearProposal(); $('chat-selection').textContent = ''; restoreMemory(data); },
+    addQuote:() => { marker?.clear(); marker = null; clearProposal(); $('chat-selection').textContent = ''; },
+    isBusy:() => sending || annotationCommitting, setBusy:setSending, referencesEnabled,
+    model:() => ({model:modelSelect.value,effort:effortSelect.value,source:editor.getValue(),name:$('chat-config-name').textContent}),
+    resize:open => {
+      if (open) { widthBeforeBranch = Number.parseFloat(panel.style.width) || 440; setPanelWidth(Math.max(680,widthBeforeBranch * 2)); }
+      else if (widthBeforeBranch !== null) { setPanelWidth(widthBeforeBranch); widthBeforeBranch = null; }
+    }});
   const quick = $('chat-quick'), quickInput = $('chat-quick-input');
   let quickMarker = null, quickDoc = null, quickOriginal = '', quickPdf = null, editingAnnotation = null;
   let annotations = [], annotationId = 0, annotationSending = false, annotationCommitting = false;
@@ -326,6 +338,16 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   const modelSelect = $('chat-model'), effortSelect = $('chat-effort');
   const quickBrain = $('chat-quick-brain'), quickSettings = $('chat-quick-settings');
   const panelSettings = $('chat-panel-settings'), configButton = $('chat-config');
+  const branchConfig = document.createElement('button'); branchConfig.id = 'chat-branch-config'; branchConfig.type = 'button';
+  branchConfig.setAttribute('aria-controls','chat-panel-settings'); branchConfig.setAttribute('aria-expanded','false');
+  const branchModelLabel = $('chat-branch-model'); branchModelLabel.replaceWith(branchConfig); branchConfig.append(branchModelLabel);
+  let settingsTrigger = configButton;
+  configButton.addEventListener('click',() => { settingsTrigger = configButton; });
+  branchConfig.onclick = () => {
+    if (sending) return;
+    if (settingsTrigger === branchConfig && panelSettings.matches(':popover-open')) { panelSettings.hidePopover(); return; }
+    panelSettings.hidePopover(); settingsTrigger = branchConfig; panelSettings.showPopover();
+  };
   const quickEffort = $('chat-quick-effort');
   const quickHandle = $('chat-quick-handle');
   const styleSelect = $('chat-quick-style'), styleFile = $('chat-style-file');
@@ -475,15 +497,18 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     $('chat-config-name').textContent = modelName;
     configButton.title = modelName + ' · ' + effortName;
     configButton.setAttribute('aria-label', t('选择模型和思考等级') + ' · ' + configButton.title);
+    branchModelLabel.textContent = modelName;
+    branchConfig.title = configButton.title; branchConfig.setAttribute('aria-label',configButton.getAttribute('aria-label'));
     renderModelChoices($('chat-quick-models'), $('chat-quick-efforts'), quickSettings, quickInput);
-    renderModelChoices($('chat-panel-models'), $('chat-panel-efforts'), panelSettings, input);
+    renderModelChoices($('chat-panel-models'), $('chat-panel-efforts'), panelSettings, settingsTrigger === branchConfig ? $('chat-branch-input') : input);
     $('chat-quick-model-status').textContent = $('chat-model-status').textContent;
   }
   panelSettings.addEventListener('beforetoggle', event => {
-    configButton.setAttribute('aria-expanded', String(event.newState === 'open'));
+    configButton.setAttribute('aria-expanded', String(event.newState === 'open' && settingsTrigger === configButton));
+    branchConfig.setAttribute('aria-expanded', String(event.newState === 'open' && settingsTrigger === branchConfig));
     if (event.newState !== 'open') return;
     renderQuickSettings(); loadModels();
-    const box = configButton.getBoundingClientRect();
+    const box = settingsTrigger.getBoundingClientRect();
     panelSettings.style.left = Math.max(8, Math.min(box.left, window.innerWidth - 360)) + 'px';
     panelSettings.style.top = 'auto';
     panelSettings.style.bottom = window.innerHeight - box.top + 8 + 'px';
@@ -690,8 +715,10 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   function message(role, text, id = null) {
     const item = document.createElement('div'); item.className = 'chat-message';
     item.dataset.role = role;
+    if (Number.isInteger(id)) item.dataset.id = String(id);
     const label = document.createElement('b'); label.textContent = role === 'user' ? t('你') : 'Codex';
-    const body = document.createElement('div');body.className = 'chat-markdown';renderReply(body, text);
+    const body = document.createElement('div');body.className = 'chat-markdown';
+    if (role === 'user') renderChatQuestion(body,text,renderReply); else renderReply(body,text);
     item.append(label, body);
     if (role === 'assistant' && Number.isInteger(id) && id > 0) {
       const exportButton = document.createElement('button');
@@ -713,21 +740,27 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
       item.append(exportButton);
     }
     messages.append(item); messagesScrollTop = null; messages.scrollTop = messages.scrollHeight;
+    return item;
+  }
+  function restoreMemory(data) {
+    history=data.messages;memoryRevision=data.revision;memoryProject=data.project;memoryThread=data.thread??null;memoryRoot=data.root??memoryThread;
+    messages.replaceChildren();
+    for(const item of history){
+      let text=item.content;
+      if(item.role==='assistant'){try{text=JSON.parse(text).reply||text;}catch{}}
+      message(item.role==='user'?'user':'assistant',text,item.id);
+    }
+    branches.memory(data);
   }
   async function loadMemory() {
     if(memoryRevision!==null)return;
     if(memoryLoading)return memoryLoading;
     const doc=editor.getDoc(),epoch=memoryEpoch;
     const task=(async()=>{
-      const data=await request('/chat/history');
+      const data=await request('/chat/history' + (memoryThread ? '?thread=' + encodeURIComponent(memoryThread) : ''));
       if(doc!==editor.getDoc()||epoch!==memoryEpoch)return;
       if(!Array.isArray(data.messages)||!Number.isInteger(data.revision))throw new Error(t('项目记忆读取失败，请重新打开对话。'));
-      history=data.messages;memoryRevision=data.revision;memoryProject=data.project;messages.replaceChildren();
-      for(const item of history){
-        let text=item.content;
-        if(item.role==='assistant'){try{text=JSON.parse(text).reply||text;}catch{}}
-        message(item.role==='user'?'user':'assistant',text,item.id);
-      }
+      restoreMemory(data);
     })();
     memoryLoading=task;
     try{await task;}finally{if(memoryLoading===task)memoryLoading=null;}
@@ -735,9 +768,9 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   function setSending(value) {
     sending = value; panel.dataset.sending = String(value); $('chat-send').disabled = value; $('chat-stop').hidden = !value;
     const compactStatus = $('chat-compact-status');if (compactStatus) compactStatus.textContent = value ? t('Codex 正在思考…') : '';
-    $('chat-typing').hidden = !value;
+    $('chat-typing').hidden = !value || branches.busy;
     $('chat-use-selection').disabled = value;
-    modelSelect.disabled = value; effortSelect.disabled = value || !modelSelect.value; configButton.disabled = value;
+    modelSelect.disabled = value; effortSelect.disabled = value || !modelSelect.value; configButton.disabled = value; branchConfig.disabled = value;
     quickBrain.disabled = value;
     quickEffort.disabled = value || !modelSelect.value;
     styleSelect.disabled = value;
@@ -749,6 +782,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     $('annotations-send').setAttribute('aria-busy', String(value && annotationSending));
     $('annotations-stop').hidden = !value || !annotationSending;
     refreshAnnotations();
+    branches.syncBusy();
     sizeQuick();
   }
   function clearProposal() { proposal = null; $('chat-proposal').hidden = true; }
@@ -788,6 +822,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
   }
   async function stop() {
     if (annotationCommitting) return;
+    if (branches.busy) await branches.stop();
     generation++; const id = job; job = null; annotationSending = false; setSending(false);
     if (id) { try { await request('/chat/cancel', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})}); } catch(e) { notice(e.message); } }
   }
@@ -802,7 +837,8 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
       annotations.forEach(item => { item.review?.destroy(); item.marker.clear(); }); annotations = []; annotationId = 0;
     }
     $('annotations-status').textContent = ''; refreshAnnotations();
-    memoryEpoch++;memoryRevision=null;memoryProject='';memoryLoading=null;history = []; marker?.clear(); marker = null; clearProposal();
+    branches.reset(preserveAnnotations);
+    memoryEpoch++;memoryRevision=null;memoryProject='';memoryLoading=null;memoryThread=null;memoryRoot=null;history = []; marker?.clear(); marker = null; clearProposal();
     messages.replaceChildren(); input.value = ''; $('chat-selection').textContent = ''; collapsePanel(); notice('');
   }
   quick.addEventListener('beforetoggle', event => {
@@ -898,8 +934,9 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     return send(input.value, input);
   };
   async function send(text, draftInput, batch = null) {
-    if (sending || annotationCommitting || !text.trim()) return;
-    const selection = batch ? batch[0].original : selectedText(), question = text.trim();
+    if (sending || annotationCommitting || branches.loading) return;
+    const selection = batch ? batch[0].original : selectedText(), question = (batch ? text : branches.question(text)).trim();
+    if (!question) return;
     if (!selection && batch) { notice(t('选区已失效，请重新选择文本。')); return; }
     if (!selection && marker) { marker.clear(); marker = null; $('chat-selection').textContent = ''; }
     const token = ++generation, doc = editor.getDoc();
@@ -911,7 +948,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
       if(memoryRevision===null)await loadMemory();
       if(token!==generation||doc!==editor.getDoc())return;
       conversation=[...history.slice(-38),{role:'user',content:question}];
-      message('user',question);if(draftInput)draftInput.value='';
+      const userMessage=message('user',question);if(draftInput)draftInput.value='';
       const source = editor.getValue();
       const items = batch?.map(item => {
         const pos = validAnnotation(item);
@@ -921,7 +958,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
           end:Array.from(source.slice(0,editor.indexFromPos(pos.to))).length, selection:item.original, request:annotationRequest(item)};
       });
       const started = await request('/chat', {method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({source,selection,messages:conversation,remember:true,memory_revision:memoryRevision,model:modelSelect.value,effort:effortSelect.value,request_id:crypto.randomUUID().replaceAll('-',''),references:referencesEnabled(),...(items ? {annotations:items} : {})})});
+        body:JSON.stringify({source,selection,messages:conversation,remember:true,memory_revision:memoryRevision,...(memoryThread ? {thread:memoryThread} : {}),model:modelSelect.value,effort:effortSelect.value,request_id:crypto.randomUUID().replaceAll('-',''),references:referencesEnabled(),...(items ? {annotations:items} : {})})});
       if (token !== generation) {
         await request('/chat/cancel', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:started.id})}); return;
       }
@@ -932,8 +969,10 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
         if (result.status === 'running') { await new Promise(resolve => setTimeout(resolve, 700)); continue; }
         if (result.status !== 'done') throw new Error(result.error || t('本次回复已停止。'));
         memoryRevision=result.memory_revision??memoryRevision;
+        if (Number.isInteger(result.memory_revision)) userMessage.dataset.id=String(result.memory_revision-1);
         history = [...conversation, {id:result.memory_revision,role:'assistant',content:JSON.stringify({reply:result.reply,replacement:result.replacement,...(batch ? {replacements:result.replacements} : {})})}];
         message('assistant', result.reply,result.memory_revision);
+        if (!batch) branches.clearQuotes();
         if (batch) {
           await reviewAnnotations(batch, result.replacements, result.reply);
           const reviewing = annotations.some(item => item.review);
@@ -949,7 +988,7 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
         return;
       }
     } catch(e) {
-      if (token === generation) { if(e.conflict)memoryRevision=null;notice(e.message); if (batch) annotationNotice(e.message, true); if(draftInput)draftInput.value = question; }
+      if (token === generation) { if(e.conflict)memoryRevision=null;notice(e.message); if (batch) annotationNotice(e.message, true); if(draftInput)draftInput.value = text; }
     } finally { if (token === generation) { annotationSending = false; job = null; setSending(false); } }
   }
   function annotationEdits(batch, replacements) {
@@ -1115,6 +1154,6 @@ export function attachSelectionChat(editor, request, paintAnnotations = () => {}
     }
     annotations = annotations.filter(item => !item.review);
     refreshAnnotations();
-  }, get busy() { return sending || annotationCommitting; },
-    get hasAnnotations() { return !!annotations.length || !!quickInput.value.trim(); }};
+  }, get busy() { return sending || annotationCommitting || branches.loading; },
+    get hasAnnotations() { return !!annotations.length || !!quickInput.value.trim() || branches.hasDrafts; }};
 }

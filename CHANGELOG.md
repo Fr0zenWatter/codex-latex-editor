@@ -1,11 +1,15 @@
 # Changelog / 更新日志
 
-## Unreleased / 未发布
+## 0.3.9 / 0.3.9-deepseek.1 — 2026-10-21
 
 - Rename the project to **LaTeX in AI Sidebar** (formerly **codex-latex-editor / LaTeX Codex**) and introduce the AI sidebar workflow in both READMEs. Codex and DeepSeek Harness are supported; Claude integration is planned.
 - Refresh plugin display names, editor titles and repository links. Keep plugin IDs, marketplace identity, installation commands, preferences and project history compatible.
+- Add quoted annotations, nested side conversations, branch rename and confirmed subtree deletion, a draggable chat divider and compact model / reasoning controls in both panes.
+- Refresh both READMEs with five new GIFs for box selection, internal annotations, Proofread, source / PDF history comparisons, paper citations and side conversations. Replace the old navigation demo and rename temporary annotations to internal annotations.
 
-项目更名为 **LaTeX in AI Sidebar**，突出 AI 侧边栏中的论文写作、修改与校对；保留原有安装入口、偏好与历史。此项记录尚未发布，不改写已有版本或标签。
+项目更名为 **LaTeX in AI Sidebar**，保留原有安装入口、偏好与历史。新增选文批注、多层侧边对话、分支重命名与确认删除、拖动分栏及紧凑输入区；中英文 README 使用新 GIF 展示框选、内部批注、Proofread、原文引用、侧边对话与本地历史。两个插件分别更新为 `0.3.9` 和 `0.3.9-deepseek.1`。
+
+Validation / 验证：12 chat UI, branch history / HTTP, export, shared chat and DeepSeek package / adapter checks passed on Windows. Both README link checks and complete decoding of the five supplied GIFs passed; visual review sampled six frames per GIF. All 407 files in the new DeepSeek ZIP matched the distribution sources. No real model request or main-chat message was sent; macOS/Linux hardware was not retested.
 
 ## 0.3.8-deepseek.4 — 2026-10-20
 

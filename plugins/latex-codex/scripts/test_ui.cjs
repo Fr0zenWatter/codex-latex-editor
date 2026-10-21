@@ -6,6 +6,11 @@ const path = require('node:path');
 const zoomScript = fs.readFileSync(path.join(__dirname, 'vendor/latex-zoom.mjs'), 'utf8').replace('export function', 'function');
 const codeMirrorScript=fs.readFileSync(path.join(__dirname,'vendor/codemirror.js'),'utf8');
 const normalizeKeyMap=vm.runInNewContext(codeMirrorScript.slice(codeMirrorScript.indexOf('  function normalizeKeyName('),codeMirrorScript.indexOf('  function lookupKey('))+'\nnormalizeKeyMap;', {map:(items,fn)=>items.map(fn)});
+const nativeEmacs={commands:{},keyMap:{default:{}},normalizeKeyMap};
+vm.runInNewContext(fs.readFileSync(path.join(__dirname,'vendor/emacs.js'),'utf8'),{CodeMirror:nativeEmacs});
+const lookupKey=vm.runInNewContext(codeMirrorScript.slice(codeMirrorScript.indexOf('  function lookupKey('),codeMirrorScript.indexOf('  // Modifier key presses'))+'\nlookupKey;',{
+  getKeyMap:value=>typeof value==='string'?nativeEmacs.keyMap[value]:value,
+});
 const script = zoomScript + '\n' + fs.readFileSync(path.join(__dirname, 'editor.py'), 'utf8').replace(/\r\n/g, '\n').match(/<script type="module">\n([\s\S]*?)<\/script>/)[1].replace(/^import .*;\n/gm, '');
 const elements = new Map();
 const uiTimerDelays = new Map();
@@ -90,7 +95,7 @@ const context = vm.createContext({
   requestAnimationFrame(fn){animationFrames.set(++animationFrameId,fn);return animationFrameId;},cancelAnimationFrame(id){animationFrames.delete(id);},
   document: {querySelector: element, createElement: () => element(Symbol()), documentElement: {dataset: {}},body:{dataset:{}}},
   CodeMirror: {Doc:class{constructor(source,mode){this.source=source;this.mode=mode;}},hint:{latex:()=>({list:['\\begin']})},fromTextArea: (_,configuration) => {Object.assign(options,configuration);return editor;},
-    normalizeKeyMap,keyNames:{13:'Enter',16:'Shift',17:'Ctrl',18:'Alt',27:'Esc',69:'E',74:'J',75:'K',91:'Mod',112:'F1',123:'F12',189:'-'},
+    normalizeKeyMap,lookupKey,keyNames:{13:'Enter',16:'Shift',17:'Ctrl',18:'Alt',27:'Esc',69:'E',74:'J',75:'K',91:'Mod',112:'F1',123:'F12',189:'-'},
     keyName:event=>event.cmKey||event.key,e_stop:event=>{event.stopped=true;},signal(){},emacs:{repeated:fn=>fn},commands: {clearSearch(){},keyboardQuit(){emacsQuits++;}}, Vim: {
     handleKey(cm,key){assert.equal(key,'<Esc>');vimEscapes++;},
     defineAction: (name, fn) => actions[name] = fn,
@@ -191,6 +196,7 @@ for(const remembered of [null,'Shift-Cmd-E','Ctrl-Missing']){
     preferences:{getItem:key=>key==='latex-codex-forward-shortcut'?remembered:'default',setItem(){}},
     editor:{state:{},getOption:key=>keyOptions[key],setOption(key,value){keyOptions[key]=value;},closeHint(){},setExtending(){}},
     CodeMirror:context.CodeMirror,forwardButton:button,compile(){},toggleSourceComment(){},completeLatex(){},sourceSearch:{open(){}},
+    toggleEmacsReadOnly(){},emacsReadOnly:false,
     synchronize:direction=>shortcutCalls.push(direction)
   });
   vm.runInContext(keymapScript,startup);
@@ -235,7 +241,7 @@ assert.equal(options.keyMap,'emacs');assert.equal(editor.state.keySeq,emacsKeySe
 assert(!Object.hasOwn(options.extraKeys,'Ctrl-Alt-E'),'Ctrl combinations do not override Emacs bindings.');
 for(const shortcut of ['Ctrl+F','Shift+Ctrl+F','Ctrl+X']){
   enterShortcut(shortcut);
-  assert(Object.keys(options.extraKeys).every(key=>!/(?:^|-)Ctrl-/.test(key)),'All plugin Ctrl overrides must yield to Emacs.');
+  assert(Object.keys(options.extraKeys).every(key=>!/(?:^|-)Ctrl-/.test(key)||['Ctrl-X','Ctrl-X Ctrl-Q'].includes(key)),'Only the read-only sequence may add Emacs Ctrl bindings.');
 }
 context.synchronize=direction=>forwardCalls.push(direction);
 const beforeEmacsForward=forwardCalls.length;
@@ -262,7 +268,55 @@ const quit={key:'Ctrl-G'};
 assert.equal(editor.dialog.onKeyDown(quit,'query',()=>dialogClosed++),true);
 assert(quit.stopped);assert.equal(dialogClosed,1);assert.equal(emacsQuits,2);
 assert.equal(editor.dialog.onKeyDown({key:'Ctrl-S'},'query',()=>{}),'forwarded');assert.equal(dialogForwarded,1);
+assert.equal(options.extraKeys['Ctrl-X'],'...','The read-only shortcut uses the native Emacs prefix dispatcher.');
+const toggleReadOnly=()=>options.extraKeys['Ctrl-X Ctrl-Q'](editor);
+vm.runInContext('loading=false',context);
+let nativeSaves=0;
+const dispatchEmacs=vm.runInNewContext(codeMirrorScript.slice(codeMirrorScript.indexOf('  function doHandleBinding('),codeMirrorScript.indexOf('  var lastStoppedKey'))+'\nhandleKeyBinding;',{
+  lookupKey,commands:{save(){nativeSaves++;}},Pass:Symbol('pass'),keyName:event=>event.key,
+  Delayed:class{set(){}},isModifierKey:key=>['Ctrl','Alt','Shift','Mod'].includes(key),
+  signalLater(){},restartBlink(){},e_preventDefault:event=>{event.prevented=true;},
+});
+const keyEditor={...editor,options,state:{keyMaps:[],keySeq:null},display:{input:{ensurePolled(){}}},isReadOnly:()=>!!options.readOnly};
+const prefix={key:'Ctrl-X'};dispatchEmacs(keyEditor,prefix);
+assert(prefix.prevented);assert.equal(keyEditor.state.keySeq,'Ctrl-X');
+dispatchEmacs(keyEditor,{key:'Ctrl-Q'});assert.equal(options.readOnly,true,'The real CodeMirror sequence dispatcher must invoke the read-only command.');
+keyEditor.state.keySeq=null;toggleReadOnly();assert.equal(options.readOnly,false);
+dispatchEmacs(keyEditor,{key:'Ctrl-X'});dispatchEmacs(keyEditor,{key:'Ctrl-S'});
+assert.equal(nativeSaves,1,'Adding the new sequence must preserve the native Emacs save binding.');
+const readonlyDoc=editor.doc,readonlyCursor=cursorChanges;
+vm.runInContext('loading=false',context);toggleReadOnly();
+assert.equal(options.readOnly,true);assert.equal(editor.doc,readonlyDoc);assert.equal(cursorChanges,readonlyCursor);
+assert.equal(element('#source-readonly').hidden,false);assert.equal(element('#source-readonly').attributes['aria-pressed'],'true');
+assert.equal(element('#compile').disabled,false,'Read-only must still allow saving earlier edits and compiling.');
+for(const guard of ['busy','syncBusy','loading','conflict']){
+  vm.runInContext(`${guard}=true`,context);toggleReadOnly();assert.equal(options.readOnly,true,`${guard} must protect an existing lock.`);
+  vm.runInContext(`${guard}=false`,context);
+}
+vm.runInContext("setSourceReadOnly('nocursor')",context);toggleReadOnly();assert.equal(options.readOnly,'nocursor');
+vm.runInContext('setSourceReadOnly(false)',context);assert.equal(options.readOnly,true,'Temporary locks restore the user read-only choice.');
+vm.runInContext("display({source:'loaded source',version:'v',name:'paper.tex',path:'paper.tex'})",context);
+assert.equal(options.readOnly,true,'Reloading the source preserves read-only mode.');
+toggleReadOnly();assert.equal(options.readOnly,false);
+assert.equal(element('#source-readonly').attributes['aria-pressed'],'false');
+const cutKey={key:'Ctrl-W',stopPropagation(){this.stopped=true;}};
+editor.state.keySeq=null;
+editorEvents.keydown(editor,cutKey);assert(cutKey.stopped,'Emacs cuts must not bubble into page shortcuts.');
+const otherKey={key:'Alt-W',stopPropagation(){this.stopped=true;}};
+editorEvents.keydown(editor,otherKey);assert(otherKey.stopped,'Emacs copy must remain inside the source editor too.');
+for(const key of ['Ctrl-F','Ctrl-S','Ctrl-X','Ctrl-Q','Ctrl-P','Alt-F']){
+  const event={key,stopPropagation(){this.stopped=true;}};
+  editorEvents.keydown(editor,event);assert(event.stopped,`${key} must reach Emacs without bubbling to app shortcuts.`);
+}
+const plainKey={key:'a',stopPropagation(){this.stopped=true;}};
+editorEvents.keydown(editor,plainKey);assert(!plainKey.stopped,'Unbound typing keeps its normal behavior.');
+element('#source-readonly').onclick();assert.equal(options.readOnly,true,'The toolbar provides the same toggle when the host intercepts the prefix.');
 modeSelect.value='vim';modeSelect.onchange();assert.equal(options.keyMap,'vim');
+assert.equal(options.readOnly,false,'Leaving Emacs restores editing.');
+assert.equal(element('#source-readonly').hidden,true);
+const standardCut={key:'Ctrl-W',stopPropagation(){this.stopped=true;}};
+editorEvents.keydown(editor,standardCut);assert(!standardCut.stopped,'Other editing modes retain their shortcuts.');
+console.log('PASS: real Emacs sequence dispatch, read-only and save bindings, operation locks, reload/mode switching and source-only Emacs key priority');
 assert.equal(typeof options.extraKeys['Ctrl-F'],'function');assert.equal(typeof options.extraKeys['Ctrl-E'],'function');
 assert.equal(element('#forward').attributes['aria-keyshortcuts'],'Control+E');
 assert.equal(typeof options.extraKeys['Ctrl-S'],'function');assert.equal(typeof options.extraKeys['Ctrl-Space'],'function');
@@ -672,8 +726,11 @@ await testFileDrop();
   source='saved without compilation';let autoRoute;
   context.fetch=async(url)=>{autoRoute=url;return {ok:true,json:async()=>({version:'saved-v'})};};
   editorEvents.change();assert.equal(uiTimerDelays.get(vm.runInContext('timer',context)),800,'Save-only mode keeps its existing delay.');
+  modeSelect.value='emacs';modeSelect.onchange();toggleReadOnly();assert.equal(options.readOnly,true);
   await uiTimers.get(vm.runInContext('timer',context))();
   assert.equal(autoRoute,'/save','Disabling compilation must still autosave.');
+  assert.equal(options.readOnly,true,'Entering read-only mode must not discard the pending autosave or unlock the source.');
+  toggleReadOnly();modeSelect.value='vim';modeSelect.onchange();
   assert.equal(vm.runInContext('saved',context),source);assert.equal(vm.runInContext('pdfVersion',context),'');
   assert.equal(viewer.pdfDocument,pdf,'Save-only keeps the previous PDF mounted.');
   context.fetch=async(url)=>{autoRoute=url;return {ok:true,json:async()=>({version:'saved-v',ok:true,log:'ok',sync:true,pdf_revision:'second'})};};
@@ -687,7 +744,10 @@ await testFileDrop();
   await uiTimers.get(vm.runInContext('timer',context))();assert.equal(autoRoute,'/compile','Re-enabling compiles saved edits.');
   automatic.checked=false;automatic.onchange();
   editorEvents.change();const manualPending=vm.runInContext('timer',context);
+  modeSelect.value='emacs';modeSelect.onchange();toggleReadOnly();assert.equal(options.readOnly,true);
   await element('#compile').onclick();assert.equal(autoRoute,'/compile','The manual button compiles immediately.');
+  assert.equal(options.readOnly,true,'Manual compilation must preserve user read-only mode.');
+  toggleReadOnly();modeSelect.value='vim';modeSelect.onchange();
   assert.equal(uiTimers.has(manualPending),false,'Manual compilation cancels the scheduled automatic save.');
   source='next edit';let finishSave;
   context.fetch=()=>new Promise(resolve=>finishSave=resolve);

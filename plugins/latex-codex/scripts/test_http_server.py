@@ -160,6 +160,49 @@ with tempfile.TemporaryDirectory() as directory:
             assert request('/chat', {**batch, 'request_id': 'invalid'})[0] == 400
         server.chat = None
         print('PASS: Send retries reuse one task and reject changed or invalid requests')
+        # Branch requests use server-stored history and never accept source-edit annotations.
+        from history import History
+        memory = History(path)
+        reply_id = memory.chat_append(0, 'Explain this.', {'reply':'An isolated discussion.', 'replacement':None}, str(path), '')
+        main = memory.chat_read()
+        fork = {'project':str(path.parent), 'parent':main['thread'], 'message_id':reply_id, 'quote':'isolated discussion'}
+        assert request('/chat/branch',{**fork,'project':'another-project'})[0] == 409
+        code, body = request('/chat/branch',fork)
+        assert code == 200
+        branch = json.loads(body)
+        assert json.loads(request('/chat/history?thread=' + branch['thread'])[1]) == branch
+        assert request('/chat/history?thread=missing')[0] == 400
+        rename = {'project':str(path.parent),'thread':branch['thread'],'title':'Renamed branch'}
+        assert request('/chat/rename',{**rename,'project':'another-project'})[0] == 409
+        assert request('/chat/rename',{**rename,'title':''})[0] == 400
+        assert request('/chat/rename',{**rename,'thread':'missing'})[0] == 400
+        assert json.loads(request('/chat/rename',rename)[1]) == {'thread':branch['thread'],'title':'Renamed branch'}
+        renamed = json.loads(request('/chat/history?thread=' + branch['thread'])[1])
+        assert renamed['revision'] == branch['revision'] and renamed['messages'] == branch['messages']
+        assert next(node for node in renamed['threads'] if node['id'] == branch['thread'])['title'] == 'Renamed branch'
+        branch_request = {**batch,'request_id':'2'*32,'thread':branch['thread'],'memory_revision':0,
+                          'selection':'','messages':[{'role':'user','content':'Continue.'}]}
+        branch_request.pop('annotations')
+        with patch('editor.ChatJob',return_value=job) as spawn:
+            assert request('/chat',branch_request)[0] == 200
+            context = spawn.call_args.args[0]
+            assert context['memory_thread'] == branch['thread'] and context['selection'] == ''
+            assert context['branch_context']['quote'] == fork['quote']
+            assert not context['main_conversation']['available']
+        server.chat = None
+        assert request('/chat',{**branch_request,'request_id':'3'*32,'selection':'First','annotations':batch['annotations']})[0] == 400
+        assert json.loads(request('/chat/history')[1])['revision'] == reply_id
+        removal = {'project':str(path.parent),'thread':branch['thread'],'descendants':[branch['thread']]}
+        assert request('/chat/delete',{**removal,'project':'another-project'})[0] == 409
+        assert request('/chat/delete',{**removal,'descendants':[]})[0] == 400
+        assert request('/chat/delete',{**removal,'thread':main['thread'],'descendants':[main['thread']]})[0] == 400
+        job.result = {'status':'running'};server.chat = job
+        assert request('/chat/delete',removal)[0] == 409
+        server.chat = None;job.result = {'status':'done'}
+        assert json.loads(request('/chat/delete',removal)[1])['deleted'] == [branch['thread']]
+        assert request('/chat/history?thread=' + branch['thread'])[0] == 400
+        assert json.loads(request('/chat/history')[1])['revision'] == reply_id
+        print('PASS: branch HTTP creation, project/message validation, frozen context and discussion-only job routing')
         build = Path(server.build.name)
         (build / 'main.pdf').write_bytes(b'%PDF-test')
         (build / 'main.aux').write_text('\n'.join([

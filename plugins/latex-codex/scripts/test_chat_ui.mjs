@@ -29,6 +29,8 @@ function el(id) {
     getAttribute(name){return this.attributes[name]??null;},
     setPointerCapture(id){this.capture=id;},hasPointerCapture(id){return this.capture===id;},releasePointerCapture(){this.capture=null;},matches(){return !!this.open;},
     append(...nodes){this.children.push(...nodes);},prepend(...nodes){this.children.unshift(...nodes);},replaceChildren(...nodes){this.children=nodes;},
+    insertBefore(node,before){const index=this.children.indexOf(before);this.children.splice(index<0?this.children.length:index,0,node);},
+    replaceWith(node){this.replacement=node;},
     events:{},offsetWidth:320,offsetHeight:46,getBoundingClientRect(){return {left:Number.parseFloat(this.style.left)||950,top:Number.parseFloat(this.style.top)||750,bottom:780,width:Number.parseFloat(this.style.width)||this.offsetWidth,height:Number.parseFloat(this.style.height)||this.offsetHeight};},
     scrollTop:0,scrollHeight:68,contains(node){return !!node && node===this;},
     clientWidth:500,querySelector(){return null;},querySelectorAll(){return [];},
@@ -247,11 +249,26 @@ el('#chat-panel-efforts').children.find(button=>button.textContent==='高').oncl
 assert.equal(el('#chat-model').value,'test-model');assert.equal(el('#chat-effort').value,'high');
 assert.equal(el('#chat-config').attributes['aria-expanded'],'false');
 assert.equal(el('#chat-config-name').textContent,'Test Model');
+const sideConfig=el('#chat-branch-model').replacement;
+sideConfig.getBoundingClientRect=()=>({left:500,top:640,bottom:668});
+let branchModelFocus=0;el('#chat-branch-input').events.focus=()=>branchModelFocus++;
+el('#chat-input').value='Main draft';el('#chat-branch-input').value='Side draft';
+sideConfig.onclick();el('#chat-panel-settings').events.beforetoggle({newState:'open'});
+assert.equal(sideConfig.attributes['aria-expanded'],'true');assert.equal(el('#chat-config').attributes['aria-expanded'],'false');
+assert.equal(el('#chat-panel-settings').style.bottom,'168px','The shared menu opens above the sidebar trigger.');
+el('#chat-panel-models').children.find(button=>button.textContent==='Other Model ›').onclick();
+el('#chat-panel-efforts').children[0].onclick();
+assert.equal(el('#chat-config-name').textContent,'Other Model');assert.equal(el('#chat-branch-model').textContent,'Other Model');
+assert.equal(branchModelFocus,1,'Selecting from the sidebar returns focus to its own input.');
+assert.equal(el('#chat-input').value,'Main draft');assert.equal(el('#chat-branch-input').value,'Side draft');
+el('#chat-input').value='';el('#chat-branch-input').value='';
 el('#chat-model').value='test-model';el('#chat-model').onchange();
 el('#chat-effort').value='high';el('#chat-effort').onchange();
 assert.equal(el('#chat-quick-efforts').children.find(button=>button.textContent==='高').attributes['aria-pressed'],'true');
 el('#chat-input').value='Remember my terminology.';
-await el('#chat-form').onsubmit({preventDefault(){}});
+const configuredSend=el('#chat-form').onsubmit({preventDefault(){}});
+assert.equal(sideConfig.disabled,true,'Both model triggers are locked while a reply is running.');
+await configuredSend;assert.equal(sideConfig.disabled,false);
 assert.equal(calls.find(call=>call.url==='/chat').body.model,'test-model');
 assert.equal(calls.find(call=>call.url==='/chat').body.effort,'high');
 assert.equal(el('#chat-proposal').hidden,false);

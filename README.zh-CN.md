@@ -8,9 +8,9 @@
 
 目前通过独立插件支持 **Codex** 和 **DeepSeek Harness**，Claude 适配在规划中。项目原名 **codex-latex-editor / LaTeX Codex**。
 
-- 选中源码或 PDF 内容，添加批注，点击 **Send** 生成 AI 建议；在源码与 PDF 中逐处 **Keep / Undo**，或点击**全部接受**。
+- 选中源码，或在 PDF 中选字、框选公式及段落，添加内部批注，点击 **Send** 生成 AI 建议；在源码与 PDF 中逐处 **Keep / Undo**，或点击**全部接受**。
 - 在浮动项目对话中讨论论文，选择模型、思考等级和写作风格，并将回复记录为 Markdown；开启 **”** 可获取论文原句的 PDF 跳转链接。
-- 源码与 PDF 双向跳转、PDF 选字及公式框选，支持选择 PDF 阅读底色。
+- 选中对话文字可引用追问，或打开可嵌套的侧边子对话；用横向对话树切换分支，主对话保持可见。
 - Markdown 实时预览、使用现有 TeX 环境编译 PDF，并回看自动保存的源码历史与 PDF 改动。
 
 对 Codex 说：**使用 latex-codex 打开 main.tex**，或直接运行：
@@ -26,7 +26,7 @@ Codex 使用 **latex-codex**，DeepSeek Harness 使用独立的 **latex-deepseek
 
 ## 功能演示
 
-点击预览查看完整演示，均配有中英字幕。
+演示均配有中英字幕，点击图片可放大 GIF 或查看完整视频。
 
 ### 批注（主对话框）
 
@@ -34,31 +34,33 @@ Codex 使用 **latex-codex**，DeepSeek Harness 使用独立的 **latex-deepseek
 
 [![观看原对话框批注演示](docs/media/04-native-comments.gif)](docs/media/04-native-comments.mp4)
 
-### 临时批注（不占主对话框）
+### 内部批注（不占主对话框）
 
-在 PDF 顶部切换**选字 / 拖动**。选字模式下，按住**空格**拖动页面，按住 **空格 + Alt** 并上下拖动鼠标可缩放。可框选，也可直接拖选文字；右键添加批注，或在设置中开启框选后自动弹出批注。
+**框选。** 在 PDF 中选字，或框选公式与段落，定位对应源码并添加内部批注。右键添加批注，也可在设置中开启框选后自动弹出批注。
 
-在源码和临时红绿 PDF 中逐处审阅建议：**Keep** 保存该处修改，**Undo** 保留原文。可在**齿轮**中分别开关编辑器与 PDF 校对；开启**项目修改校对**后，还可审阅主对话或外部工具对项目 TeX 文件的修改。
+[![框选与内部批注演示](docs/media/01-internal-annotations.gif)](docs/media/01-internal-annotations.gif)
 
-批注工具栏的 **Style** 提供前置提示词。
+**AI 修改与 Proofread。** 输入要求并点击 **Send**，在源码和 PDF 中查看红绿改动：**Keep** 保存该处修改，**Undo** 保留原文。在**齿轮**中分别开关编辑器与 PDF 校对；开启**项目修改校对**，还可审阅主对话或外部工具的修改。
 
-可在**齿轮 → 修改标记颜色**中为修改添加 LaTeX `\color` 标记，方便向审稿人展示 PDF 变动。
+[![AI 修改与源码及 PDF Proofread 演示](docs/media/02-internal-proofread.gif)](docs/media/02-internal-proofread.gif)
 
-[![观看批注修改演示](docs/media/03-pdf-comments.gif)](docs/media/03-pdf-comments.mp4)
+批注工具栏的 **Style** 提供前置提示词；**齿轮 → 修改标记颜色**可为修改添加颜色，方便向审稿人展示变动。
 
-### LaTeX ↔ PDF 跳转
+### 原文引用与侧边对话
 
-抓手模式下双击 PDF，定位对应源码；双击行号或点击中间的 **→**，跳回 PDF。章节拨轮方便浏览长文，指定 `main.tex` 后，还能跨 `\input` / `\include` 文件跳转。
+开启浮动项目对话标题栏的 **”**，让 AI 提供可点击的论文原句引用。点击链接即可定位源码与 PDF 原文；阅读时可在圆球、短栏和完整对话框之间切换。
 
-在**选字**模式下，按住**空格**拖动页面，或按住 **Alt + 空格**拖动缩放，范围为 30%–500%。
+[![原文引用跳转与对话框切换演示](docs/media/04-cite-chat.gif)](docs/media/04-cite-chat.gif)
 
-[![观看双向跳转演示](docs/media/01-navigation.gif)](docs/media/01-navigation.mp4)
+选中对话文字，可添加引用批注或在侧边对话中提问，继续嵌套追问时主对话保持可见。展开对话树即可切换、重命名或确认删除分支，拖动中间分隔线可调整两栏大小。
+
+[![引用跳转与侧边聊天分支演示](docs/media/05-cite-branches.gif)](docs/media/05-cite-branches.gif)
 
 ### 本地历史
 
 修改自动保存，可以对比源码变化、查看 PDF 修改前后的效果，并恢复历史版本。
 
-[![观看历史演示](docs/media/02-history.gif)](docs/media/02-history.mp4)
+[![历史源码与 PDF 对比演示](docs/media/03-local-history.gif)](docs/media/03-local-history.gif)
 
 ### 编辑与个性化
 
