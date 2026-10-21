@@ -6,23 +6,7 @@
 
 把研究的最后一步带进 AI 应用的侧边栏：撰写 LaTeX 与 Markdown，与 AI 讨论原文和公式，并结合本地预览逐处审阅 AI 的修改。
 
-目前通过独立插件支持 **Codex** 和 **DeepSeek Harness**，Claude 适配在规划中。项目原名 **codex-latex-editor / LaTeX Codex**。
-
-- 选中源码，或在 PDF 中选字、框选公式及段落，添加内部批注，点击 **Send** 生成 AI 建议；在源码与 PDF 中逐处 **Keep / Undo**，或点击**全部接受**。
-- 在浮动项目对话中讨论论文，选择模型、思考等级和写作风格，并将回复记录为 Markdown；开启 **”** 可获取论文原句的 PDF 跳转链接。
-- 选中对话文字可引用追问，或打开可嵌套的侧边子对话；用横向对话树切换分支，主对话保持可见。
-- Markdown 实时预览、使用现有 TeX 环境编译 PDF，并回看自动保存的源码历史与 PDF 改动。
-
-对 Codex 说：**使用 latex-codex 打开 main.tex**，或直接运行：
-
-```sh
-python plugins/latex-codex/scripts/editor.py /path/to/main.tex
-```
-
-在侧边浏览器打开打印的本地地址。选中源码或 PDF 内容，添加批注，然后点击 **Send**。
-可将单个 `.tex`、`.md` 或 `.markdown` 文件拖到编辑区或预览区打开原文件；若浏览器隐藏路径，请用“文件 → 打开文件”。
-
-Codex 使用 **latex-codex**，DeepSeek Harness 使用独立的 **latex-deepseek** 插件。原有安装命令及本地历史继续兼容，安装与维护细节见 [AGENTS.md](AGENTS.md)。
+对 Codex 说：**使用 latex-codex 打开 main.tex**。DeepSeek Harness 使用 **latex-deepseek**。
 
 ## 功能演示
 

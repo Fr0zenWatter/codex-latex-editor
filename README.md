@@ -6,23 +6,7 @@
 
 Bring the final step of research into your AI app's sidebar: write LaTeX and Markdown, discuss passages and formulas, and review AI edits alongside a local preview.
 
-Supports **Codex** and **DeepSeek Harness** through separate plugins. Claude integration is planned. Formerly **codex-latex-editor / LaTeX Codex**.
-
-- Select source text or box-select PDF text and formulas, add internal annotations and click **Send** for AI suggestions. Review each change with **Keep / Undo** in source and PDF, or **Accept all**.
-- Discuss your paper in floating project chat, with model and reasoning controls, writing styles and Markdown reply notes. Enable **”** for clickable paper quotations and PDF links.
-- Select chat text to quote it in a follow-up or open a nested sidebar discussion. Switch branches in the horizontal conversation tree while keeping the main chat visible.
-- Preview Markdown live, compile PDFs with your existing TeX installation, and revisit autosaved source and PDF history.
-
-Ask Codex: **Use latex-codex to open main.tex**, or launch directly:
-
-```sh
-python plugins/latex-codex/scripts/editor.py /path/to/main.tex
-```
-
-Open the printed local URL in the side browser. Select source or PDF text, add comments and click **Send**.
-Drag one `.tex`, `.md` or `.markdown` file onto the editor or preview to open the original. If the browser hides its path, use **File → Open file**.
-
-Use **latex-codex** for Codex or the independent **latex-deepseek** plugin for DeepSeek Harness. Existing installation commands and local history remain compatible. See [AGENTS.md](AGENTS.md) for installation and maintenance.
+Ask Codex: **Use latex-codex to open main.tex**. For DeepSeek Harness, use **latex-deepseek**.
 
 ## Demos
 
